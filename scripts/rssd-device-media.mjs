@@ -27,6 +27,10 @@ export async function prepareEditionMedia({edition,home,directory,client,workspa
   media.set(asset.id,{id:asset.id,alt:image.alt||''});bodyMarkdown=bodyMarkdown.replaceAll(image.src,asset.url);
  }
  const metadata=structuredClone(edition.metadata||{});
+ if(metadata.notebook&&metadata.notebookBodyHash===p.hash(edition.bodyMarkdown)){
+  metadata.notebook.blocks=metadata.notebook.blocks.map(block=>({...block,text:Object.entries(mapping).reduce((text,[url,asset])=>text.replaceAll(url,asset.url),block.text)}));
+  metadata.notebookBodyHash=p.hash(bodyMarkdown);
+ }
  if(metadata.platformContent){
   p.object(metadata.platformContent,'platform content');
   for(const content of Object.values(metadata.platformContent)){

@@ -35,7 +35,7 @@ export function notebookGroups(n){
  for(const b of n.blocks){const last=result.at(-1);if(b.groupId&&last?.id===b.groupId)last.blocks.push(b);else result.push({id:b.groupId||b.id,group:n.groups?.find(g=>g.id===b.groupId),blocks:[b]});}
  return result;
 }
-export function formatErrors(n){
+export function formatErrors(n,{imageReference=value=>/^assets\/notebook\/[a-f0-9]{64}\.webp$/.test(value)}={}){
  const errors=[],add=(path,message)=>errors.push({path,message});
  if(!n||![1,2].includes(n.version)){add('version','不支持的文章板格式版本');return errors;}
  if(typeof n.title!=='string'||n.title.length>120)add('title','标题字段须为不超过 120 字的文字');
@@ -62,7 +62,7 @@ export function formatErrors(n){
   if(b.requirement!==undefined&&typeof b.requirement!=='string')add(path+'.requirement','占位要求须为文字');
   if(b.locked!==undefined&&typeof b.locked!=='boolean')add(path+'.locked','人工保护须为布尔值');
   if(b.type==='heading'&&(!Number.isInteger(b.level)||b.level<1||b.level>6))add(path+'.level','标题级数须为 1–6');
-  if(b.type==='image'&&b.text&&!/^assets\/notebook\/[a-f0-9]{64}\.webp$/.test(b.text))add(path+'.text','请先导入图片，再使用登记的图片路径');
+  if(b.type==='image'&&b.text&&!imageReference(b.text))add(path+'.text','请先导入图片，再使用登记的图片路径');
   if(b.type==='annotation'&&!['caption','endnote'].includes(b.role))add(path+'.role','注释用途须为图注或尾注');
   if(b.purpose!==undefined&&!['explanation','reference','marketing'].includes(b.purpose))add(path+'.purpose','尾注用途无效');
   if(b.groupId&&!groups.has(b.groupId))add(path+'.groupId','内容行引用了不存在的分组');

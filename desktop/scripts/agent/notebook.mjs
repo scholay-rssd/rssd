@@ -66,7 +66,7 @@ export function validateNotebook(input,prior,{agent=false,scope}={}){
  }
  return n;
 }
-export function notebookMarkdown(input){
+export function notebookMarkdown(input,{site=ACTIVE_SITE}={}){
  const n=upgradeNotebook(input),labels=headingLabels(n.blocks),ready=n.blocks.filter(b=>b.state==='ready'),endnotes=ready.filter(b=>b.type==='annotation'&&b.role==='endnote');
  const blocks=ready.filter(b=>!endnotes.includes(b)).map(b=>{
   if(b.type==='heading'){const label=labels[b.id];const protocol=new Set(recordHeadings(n.kind));const extra=n.kind!=='article'&&b.level===2&&!protocol.has(b.text)&&!protocol.has(label);return '#'.repeat(extra?3:b.level)+' '+(['fixed','source'].includes(b.heading?.mode)&&!b.locked?label.replace(/[\\`*_{}\[\]<>]/g,'\\$&').replace(/\r?\n/g,' '):label);}
@@ -87,7 +87,7 @@ export function notebookMarkdown(input){
   const prefix=(i+1)+'. ';
   return prefix+b.text.trim().replace(/\r?\n/g,'\n'+' '.repeat(prefix.length));
  }).join('\n\n')+'\n';
- return canonicalArticleEndnotes(result,{site:ACTIVE_SITE});
+ return canonicalArticleEndnotes(result,{site});
 }
 export function notebookInstructions(t){
  const n=upgradeNotebook(t.notebook),scope=t.runtime?.notebookAction;
