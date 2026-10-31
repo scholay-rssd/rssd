@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "scope": "protocol-and-client-foundation",
+  "files": [
+    {
+      "path": "contracts/rssd-v1.cjs",
+      "sha256": "ee999bb16f4347bfb3399b234b9d0878b0b7ba698332375cb62ecd6063e21031"
+    },
+    {
+      "path": "scripts/rssd-center-client.mjs",
+      "sha256": "9078be3fab9cf53cf4a38a30b6616f086f70866e639bd595fc08f41b9fd84c06"
+    },
+    {
+      "path": "scripts/rssd-production-worker.mjs",
+      "sha256": "b64a72a15d310eba29b1923bf07d9e29d0910fc8f841ab92f2d7a6e04cec687b"
+    },
+    {
+      "path": "scripts/editorial-lock.mjs",
+      "sha256": "990505b3bfc6fe56505c300127220c61b3fe7798d565d25d9aad281907dab836"
+    },
+    {
+      "path": "tests/rssd-protocol.test.mjs",
+      "sha256": "1b81562d9118154706cdfb36a69b668117b48d5573e7484bdb3e8efba9836cd8"
+    },
+    {
+      "path": "tests/rssd-center-client.test.mjs",
+      "sha256": "48a8c17800aea493f674c36261ce0f1f92a4e6cef6087d0b05b475c30584ac75"
+    },
+    {
+      "path": "tests/rssd-production-worker.test.mjs",
+      "sha256": "cf424b284a0aac2bf3196f2c741328d4cb1755e0a250591d1e8179bbe6777141"
+    }
+  ]
+}
