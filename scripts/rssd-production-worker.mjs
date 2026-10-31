@@ -4,10 +4,12 @@ import {randomUUID} from 'node:crypto';
 import protocol from '../contracts/rssd-v1.cjs';
 import {withFileLock} from './editorial-lock.mjs';
 import {CenterOutbox,writeCenterJson} from './rssd-center-client.mjs';
+import {prepareEditionMedia} from './rssd-device-media.mjs';
+import {ARTICLE_WRITING_INSTRUCTIONS,ARTICLE_WRITING_POLICY} from '../contracts/article-writing-policy.mjs';
 
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};
 const save=writeCenterJson;
-export async function runProductionTurn({client,home,producer,agentId,workspaceIds,sectionIds=[],demandId,resume=false,signal,onEvent=()=>{}}){
+export async function runProductionTurn({client,home,producer,agentId,workspaceIds,sectionIds=[],demandId,resume=false,signal,onEvent=()=>{},writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}}){
   await mkdir(home,{recursive:true,mode:0o700});
   return withFileLock(join(home,'worker.lock'),async()=>{
     const outbox=new CenterOutbox({directory:join(home,'outbox'),client});
@@ -33,10 +35,12 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
     let context=await read(contextFile);
     if(!context){
       let work=null;try{work=await client.work(workId);}catch(error){if(error.status!==404)throw error;}
-      context={work,baseRevisions:Object.fromEntries((work?.editions||[]).map(e=>[e.locale,e.revision]))};
+      context={work,writingPolicy,baseRevisions:Object.fromEntries((work?.editions||[]).map(e=>[e.locale,e.revision]))};
       if(claim.payload.source){const source=claim.payload.source;context.source=await client.request('/works/'+encodeURIComponent(source.workId)+'/editions/'+source.locale+'/'+source.revision);}
       await save(contextFile,context);
     }
+    // Compatibility with claims created before common policy snapshots existed.
+    if(!context.writingPolicy){context.writingPolicy=writingPolicy;await save(contextFile,context);}
     await save(activeFile,{origin:client.origin,claim});
     const heartbeat=()=>client.heartbeat({state:'running',agentId,message:claim.title}).catch(()=>{});
     await heartbeat();const timer=setInterval(heartbeat,30000);timer.unref?.();
@@ -57,8 +61,10 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
             if(chinese){source={payload:chinese.editions[0]};translationOf={workId,locale:'zh-CN',revision:chinese.baseRevisions['zh-CN']+1};}
             else if(old){source=old;translationOf={workId,locale:'zh-CN',revision:old.revision};}
           }
-          const output=await producer({claim,locale,workId,source,directory,agentId,signal,onEvent});
-          await save(join(directory,locale+'.result.json'),output);
+          const resultFile=join(directory,locale+'.result.json');
+          let output=await read(resultFile);
+          if(!output){output=await producer({claim,locale,workId,source,directory,agentId,signal,onEvent,writingPolicy:context.writingPolicy});await save(resultFile,output);}
+          output=await prepareEditionMedia({edition:output,home,directory,client,workspaceId:claim.workspaceId,signal});
           packet=protocol.submission({requestId:randomUUID(),workId,workspaceId:claim.workspaceId,sectionId:claim.sectionId,
             demandId:claim.id,claimToken:claim.claimToken,baseRevisions:{[locale]:context.baseRevisions[locale]||0},
             editions:[{...output,locale,translationOf}]});

@@ -1,0 +1,12 @@
+/* Added only for the nine journal sites; the academic site keeps its theme. */
+:root{color-scheme:light dark;--accent:light-dark(#42604c,#b3d3b5);--paper:light-dark(#f7f8f5,#202928);--ink:light-dark(#25302b,#f4f0e7);--muted:light-dark(#626f65,#b7c3b8);--line:light-dark(#d8dfd7,#45534b);background:var(--paper);color:var(--ink)}
+h1{color:var(--ink)}
+header>p:last-child,.hint,footer,.section-head span,.note small,.empty{color:var(--muted)}
+input,textarea,select{background:light-dark(#fff,#293330);border-color:var(--line)}
+input::placeholder,textarea::placeholder{color:var(--muted);opacity:1}
+header,details,.note,.empty,footer{border-color:var(--line)}
+button{color:var(--paper)}
+.pill{background:light-dark(#e8eee6,#293330)}
+.error{color:light-dark(#9a342c,#ffa99d)}
+/* The session supplies a site's daytime accent as an inline custom property. */
+@media(prefers-color-scheme:dark){:root{--accent:#b3d3b5!important}}

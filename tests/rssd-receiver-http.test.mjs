@@ -11,6 +11,7 @@ import {profiles} from '../scripts/site-config.mjs';
 import {sectionsForSite} from '../contracts/site-sections.mjs';
 import {contentKey} from '../contracts/rssd-publication.cjs';
 import p from '../contracts/rssd-v1.cjs';
+import mediaProtocol from '../contracts/rssd-media.cjs';
 
 test('HTTP receiver builds real bilingual pages, verifies public files, and retains old release on failure',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'rssd-http-')),base=join(dir,'public'),current=join(base,'current');
@@ -26,11 +27,16 @@ test('HTTP receiver builds real bilingual pages, verifies public files, and reta
     build:options=>buildAndActivate({...options,verify:manifest=>{if(failVerification)throw Error('Simulated public verification failure');return verifyLive(manifest,site.origin,false);}})});
   t.after(async()=>{await receiver.app.close();await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});});
   const endpoint='/api/rssd-receiver/v1/sites/metho/submissions',headers={authorization:'Bearer '+token};
-  const packet={version:1,requestId:'request-en',siteId:site.id,workspaceId:site.spaceId,sectionId,workId:'example',locale:'en',revision:1,contentHash:'a'.repeat(64),route:'/en/news/example/',content:{locale:'en',title:'English first',bodyMarkdown:'Complete English body.',metadata:{date:'2026-10-31'}}};
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aYZkAAAAASUVORK5CYII=','base64'),asset=mediaProtocol.imageManifest(png);
+  const mediaUrl='/api/rssd-receiver/v1/sites/metho/media/'+asset.sha256;
+  assert.equal((await receiver.app.inject({url:mediaUrl,headers})).statusCode,404);
+  assert.equal((await receiver.app.inject({method:'POST',url:mediaUrl,headers,payload:{...asset,data:png.toString('base64')}})).statusCode,200);
+  const packet={version:1,requestId:'request-en',siteId:site.id,workspaceId:site.spaceId,sectionId,workId:'example',locale:'en',revision:1,contentHash:'a'.repeat(64),route:'/en/news/example/',assets:[asset],content:{locale:'en',title:'English first',bodyMarkdown:'Complete English body.\n\n![Evidence]('+asset.path+')',metadata:{date:'2026-10-31'}}};
   assert.equal((await receiver.app.inject({method:'POST',url:endpoint,payload:packet})).statusCode,401);
   const received=await receiver.app.inject({method:'POST',url:endpoint,headers,payload:packet});assert.equal(received.statusCode,200);assert.equal(received.json().state,'queued');
   await receiver.tick();const receipt=(await receiver.app.inject({url:endpoint+'/'+packet.requestId,headers})).json();assert.equal(receipt.state,'success',receipt.error);
   assert.match(await (await fetch(site.origin+packet.route)).text(),/Complete English body/);
+  assert.deepEqual(Buffer.from(await(await fetch(site.origin+asset.path)).arrayBuffer()),png);
   const visible=await(await fetch(site.origin+'/rssd-content/'+contentKey(packet)+'.json')).json();assert.equal(visible.requestId,packet.requestId);
   const prior=JSON.parse(await readFile(join(current,'release.json'),'utf8'));
   const update={...packet,requestId:'request-en-2',revision:2,contentHash:'b'.repeat(64),content:{...packet.content,title:'Revised English'}};

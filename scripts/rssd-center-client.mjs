@@ -3,6 +3,7 @@ import {join,dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import protocol from '../contracts/rssd-v1.cjs';
 import {withFileLock} from './editorial-lock.mjs';
+import {uploadPacketMedia} from './rssd-device-media.mjs';
 
 export class CenterError extends Error {
   constructor(message,{status=0,code='network_error'}={}){super(message);this.status=status;this.code=code;}
@@ -80,7 +81,7 @@ export class CenterOutbox {
       try{
         let receipt;
         try{receipt=await this.client.submission(entry.requestId);}
-        catch(error){if(error.status!==404)throw error;receipt=await this.client.submit(entry.packet);}
+        catch(error){if(error.status!==404)throw error;await uploadPacketMedia({packet:entry.packet,directory:join(this.directory,'../media'),client:this.client});receipt=await this.client.submit(entry.packet);}
         if(receipt?.requestId!==entry.requestId||receipt.workId!==entry.packet.workId||receipt.workspaceId!==entry.packet.workspaceId||receipt.status!=='accepted')
           throw new CenterError('Center receipt does not match the submitted work',{code:'receipt_mismatch'});
         if(!Array.isArray(receipt.editions)||receipt.editions.length!==entry.packet.editions.length||entry.packet.editions.some(edition=>{

@@ -62,3 +62,14 @@ test('an explicit authorization rejection never falls back to a cached claim',as
   f.client.activeClaim=async()=>{throw new CenterError('Revoked',{status:401});};
   await assert.rejects(runProductionTurn({...f,agentId:'example',workspaceIds:['research'],resume:true,producer:async()=>{throw Error('Must not run');}}),{status:401});
 });
+
+test('a resumed task retains its original common writing policy across runtime updates',async t=>{
+  const f=await fixture(t),original={version:'original',instructions:'Original instructions'};
+  await assert.rejects(runProductionTurn({...f,agentId:'example',workspaceIds:['research'],writingPolicy:original,producer:async({writingPolicy})=>{
+    assert.deepEqual(writingPolicy,original);throw Error('Quota exhausted');
+  }}),/Quota/);
+  const done=await runProductionTurn({...f,agentId:'example',workspaceIds:['research'],resume:true,writingPolicy:{version:'new',instructions:'Changed rules'},producer:async({writingPolicy})=>{
+    assert.deepEqual(writingPolicy,original);return {title:'Retained policy',bodyMarkdown:'Complete text'};
+  }});
+  assert.equal(done.state,'accepted');
+});

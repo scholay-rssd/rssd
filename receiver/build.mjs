@@ -7,6 +7,8 @@ import {buildSiteRelease} from '../web/engine/render-site.mjs';
 import {sourceContentSha256} from '../contracts/language-editions.mjs';
 import {activateRelease} from '../admin/worker.mjs';
 import {verifyLive} from '../admin/release-verification.mjs';
+import {digest} from '../admin/model.mjs';
+import {byteHash} from '../web/engine/theme-homepage.mjs';
 
 export function snapshotForPackets(packets,site,baseline={}) {
   const snapshot=structuredClone({news:[],data:{year:[],history:[]},openSource:{items:[]},permalinks:{},editorialRecords:[],...baseline});
@@ -27,7 +29,7 @@ export function snapshotForPackets(packets,site,baseline={}) {
   }
   return snapshot;
 }
-export async function buildAndActivate({job,site,source,base,baseline,verify=manifest=>verifyLive(manifest,site.origin,false)}) {
+export async function buildAndActivate({job,site,source,base,baseline,media,verify=manifest=>verifyLive(manifest,site.origin,false)}) {
   const current=join(base,'current'),key=contentKey(job.packet),publicPath='rssd-content/'+key+'.json';
   // A lost SQLite acknowledgement after activation is recovered by inspecting
   // the exact activated artifact before starting another build.
@@ -49,8 +51,14 @@ export async function buildAndActivate({job,site,source,base,baseline,verify=man
   }
   const buildId=randomUUID(),release='admin-'+buildId,stage=join(base,'releases','.building-'+buildId),target=join(base,'releases',release);
   await mkdir(stage,{recursive:true});
+  const mediaHashes={},mediaByteHashes={};
+  for(const asset of new Map(job.packets.flatMap(p=>(p.assets||[]).map(a=>[a.path,a]))).values()){
+    if(!media)throw Error('Publication media store is unavailable');const bytes=await media.bytes(asset),path=asset.path.slice(1);
+    await mkdir(dirname(join(stage,path)),{recursive:true});await writeFile(join(stage,path),bytes);mediaHashes[path]=digest(bytes);mediaByteHashes[path]=byteHash(bytes);
+  }
   const snapshot=snapshotForPackets(job.packets,site,baseline),snapshotHash=p.hash(snapshot);
   const manifest=await buildSiteRelease({job:{id:buildId,snapshot,snapshot_hash:snapshotHash},target:stage,source,previousRoot:current,site});
+  Object.assign(manifest.hashes,mediaHashes);manifest.byteHashes={...manifest.byteHashes,...mediaByteHashes};
   for(const packet of job.packets){
     const path='rssd-content/'+contentKey(packet)+'.json',bytes=JSON.stringify(packet);await mkdir(dirname(join(stage,path)),{recursive:true});await writeFile(join(stage,path),bytes);manifest.hashes[path]=p.hash(bytes);
   }
