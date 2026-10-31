@@ -6,6 +6,7 @@ import {timingSafeEqual} from 'node:crypto';
 import {ReceiverStore} from './store.mjs';
 import {ReceiverMedia} from './media.mjs';
 import {GuestbookMirror} from './guestbook.mjs';
+import {CommunityMirror} from './community.mjs';
 import {buildAndActivate} from './build.mjs';
 import {withFileLock} from '../scripts/editorial-lock.mjs';
 import {validateSite} from '../scripts/site-config.mjs';
@@ -23,6 +24,7 @@ export async function createReceiver({config,build=buildAndActivate}) {
     sites.set(site.id,{site,base,tokenHash,accepting:entry.accepting!==false,baselineSha256:baselineBytes?p.hash(baselineBytes):null,baseline:baselineBytes?JSON.parse(baselineBytes):{},store:new ReceiverStore(join(home,site.id,'receiver.sqlite'),site),media:new ReceiverMedia(join(home,site.id,'media'))});
     const configured=sites.get(site.id);configured.store.seedLegacyHeads(configured.baseline);
     if(entry.guestbook)configured.guestbook=new GuestbookMirror({...entry.guestbook,siteId:site.id,directory:join(base,'services','guestbook')});
+    if(entry.community)configured.community=new CommunityMirror({...entry.community,siteId:site.id,directory:join(base,'services','community')});
   }
   const app=Fastify({logger:false,bodyLimit:8*1024*1024});
   app.setErrorHandler((error,req,reply)=>reply.code(error.status||error.statusCode||500).send({code:error.code||'receiver_error',message:error.status||error.statusCode?error.message:'Receiver operation failed'}));
@@ -42,6 +44,7 @@ export async function createReceiver({config,build=buildAndActivate}) {
     if(running)return;running=true;
     try{
       await Promise.all([...sites.values()].filter(entry=>entry.guestbook).map(entry=>entry.guestbook.tick().catch(error=>console.error('Guestbook replica:',entry.site.id,error.message))));
+      await Promise.all([...sites.values()].filter(entry=>entry.community).map(entry=>entry.community.tick().catch(error=>console.error('Community replica:',entry.site.id,error.message))));
       await withFileLock(join(home,'build.lock'),async()=>{
       // One build for the whole host at a time. A failed site does not prevent
       // the next site's turn; no ten long-lived render workers are required.
