@@ -1,4 +1,5 @@
 import {loadSiteCalendar} from './siteCalendar';
+import {loadLegacyCalendar} from './legacyCalendar';
 import {ACTIVE_SITE} from '../../../scripts/site-profile.mjs';
 import {SidebarTitle} from "../components/PaneToolbar";
 import {createPortal} from "react-dom";
@@ -461,10 +462,12 @@ export default function CalendarBoard({ active, view, embedded=false, sidebarHos
   const detailRef = useRef<HTMLElement>(null);
   const alignTo = useRef<AlmanacMonth | null>({ year: today.year, month: today.month });
   const storedOfficial = useQuery({ queryKey: ["calendar", "official-evidence"], queryFn: listCalendarEvents, enabled: active && !!ACTIVE_SITE.legacy });
+  const archivedCalendar=useQuery({queryKey:['calendar','legacy-archive'],queryFn:loadLegacyCalendar,enabled:active&&!!ACTIVE_SITE.legacy,staleTime:Infinity});
   // The bundled set is a deliberate offline fallback (including first launch
   // before setup can seed). Once the local store answers, it is authoritative.
-  const officialSeeds = storedOfficial.data?.length ? storedOfficial.data : ACTIVE_SITE.legacy?yearOfficialSeeds:[];
-  const harvested = useMemo(() => [...officialSeeds, ...(ACTIVE_SITE.legacy?LEGACY_HARVESTED:[])], [officialSeeds]);
+  const officialSeeds = storedOfficial.data?.length ? storedOfficial.data : ACTIVE_SITE.legacy?(archivedCalendar.data?.official||yearOfficialSeeds):[];
+  const harvested = useMemo(() => [...officialSeeds, ...(ACTIVE_SITE.legacy?(archivedCalendar.data?.harvested||LEGACY_HARVESTED):[])], [officialSeeds,archivedCalendar.data]);
+  const history=useMemo(()=>archivedCalendar.data?adaptHistoryEvents(archivedCalendar.data.history):HISTORY,[archivedCalendar.data]);
   const reviewedOfficialSourceCount = useMemo(() => officialSourceCount(officialSeeds), [officialSeeds]);
   const grown = useQuery({ queryKey: ["articles", "calendar-year"], queryFn: loadGrowSeeds, enabled: active && !!ACTIVE_SITE.legacy });
   const siteCalendar = useQuery({queryKey:['calendar',ACTIVE_SITE.id,today.year],queryFn:()=>loadSiteCalendar(today.year),enabled:active&&!ACTIVE_SITE.legacy});
@@ -472,7 +475,7 @@ export default function CalendarBoard({ active, view, embedded=false, sidebarHos
     () => ACTIVE_SITE.legacy?[...nationalHolidays(today.year), ...growYearEvents([...harvested, ...(grown.data ?? [])])]:(siteCalendar.data?.events||[]).filter(x=>x.source==='year'),
     [grown.data, harvested, today.year,siteCalendar.data],
   );
-  const pool = view === "year" ? yearEvents : ACTIVE_SITE.legacy?HISTORY:(siteCalendar.data?.events||[]).filter(x=>x.source==='history');
+  const pool = view === "year" ? yearEvents : ACTIVE_SITE.legacy?history:(siteCalendar.data?.events||[]).filter(x=>x.source==='history');
   const yearGroups = useMemo(() => {
     if (view !== "year") return [];
     const countFor = (name: string) => filterByTag(pool, name).length;
@@ -675,6 +678,7 @@ export default function CalendarBoard({ active, view, embedded=false, sidebarHos
     className={`calendar-almanac${view === "history" ? " is-history" : " is-planner"}${focusedEvents.length ? " is-focusing" : ""}`}
   >
     {!ACTIVE_SITE.legacy && (siteCalendar.error||siteCalendar.data?.notice) && <p role="status" className="calendar-empty">{siteCalendar.error?String(siteCalendar.error):siteCalendar.data?.notice}</p>}
+    {ACTIVE_SITE.legacy&&archivedCalendar.error&&<p role="status" className="calendar-empty">{String(archivedCalendar.error)}</p>}
     {layout === "almanac"
       ? <section className="calendar-year-months" aria-label={tr("年度月历")}>
           {view === "year" && <header><small>{tr("年度月历")}</small><span>{tag ? tr("{{tag}} · {{visible}} 条", {tag, visible: visible.length}) : tr("{{visible}} 条", {visible: visible.length})}</span></header>}

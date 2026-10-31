@@ -9,7 +9,7 @@ impl Drop for QueueRecoveryGuard {fn drop(&mut self){QUEUE_RECOVERY_ACTIVE.store
 #[tauri::command]
 pub async fn publications_call(_space: crate::spaces::Lease, webview: tauri::Webview, method: String, params: Option<Value>) -> Result<Value, String> {
     crate::hot_board::require_main(&webview)?;
-    if !["snapshot", "refresh_feishu", "refresh_website", "site_calendar"].contains(&method.as_str()) {
+    if !["snapshot", "refresh_feishu", "refresh_website", "site_calendar", "legacy_calendar"].contains(&method.as_str()) {
         return Err("Unknown publication center operation".into());
     }
     run("publication-center.mjs", &method, params.unwrap_or_else(||json!({}))).await

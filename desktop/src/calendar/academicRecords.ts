@@ -1,4 +1,5 @@
 import {loadSiteCalendar} from './siteCalendar';
+import {loadLegacyCalendar} from './legacyCalendar';
 import {ACTIVE_SITE} from '../../../scripts/site-profile.mjs';
 import {listCalendarEvents} from '../api';
 import type {NewsItem} from '../editorial/taskWorkbench';
@@ -29,11 +30,12 @@ const legacy=attachOfficialBodyCache([
 /** Read the same local evidence as the former calendar without writing or refreshing sources. */
 export async function loadAcademicRecords(mode:AcademicMode,year:number):Promise<{events:CalendarEvent[];notice?:string}>{
  if(!ACTIVE_SITE.legacy){const result=await loadSiteCalendar(year);return {...result,events:result.events.filter(x=>x.source===(mode==='history'?'history':'year'))};}
- if(mode==='history')return {events:historyRecords};
+ let archived=null,archiveNotice='';try{archived=await loadLegacyCalendar();}catch(error){archiveNotice='本机日历归档未能读取：'+String(error);}
+ if(mode==='history')return {events:archived?adaptHistoryEvents(archived.history):historyRecords,...(archiveNotice?{notice:archiveNotice}:{})};
  const [official,rss]=await Promise.allSettled([listCalendarEvents(),loadGrowSeeds()]);
- const saved=official.status==='fulfilled'&&Array.isArray(official.value)&&official.value.length?official.value:yearOfficialSeeds;
- return {events:[...nationalHolidays(year),...growYearEvents([...saved,...legacy,...(rss.status==='fulfilled'?rss.value:[])])],
-  ...(official.status==='rejected'||rss.status==='rejected'?{notice:'本地资料未完整读取，当前保留安装包内的资料。可重试读取。'}:{})};
+ const saved=official.status==='fulfilled'&&Array.isArray(official.value)&&official.value.length?official.value:archived?.official||yearOfficialSeeds;
+ return {events:[...nationalHolidays(year),...growYearEvents([...saved,...(archived?.harvested||legacy),...(rss.status==='fulfilled'?rss.value:[])])],
+  ...(archiveNotice?{notice:archiveNotice}:official.status==='rejected'||rss.status==='rejected'?{notice:'本地资料未完整读取，当前保留本机已有资料。可重试读取。'}:{})};
 }
 
 export function recordSources(event:CalendarEvent){

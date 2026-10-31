@@ -4,6 +4,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { toast, useToasts } from "../toast";
 import { waitForSpacePreparation } from "./spaceTransition";
 import { tr } from "../uiText";
+import { invoke } from './nativeCore';
 
 const preference = "today.updates.autoDownload";
 let checking: Promise<void> | undefined, pending: Update | undefined, downloaded = false, installing = false;
@@ -18,15 +19,17 @@ async function prepareRestart() {
 async function install() {
   if (!pending || installing) return;
   installing = true;
+  let centerGuard=false;
   try {
     if (!await ask(tr("安装 today {{version}} 并重新启动？请先保存正在编辑的内容。", { version: pending.version }), { title: tr("today 更新"), kind: "info", okLabel: tr("安装并重启"), cancelLabel: tr("稍后") })) return;
     await prepareRestart();
     if (!downloaded) { toast.show(tr("正在下载并验证更新…")); await pending.download(); downloaded = true; }
     await prepareRestart();
+    await invoke('rssd_center_call',{method:'prepare_update'});centerGuard=true;
     await pending.install();
     await relaunch();
   } catch (error) { toast.error(tr("暂未安装更新：{{error}}", { error: String(error) })); }
-  finally { installing = false; }
+  finally { if(centerGuard)await invoke('rssd_center_call',{method:'cancel_update'}).catch(()=>{});installing = false; }
 }
 function notify() {
   useToasts.getState().push({ text: tr(downloaded ? "更新已下载：today {{version}}" : "发现新版本：today {{version}}", { version: pending!.version }), tone: "default", duration: 60000, action: { label: tr("安装更新"), run: () => { void install(); } } });

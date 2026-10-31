@@ -3,7 +3,8 @@ import {recordDate,recordMaterial,recordEnrichmentTemplate,recordOnDay,recordSou
 import {templatePrompt} from '../editorial/topicTemplates';
 import {sourceUsable} from '../editorial/topicSources';
 import type {CalendarEvent} from './types';
-const {readOfficial,readRss}=vi.hoisted(()=>({readOfficial:vi.fn(),readRss:vi.fn()}));
+const {readOfficial,readRss,readArchive}=vi.hoisted(()=>({readOfficial:vi.fn(),readRss:vi.fn(),readArchive:vi.fn().mockResolvedValue(null)}));
+vi.mock('./legacyCalendar',()=>({loadLegacyCalendar:readArchive}));
 vi.mock('../api',()=>({listCalendarEvents:readOfficial}));
 vi.mock('./yearGrow',async importOriginal=>({...await importOriginal<any>(),loadGrowSeeds:readRss}));
 const fixture=(patch:Partial<CalendarEvent>={}):CalendarEvent=>({id:'history:1949:03-21:机构成立',title:'机构成立',tags:['科学机构史'],source:'history',kind:'point',precision:'day',approximate:false,start:{year:1949,month:3,day:21},payload:{factSummary:'档案记载事实',sources:[{label:'原始档案',url:'https://archive.example.org/founding'}]},...patch});
@@ -43,5 +44,9 @@ describe('academic maintenance evidence',()=>{
  });
  it('keeps enrichment requests for all bundled history records within the saved-slot limit',()=>{
   for(const record of historyRecords)expect(templatePrompt(recordEnrichmentTemplate(record)).length).toBeLessThanOrEqual(1000);
+ });
+ it('uses the private evidence archive independently of bundled public seed files',async()=>{
+  readArchive.mockResolvedValueOnce({version:1,history:[{id:'saved-record',title:'Archived event',year:1949,dateKey:'03-21',domain:'science',eventType:'event',importance:'A',factSummary:'Original evidence',historicalSignificance:'Meaning',sources:[],preciseToDay:true}],harvested:[],official:[]});
+  const result=await loadAcademicRecords('history',2026);expect(result.events).toHaveLength(1);expect(result.events[0].title).toBe('Archived event');
  });
 });

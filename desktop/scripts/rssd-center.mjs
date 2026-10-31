@@ -12,6 +12,10 @@ const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catc
 
 export async function centerDesktopCall(method,params={},home=centerHome()){
   const stateFile=join(home,'worker.json');
+  if(method==='prepare_update'){
+    for(const name of ['daemon.lock','worker.lock']){const owner=await read(join(home,name));if(owner&&await lockOwnerAlive(owner))throw Error('中心生产任务仍在运行，请先停止领取并等待本单完成后安装更新');}
+    return {ready:true};
+  }
   const draftPath=(id,locale)=>join(home,'drafts',protocol.hash([protocol.id(id),protocol.locale(locale)])+'.json');
   if(method==='save_local'){
     protocol.id(params.work?.id);protocol.locale(params.locale);protocol.text(params.title,'title',1000,true);protocol.text(params.body,'body',2000000,true);

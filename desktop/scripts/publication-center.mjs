@@ -11,6 +11,7 @@ import {configuredWorkspace} from '../../scripts/editorial-location.mjs';
 import {createWebsitePublisher} from '../../scripts/website-publication.mjs';
 import {atomicJson} from '../../scripts/editorial-sync.mjs';
 import {cachedRemoteRead,retryAfterMs} from '../../scripts/remote-read-cache.mjs';
+import {readLegacyCalendar} from './legacy-calendar.mjs';
 
 const run=promisify(execFile);
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
@@ -137,6 +138,7 @@ export async function siteCalendar({root:workspace=editorial,fetcher=fetch}={}){
   }});
 }
 export async function publicationCall(method,params={}){
+  if(method==='legacy_calendar')return readLegacyCalendar();
   if(method==='site_calendar')return siteCalendar();
   if(method==='refresh_feishu')return refreshFeishu();
   if(method==='refresh_website')return refreshWebsite({refresh:params.refresh==='auto'?false:params.refresh==='changed'?'changed':true});

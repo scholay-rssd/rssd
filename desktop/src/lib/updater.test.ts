@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import {beforeEach,afterEach,test,expect,vi} from 'vitest';
-const mock=vi.hoisted(()=>({check:vi.fn(),ask:vi.fn(),relaunch:vi.fn(),show:vi.fn(),error:vi.fn(),push:vi.fn()}));
+const mock=vi.hoisted(()=>({check:vi.fn(),ask:vi.fn(),relaunch:vi.fn(),show:vi.fn(),error:vi.fn(),push:vi.fn(),invoke:vi.fn()}));
+vi.mock('./nativeCore',()=>({invoke:mock.invoke}));
 vi.mock('@tauri-apps/plugin-updater',()=>({check:mock.check}));
 vi.mock('@tauri-apps/plugin-dialog',()=>({ask:mock.ask}));
 vi.mock('@tauri-apps/plugin-process',()=>({relaunch:mock.relaunch}));
 vi.mock('../toast',()=>({toast:{show:mock.show,error:mock.error},useToasts:{getState:()=>({push:mock.push})}}));
-beforeEach(()=>{vi.resetModules();Object.values(mock).forEach(fn=>fn.mockReset());localStorage.clear();mock.ask.mockResolvedValue(true);});
+beforeEach(()=>{vi.resetModules();Object.values(mock).forEach(fn=>fn.mockReset());localStorage.clear();mock.ask.mockResolvedValue(true);mock.invoke.mockResolvedValue({ready:true});});
 afterEach(()=>vi.restoreAllMocks());
 const update=()=>({version:'0.16.3',download:vi.fn().mockResolvedValue(undefined),install:vi.fn().mockResolvedValue(undefined)});
 test('automatic checks download once and offer installation without restarting an editor',async()=>{
@@ -30,4 +31,9 @@ test('manual update downloads, validates the idle state again, installs and rela
 test('a rejected download or signature never reaches installation',async()=>{
  const u=update();u.download.mockRejectedValue(Error('signature mismatch'));mock.check.mockResolvedValue(u);await (await import('./updater')).checkForUpdates({silent:false});
  expect(u.install).not.toHaveBeenCalled();expect(mock.relaunch).not.toHaveBeenCalled();expect(mock.error.mock.calls[0][0]).toContain('signature mismatch');
+});
+test('a production worker blocks code replacement after download without losing the pending update',async()=>{
+ const u=update();mock.check.mockResolvedValue(u);mock.invoke.mockRejectedValueOnce(Error('生产任务仍在运行'));
+ const api=await import('./updater');await api.checkForUpdates({silent:false});expect(u.install).not.toHaveBeenCalled();
+ mock.invoke.mockResolvedValue({ready:true});await api.checkForUpdates({silent:false});expect(u.download).toHaveBeenCalledTimes(1);expect(u.install).toHaveBeenCalledTimes(1);
 });
