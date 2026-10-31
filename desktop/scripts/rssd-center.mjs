@@ -8,6 +8,7 @@ import {runProductionTurn} from '../../scripts/rssd-production-worker.mjs';
 import {CenterOutbox,saveCenterConnection,loadCenterConnection,writeCenterJson} from '../../scripts/rssd-center-client.mjs';
 import {withFileLock,lockOwnerAlive} from '../../scripts/editorial-lock.mjs';
 import protocol from '../../contracts/rssd-v1.cjs';
+import {readConfiguredLabels} from './runtime/labels-source.mjs';
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw e;}};
 
 export async function centerDesktopCall(method,params={},home=centerHome()){
@@ -37,6 +38,7 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
     return {configured:Boolean(connection),origin:connection?.origin,identity:connection?.identity,worker,drafts,outbox:entries.map(e=>({requestId:e.requestId,workId:e.packet.workId,state:e.state,error:e.error,receipt:e.receipt})),agents:await new AgentRegistry().list()};
   }
   if(method==='connect')return saveCenterConnection(home,{origin:params.origin,token:process.env.RSSD_CENTER_TOKEN,persistToken:false});
+  if(method==='labels')return (await readConfiguredLabels({home})).feed;
   if(method==='stop'){await writeCenterJson(join(home,'stop.json'),{requestedAt:new Date().toISOString()});return {state:'stopping',message:'当前需求完成后停止领取'};}
   const {client}=await loadCenterConnection(home),outbox=new CenterOutbox({directory:join(home,'outbox'),client});
   if(method==='registry'){

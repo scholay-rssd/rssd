@@ -33,7 +33,7 @@ pub fn command(script:&str)->Result<tokio::process::Command,String>{
     let file=root.join(script);if !file.is_file(){return Err("安装包缺少工作台运行文件，请重新安装".into());}
     let mut cmd=tokio::process::Command::new(node);cmd.arg(file).current_dir(root).env("SCHOLAY_APP_DATA",crate::spaces::text("stateDirectory")?).env("SCHOLAY_SITE_CONFIG",crate::spaces::text("configFile")?).env("SCHOLAY_SITE_ID",crate::spaces::text("siteId")?).env("SCHOLAY_SITE_JSON",crate::spaces::context()?["site"].to_string()).env("SCHOLAY_TEMPLATE_ROOT",if root.join("runtime.json").is_file(){root.join("workspace-template")}else{root.join("desktop/resources/workspace-template")});
     cmd.env("SCHOLAY_DESKTOP_RUNTIME","1").env("SCHOLAY_GLOBAL_APP_DATA",_data);
-    cmd.env_remove("SCHOLAY_TODAY_TOKEN").env_remove("SCHOLAY_TODAY_TOKEN_FILE");
+    cmd.env_remove("SCHOLAY_TODAY_TOKEN").env_remove("SCHOLAY_TODAY_TOKEN_FILE").env_remove("RSSD_CENTER_TOKEN");
     if cfg!(windows)||std::path::Path::new(&crate::spaces::text("stateDirectory")?).join("website-vault-managed").exists(){cmd.env("SCHOLAY_REQUIRE_VAULT","1");}
     // Local editing never opens the OS vault. Cloud callers attach a credential explicitly.
     #[cfg(windows)] cmd.creation_flags(0x08000000);

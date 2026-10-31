@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 // Vitest covers the dependency-free, pure logic modules: the browser-extension
 // feed detection (feature F6) and the highlight re-anchoring algorithm
 // (feature F7, `src/lib/anchor.ts`). Both run in a plain node environment —
-// React component files are deliberately excluded; they would need a DOM.
+// Interaction tests opt into jsdom with a per-file environment directive.
 export default defineConfig({
   server:{fs:{allow:[fileURLToPath(new URL("..",import.meta.url))]}},
   test: {
@@ -15,6 +15,7 @@ export default defineConfig({
       "src/labels/**/*.test.ts",
       "src/calendar/**/*.test.ts",
       "src/library/**/*.test.ts",
+      "src/center/**/*.test.{ts,tsx}",
     ],
     environment: "node",
   },

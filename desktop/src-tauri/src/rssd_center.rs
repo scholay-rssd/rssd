@@ -11,10 +11,12 @@ static WORKER_ACTIVE:AtomicBool=AtomicBool::new(false);
 async fn credential()->Result<Option<String>,String>{tokio::task::spawn_blocking(||crate::workbench_connection::read_for(SERVICE)).await.map_err(|_|"无法读取中心凭据")?}
 async fn save_credential(token:Option<String>)->Result<(),String>{tokio::task::spawn_blocking(move||match token{Some(value)=>crate::workbench_connection::save_for(SERVICE,&value),None=>crate::workbench_connection::forget_for(SERVICE)}).await.map_err(|_|"无法保存中心凭据")?}
 
+pub(crate) fn configured()->Result<bool,String>{let (_,data)=crate::workbench_runtime::paths()?;Ok(data.join("center/connection.json").try_exists().map_err(|_|"无法读取中心连接配置")?)}
+
 #[tauri::command]
 pub async fn rssd_center_call(webview:tauri::Webview,method:String,params:Option<Value>,token:Option<String>)->Result<Value,String>{
     crate::hot_board::require_main(&webview)?;
-    if !["status","connect","registry","demands","works","work","publications","claim","release","submit","recover","start","stop","save_local","local_draft","delete_local","prepare_update","cancel_update"].contains(&method.as_str()){return Err("未知中心操作".into());}
+    if !["status","connect","registry","demands","works","work","publications","labels","claim","release","submit","recover","start","stop","save_local","local_draft","delete_local","prepare_update","cancel_update"].contains(&method.as_str()){return Err("未知中心操作".into());}
     let _change=CHANGES.lock().await;
     if method=="cancel_update"{UPDATING.store(false,Ordering::SeqCst);return Ok(json!({"cancelled":true}));}
     if method=="prepare_update"&&WORKER_ACTIVE.load(Ordering::SeqCst){return Err("中心生产任务仍在运行，请先停止领取并等待本单完成后安装更新".into());}

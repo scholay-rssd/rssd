@@ -1,12 +1,12 @@
 import {readFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
-import {homedir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {saveCenterConnection,loadCenterConnection,CenterOutbox} from '../../../../scripts/rssd-center-client.mjs';
 import {runProductionTurn} from '../../../../scripts/rssd-production-worker.mjs';
 import {produceCenterEdition} from '../center-producer.mjs';
 
-export function centerHome(){return resolve(process.env.RSSD_CENTER_HOME||join(process.env.SCHOLAY_GLOBAL_APP_DATA||process.env.SCHOLAY_AGENT_HOME||join(homedir(),'.config/scholay-today'),'center'));}
+import {centerHome} from '../../runtime/center-home.mjs';
+export {centerHome};
 export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify(value))}={}){
   const [command,...args]=argv,home=centerHome();
   const flag=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};

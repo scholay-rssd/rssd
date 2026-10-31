@@ -1,5 +1,4 @@
-import {resolveLabelCloudCredential} from '../../runtime/labels-cloud-credential.mjs';
-import {readCloudLabels} from '../../runtime/labels-cloud-read.mjs';
+import {readConfiguredLabels} from '../../runtime/labels-source.mjs';
 
 function projectRows(feed){
  const latest=Array.isArray(feed?.latest)?feed.latest:[];
@@ -17,11 +16,10 @@ function projectRows(feed){
 
 export async function loadSignals({snapshot,fetcher=fetch}={}){
  if(snapshot)return {configured:true,source:'snapshot',observedAt:snapshot.observedAt||new Date().toISOString(),items:projectRows(snapshot),raw:snapshot};
- const token=await resolveLabelCloudCredential();
- if(!token)return {configured:false,source:'none',reason:'当前空间未配置云端标签读取凭证',items:[]};
  try{
-  const feed=await readCloudLabels(token,fetcher);
-  return {configured:true,source:'cloud',observedAt:new Date().toISOString(),items:projectRows(feed),raw:{schemaVersion:feed.schemaVersion,source:feed.source,platforms:feed.platforms,latest:feed.latest}};
+  const {source,feed}=await readConfiguredLabels({fetcher});
+  if(!feed)return {configured:false,source:'none',reason:'当前空间未配置云端标签读取凭证',items:[]};
+  return {configured:true,source,observedAt:new Date().toISOString(),items:projectRows(feed),raw:{schemaVersion:feed.schemaVersion,source:feed.source,platforms:feed.platforms,latest:feed.latest}};
  }catch(error){
   return {configured:false,source:'error',reason:error.message,items:[]};
  }
