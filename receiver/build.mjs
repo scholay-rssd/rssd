@@ -9,10 +9,12 @@ import {activateRelease} from '../admin/worker.mjs';
 import {verifyLive} from '../admin/release-verification.mjs';
 import {digest} from '../admin/model.mjs';
 import {byteHash} from '../web/engine/theme-homepage.mjs';
+import {recordFields} from '../contracts/rssd-record.cjs';
 
 export function snapshotForPackets(packets,site,baseline={}) {
   const snapshot=structuredClone({news:[],data:{year:[],history:[]},openSource:{items:[]},permalinks:{},editorialRecords:[],...baseline});
-  const ids=new Map(packets.map(x=>[contentKey(x),'rssd-'+contentKey(x).slice(0,32)]));
+  const identity=baseline.rssdIdentity||{};
+  const ids=new Map(packets.map(x=>[contentKey(x),identity[contentKey(x)]?.id||'rssd-'+contentKey(x).slice(0,32)]));
   const entries=packets.map(packet=>{
     const c=packet.content,id=ids.get(contentKey(packet)),section=site.sections.find(s=>s.id===packet.sectionId);
     const data={id,title:c.title,markdown:c.bodyMarkdown,summary:c.summary,locale:packet.locale,sectionId:packet.sectionId,
@@ -21,8 +23,27 @@ export function snapshotForPackets(packets,site,baseline={}) {
     return {packet,data};
   });
   for(const {packet,data} of entries){
+    const mapped=identity[contentKey(packet)];
+    if(mapped?.kind&&mapped.kind!=='news'&&packet.locale==='zh-CN'&&!packet.content.metadata.record)throw Error('An existing structured record must retain its record fields');
+    if(packet.content.metadata.record&&packet.locale==='zh-CN'){
+      const record=packet.content.metadata.record,kind=record.kind;
+      if(mapped&&mapped.kind!==kind)throw Error('A migrated record cannot change its content kind');
+      const fields={...recordFields(record,packet.content),...(kind!=='openSource'?{id:data.id}:{}),sectionId:packet.sectionId,assets:[]};
+      const key=kind+':'+(kind==='openSource'?fields.url:data.id),list=kind==='year'?snapshot.data.year:kind==='history'?snapshot.data.history:snapshot.openSource.items;
+      const index=list.findIndex(x=>kind==='openSource'?x.url===(mapped?.url||fields.url):x.id===data.id);
+      if(index>=0)list[index]=fields;else list.push(fields);
+      if(mapped?.key&&mapped.key!==key)delete snapshot.permalinks[mapped.key];
+      snapshot.permalinks[key]=packet.route;
+      const descriptor={documentId:mapped?.documentId||packet.workId,kind,key,updated:new Date(data.date).getTime()||0};
+      const descriptorIndex=snapshot.editorialRecords.findIndex(x=>x.documentId===descriptor.documentId);
+      if(descriptorIndex>=0)snapshot.editorialRecords[descriptorIndex]=descriptor;else snapshot.editorialRecords.push(descriptor);
+      continue;
+    }
     const original=entries.find(x=>x.packet.workId===packet.workId&&x.packet.locale==='zh-CN');
-    if(packet.locale==='en'&&original)data.translationOf={articleId:original.data.id,locale:'zh-CN',sha256:sourceContentSha256(original.data)};
+    if(packet.locale==='en'){
+      if(original)data.translationOf={articleId:original.packet.content.metadata.record?'record-'+(identity[contentKey(original.packet)]?.documentId||original.packet.workId):original.data.id,locale:'zh-CN',sha256:sourceContentSha256(original.data)};
+      else {const previous=snapshot.news.find(x=>x.id===data.id);if(previous?.translationOf)data.translationOf=previous.translationOf;}
+    }
     // Migration uses a stable identity map; titles are never matching keys.
     const existing=snapshot.news.findIndex(x=>x.id===data.id);if(existing>=0)snapshot.news[existing]=data;else snapshot.news.push(data);
     snapshot.permalinks['news:'+data.id]=packet.route;

@@ -16,6 +16,16 @@ export class ReceiverStore {
       CREATE TABLE IF NOT EXISTS state(key TEXT PRIMARY KEY,value TEXT NOT NULL);`);
   }
   close(){this.db.close();}
+  seedLegacyHeads(baseline={}){return this.transaction(()=>{
+    for(const [key,item] of Object.entries(baseline.rssdIdentity||{})){
+      if(!/^[a-f0-9]{64}$/.test(key)||typeof item.route!=='string'||!Number.isSafeInteger(item.revision))p.fail('Invalid legacy identity map');
+      const occupied=this.db.prepare('SELECT work_key FROM heads WHERE route=?').get(item.route);
+      if(occupied&&occupied.work_key!==key)p.fail('Legacy route collides with received content',409,'route_conflict');
+      const existing=this.db.prepare('SELECT route FROM heads WHERE work_key=?').get(key);
+      if(existing&&existing.route!==item.route)p.fail('Legacy identity has two public routes',409,'route_conflict');
+      this.db.prepare('INSERT INTO heads VALUES(?,?,?,?) ON CONFLICT(work_key) DO NOTHING').run(key,item.revision,item.route,'legacy:'+item.documentId);
+    }
+  });}
   transaction(fn){this.db.exec('BEGIN IMMEDIATE');try{const result=fn();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}}
   receipt(id){
     p.id(id);const r=this.db.prepare('SELECT * FROM requests WHERE id=?').get(id);

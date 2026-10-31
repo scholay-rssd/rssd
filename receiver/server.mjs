@@ -19,6 +19,7 @@ export async function createReceiver({config,build=buildAndActivate}) {
     site.sections=sectionsForSite(site);const base=resolve(entry.publicRoot);
     if(base===home||base===source)throw Error('Public release root must be separate from private state and source');
     sites.set(site.id,{site,base,tokenHash,baseline:entry.baseline?JSON.parse(await readFile(entry.baseline,'utf8')):{},store:new ReceiverStore(join(home,site.id,'receiver.sqlite'),site),media:new ReceiverMedia(join(home,site.id,'media'))});
+    const configured=sites.get(site.id);configured.store.seedLegacyHeads(configured.baseline);
   }
   const app=Fastify({logger:false,bodyLimit:8*1024*1024});
   app.setErrorHandler((error,req,reply)=>reply.code(error.status||error.statusCode||500).send({code:error.code||'receiver_error',message:error.status||error.statusCode?error.message:'Receiver operation failed'}));
