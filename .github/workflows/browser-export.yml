@@ -1,0 +1,29 @@
+name: Browser exports
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix desktop/runtime --no-audit --no-fund
+      - run: sudo apt-get update -qq && sudo apt-get install -y fonts-noto-cjk
+      - run: node --test tests/rssd-browser-export.test.mjs
+        env:
+          RSSD_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+          RSSD_BROWSER_ARTIFACTS: artifacts/browser-export
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rssd-browser-export-evidence
+          path: artifacts/browser-export/
+          retention-days: 7

@@ -8,6 +8,7 @@ import {attachKnowledgeGraph} from './knowledge-graph.mjs';
 import {loadOrganization,organizeContent} from './site-organization.mjs';
 import {originalLanguageSnapshot,renderLanguagePages} from './language-pages.mjs';
 import {finalizeLanguageNavigation} from './language-navigation.mjs';
+import {attachBrowserExports} from './browser-export/build.mjs';
 export {annualDate} from '../themes/journal/render.mjs';
 const renderers={'academic-v1':renderAcademic,'journal-v1':renderJournal};
 export async function buildSiteRelease({job,target,site=SITE,source,previousRoot,now=new Date()}){
@@ -20,5 +21,6 @@ export async function buildSiteRelease({job,target,site=SITE,source,previousRoot
  const theme=resolveTheme(site,content);
  const manifest=await renderers[theme.renderer]({job:sourceJob,target,site,source,previousRoot,now,theme,content,organization});
  const localized=await renderLanguagePages({job,target,site,previousRoot,now,manifest});
- return finalizeLanguageNavigation({target,site,manifest:localized});
+ const navigated=await finalizeLanguageNavigation({target,site,manifest:localized});
+ return attachBrowserExports({target,site,manifest:navigated,snapshot:job.snapshot});
 }
