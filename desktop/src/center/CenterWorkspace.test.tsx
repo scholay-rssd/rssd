@@ -66,3 +66,52 @@ it('holds editor context during submission and persists the accepted base withou
  expect(saved.params.body).toBe('原正文');expect(calls('work')).toHaveLength(1);
  expect(host.textContent).toContain('基于版本3');expect(button('返回作品库').disabled).toBe(false);
 });
+
+it('pages beyond the first batch and starts a search at the first page',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation((command,args:any)=>{
+  if(args.method!=='works')return fallback(command,args);
+  const {offset,search}=args.params;
+  return Promise.resolve(search?[{id:'search-match',editions:[{title:'检索结果',locale:'en',revision:1}]}]:Array.from({length:offset===0?51:1},(_,i)=>({id:'work-'+(offset+i),editions:[{title:'作品编号 '+(offset+i),locale:'zh-CN',revision:1}]})));
+ });
+ await mount();await click('作品库');
+ expect(host.querySelectorAll('.rssd-center-list article')).toHaveLength(50);
+ expect(host.textContent).not.toContain('作品编号 50');expect(button('上一页').disabled).toBe(true);
+ await click('下一页');
+ expect(host.querySelectorAll('.rssd-center-list article')).toHaveLength(1);
+ expect(host.textContent).toContain('作品编号 50');expect(button('下一页').disabled).toBe(true);
+ const last=calls('works').at(-1)?.[1] as any;expect(last.params).toMatchObject({limit:51,offset:50});
+ const input=host.querySelector<HTMLInputElement>('input[type=search]')!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'检索词');input.dispatchEvent(new Event('input',{bubbles:true}));});
+ await act(async()=>input.form!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+ expect((calls('works').at(-1)?.[1] as any).params).toMatchObject({search:'检索词',offset:0});
+ expect(host.textContent).toContain('检索结果');expect(button('上一页').disabled).toBe(true);
+});
+
+it('ignores the previous page after switching tabs and resets pagination',async()=>{
+ const second=deferred(),fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation((command,args:any)=>args.method==='works'?(args.params.offset?second.promise:Promise.resolve(Array.from({length:51},(_,i)=>({id:'item-'+i,editions:[{title:'作品 '+i,locale:'zh-CN',revision:1}]})))):fallback(command,args));
+ await mount();await click('作品库');await click('下一页');
+ expect(host.textContent).toContain('正在读取');expect(host.textContent).not.toContain('作品 0');
+ await click('需求池');await act(async()=>second.resolve([{id:'late',editions:[{title:'过期分页',locale:'zh-CN',revision:1}]}]));
+ expect(host.textContent).toContain('旧需求');expect(host.textContent).not.toContain('过期分页');
+ expect((calls('demands').at(-1)?.[1] as any).params.offset).toBe(0);
+});
+
+it('keeps staged workspaces read-only at center while retaining local edits',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>{
+  const result:any=await fallback(command,args);
+  if(args.method==='registry')result.workspaces[0]={...result.workspaces[0],writable:false,migrationState:'staged'};
+  if(args.method==='status')result.agents=[{id:'agent',name:'Available agent',available:true,enabled:true}];
+  return result;
+ });
+ await mount();expect(host.textContent).toContain('此工作空间正在迁移');
+ expect(button('开启工作模式').disabled).toBe(true);expect(button('处理这条').disabled).toBe(true);
+ await click('作品库');await click('打开');expect(button('提交中心').disabled).toBe(true);
+ const textarea=host.querySelector<HTMLTextAreaElement>('textarea')!;expect(textarea.disabled).toBe(false);
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textarea,'本机继续编辑');textarea.dispatchEvent(new Event('input',{bubbles:true}));});
+ await click('返回作品库');
+ expect((calls('save_local').at(-1)?.[1] as any).params.body).toBe('本机继续编辑');
+ expect(calls('submit')).toHaveLength(0);expect(calls('start')).toHaveLength(0);
+});
