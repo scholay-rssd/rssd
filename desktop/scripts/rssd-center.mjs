@@ -58,8 +58,8 @@ export async function runDesktopWorker(params,{home=centerHome(),producer=produc
     const state={pid:process.pid,state:'starting',agentId:params.agentId,workspaceIds:params.workspaceIds,startedAt:new Date().toISOString()};
     const status=async patch=>{Object.assign(state,patch,{updatedAt:new Date().toISOString()});await writeCenterJson(join(home,'worker.json'),state);};
     await rm(join(home,'stop.json'),{force:true});await status({});
-    const {client}=await loadCenterConnection(home);
     try{
+      const {client}=await loadCenterConnection(home);
       do{
         if(await read(join(home,'stop.json')))break;
         await status({state:'working',message:'正在处理需求'});

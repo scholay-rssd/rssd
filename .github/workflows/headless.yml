@@ -1,0 +1,35 @@
+name: Linux headless package
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/rssd-headless-runtime.test.mjs
+      - run: node scripts/build-headless.mjs
+      - name: Verify the independent installation
+        env:
+          RSSD_RUNTIME_HOME: ${{ runner.temp }}/rssd-installation
+          RSSD_CENTER_HOME: ${{ runner.temp }}/rssd-device
+        run: |
+          set -eu
+          source=desktop/target/bundle-resources/workbench
+          "$source/node" "$source/desktop/scripts/agent/headless/standalone.mjs" install --manifest-sha256 "$(cat artifacts/runtime-manifest.sha256)"
+          "$RSSD_RUNTIME_HOME/rssd" version
+          "$RSSD_RUNTIME_HOME/rssd" center --help
+          "$RSSD_RUNTIME_HOME/rssd" writing-policy > "$RUNNER_TEMP/writing-policy.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rssd-headless-linux-x64-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14

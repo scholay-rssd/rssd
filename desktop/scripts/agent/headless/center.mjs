@@ -32,9 +32,11 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
   const agentId=flag('--agent'),workspaceIds=values('--workspace');
   if(!agentId||!workspaceIds.length)throw Error('Select --agent and at least one --workspace before starting work');
   const controller=new AbortController(),stop=()=>controller.abort();process.once('SIGINT',stop);process.once('SIGTERM',stop);
+  let resume=args.includes('--resume');
   try{
     do{
-      const result=await runProductionTurn({client,home,agentId,workspaceIds,sectionIds:values('--section'),demandId:flag('--id'),resume:args.includes('--resume'),signal:controller.signal,producer:produceCenterEdition,onEvent:event=>{if(event.type!=='agent_output')emit(event);}});
+      const result=await runProductionTurn({client,home,agentId,workspaceIds,sectionIds:values('--section'),demandId:flag('--id'),resume,signal:controller.signal,producer:produceCenterEdition,onEvent:event=>{if(event.type!=='agent_output')emit(event);}});
+      resume=false;
       emit(result);if(args.includes('--once')||['blocked','pending'].includes(result.state))return result;
       if(result.state==='idle')await new Promise(resolve=>{const done=()=>{clearTimeout(timer);controller.signal.removeEventListener('abort',done);resolve();};const timer=setTimeout(done,15000);controller.signal.addEventListener('abort',done,{once:true});});
     }while(!controller.signal.aborted);
