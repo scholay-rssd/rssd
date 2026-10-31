@@ -52,6 +52,8 @@ jobs:
       - name: Build an explicit unsigned macOS development artifact
         if: runner.os == 'macOS'
         run: pnpm --dir desktop tauri build --bundles app --no-sign --ci -- --locked
+      - name: Verify the exact bundled calendar can initialize native storage
+        run: cargo test --manifest-path desktop/Cargo.toml --release --locked calendar_store::tests::persists_every_bundled_official_record_with_its_provenance
       - name: Archive the macOS development bundle
         if: runner.os == 'macOS'
         run: |
