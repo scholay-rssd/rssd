@@ -1,0 +1,222 @@
+.workspace-host { --workspace-rail-width: 112px; --workspace-sidebar-width: 220px; --workspace-toolbar-height: 42px; --workspace-frame: color-mix(in srgb, var(--paper), var(--ink) 6%); height: 100%; width: 100%; min-width: 0; min-height: 0; display: grid; grid-template-columns: var(--workspace-rail-width) minmax(0, 1fr); overflow: clip; position: relative; }
+.workspace-chrome { position: absolute; top: 0; left: var(--workspace-rail-width); width: var(--col-sidebar, 248px); height: 38px; z-index: 54; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; box-sizing: border-box; pointer-events: none; min-width: 0; overflow: hidden; }
+.workspace-title-brand { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 22px; color: var(--ink); font: 500 13px/1 var(--ui); user-select: none; }
+.workspace-title-brand > svg { flex-shrink: 0; color: var(--accent); }
+.workspace-title-brand > img { width: 14px; height: 15px; }
+.workspace-logo { object-fit: contain; flex-shrink: 0; pointer-events: none; }
+.workspace-rail .workspace-logo { width: 18px; height: 19px; }
+:root[data-mode="dark"] .workspace-logo { filter: invert(1); }
+.workspace-rail .workspace-logo-site { height: 18px; }
+:root[data-mode="dark"] .workspace-logo-site { filter: none; }
+.workspace-title-brand > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.workspace-capture-status { color: var(--muted); font: 11px var(--ui); white-space: nowrap; }
+.workspace-rail { grid-column: 1; grid-row: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 0; padding: 8px 0 12px; background: var(--panel); border-right: 1px solid var(--hair); z-index: 52; -webkit-app-region: no-drag; }
+:root[data-platform="mac"] .workspace-rail { padding-top: 38px; }
+.workspace-rail-drag { display: none; }
+.workspace-rail:has(.space-switch-menu) { z-index: 56; }
+:root[data-platform="mac"] .workspace-rail-drag { display: block; position: absolute; top: 0; left: 0; right: 0; height: 38px; -webkit-app-region: drag; }
+.workspace-rail-group { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
+.workspace-rail-foot { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+.workspace-rail button { position: relative; display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer; }
+.workspace-rail button:hover { background: var(--hover); color: var(--ink); }
+.workspace-rail button[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); }
+.workspace-rail button:disabled { opacity: .45; cursor: default; }
+.workspace-rail button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* CSS-only hints appear on the first hover/focus frame, without native title delay. */
+.workspace-rail button[data-tooltip]::after {
+  content: attr(data-tooltip); position: absolute; left: calc(100% + 8px); top: 50%;
+  transform: translateY(-50%); z-index: 1; padding: 7px 10px; border-radius: 6px;
+  border: 1px solid var(--hair); background: var(--panel); color: var(--ink);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 14%); font: 12px/1.4 var(--ui);
+  white-space: nowrap; pointer-events: none; visibility: hidden;
+}
+.workspace-rail button[data-tooltip]:hover::after,
+.workspace-rail button[data-tooltip]:focus-visible::after { visibility: visible; }
+.workspace-rail-label { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.workspace-panels { grid-column: 2; grid-row: 1; position: relative; min-width: 0; min-height: 0; overflow: clip; }
+.workspace-panel { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: clip; }
+/* Keep a real-size layout for virtual rows and scroll offsets. `inert` handles
+   keyboard focus; active props suspend native surfaces and RSS-only actions. */
+.workspace-panel.is-inactive { visibility: hidden; pointer-events: none; }
+.workspace-panel > .app-shell { height: 100%; }
+.workspace-rail > .space-entrances { margin-bottom: 14px; }
+.workspace-rail button[data-workspace], .workspace-rail .workspace-rail-settings { width: calc(100% - 16px); justify-content: flex-start; gap: 10px; padding: 0 12px; height: 40px; flex-shrink: 0; }
+.workspace-feature-label { font: 500 12px var(--ui); white-space: nowrap; }
+.workspace-rail .space-entrance { width: calc(100% - 12px); height: 64px; flex-direction: column; gap: 6px; }
+.space-current-name { max-width: 100%; padding: 0 8px; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 550 11px var(--ui); color: var(--ink); }
+.workspace-rail .space-switch-indicator { right: 12px; top: 18px; bottom: auto; background: transparent; border: 0; }
+.workspace-rail .space-switch-indicator svg { transform: none; }
+.workspace-rail .space-switch-error { left: calc(100% + 8px); top: 0; bottom: auto; }
+.workspace-rail-foot { padding-top: 12px; }
+.discovery-workspace { display: grid; grid-template-columns: var(--col-sidebar,248px) minmax(0,1fr); height: 100%; min-height: 0; }
+.discovery-sidebar { display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--hair); }
+.discovery-navigation { padding: 0 8px 12px; display: flex; flex-direction: column; gap: 3px; border-bottom: 1px solid var(--hair); }
+.discovery-navigation button { display: flex; align-items: center; gap: 9px; min-height: 36px; padding: 7px 12px; background: none; color: var(--ink-2); border: 0; border-radius: 7px; font: 12px var(--ui); text-align: left; cursor: pointer; }
+.discovery-navigation button[aria-current=page] { color: var(--accent); background: var(--accent-soft); }
+.discovery-navigation button:hover { background: var(--hover); }
+.discovery-navigation button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.discovery-sources { min-height: 0; flex: 1; overflow: auto; padding: 0 8px 12px; }
+.discovery-sources .rss-library-sources { border-top: 0; margin-top: 0; }
+.discovery-content { position: relative; min-width: 0; min-height: 0; overflow: clip; }
+.discovery-content .hot-workspace { --hot-sidebar-width: 0px!important; }
+.is-sidebar-collapsed .discovery-workspace { grid-template-columns: minmax(0,1fr); }
+.is-sidebar-collapsed .discovery-sidebar { display: none; }
+.connections-workspace { height: 100%; box-sizing: border-box; overflow: auto; padding: 32px max(24px,calc((100% - 900px)/2)); }
+.connections-workspace > header { margin-bottom: 26px; }
+.connections-workspace h1 { margin: 0 0 8px; font: 600 22px var(--ui); }
+.connections-workspace > header p { margin: 0; font: 13px/1.6 var(--ui); color: var(--muted); }
+.trends-panels { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+
+/* One surrounding frame for every workspace. Native controls keep physical dimensions. */
+
+.workspace-host { grid-template-rows: var(--workspace-title-height,44px) minmax(0,1fr); background:var(--workspace-frame); padding:0 6px 6px 0; box-sizing:border-box; }
+:root[data-platform="mac"] .workspace-host { --workspace-title-height:calc(44px / var(--ui-scale,1)); }
+.workspace-window-header { display:block; grid-column:1/-1; grid-row:1; min-width:0; z-index:54; }
+.workspace-host > .workspace-panels { grid-row:2; border:1px solid var(--hair); border-radius:10px; background:var(--paper); }
+.workspace-host > .workspace-rail { grid-row:2; padding-top:8px; border-right:0; background:var(--workspace-frame); }
+:root[data-platform="mac"] .workspace-host > .workspace-rail { padding-top:8px; }
+.workspace-host .workspace-rail-drag, :root[data-platform="mac"] .workspace-host .workspace-rail-drag { display:none; }
+.workspace-window-header .task-global-header { position:static; width:100%; box-sizing:border-box; display:flex; align-items:center; justify-content:flex-start; gap:8px; height:var(--workspace-title-height,44px); min-height:var(--workspace-title-height,44px); padding:0 12px; border:0; background:var(--workspace-frame); font:13px var(--ui); color:var(--ink); pointer-events:auto; }
+:root[data-platform="mac"] .workspace-window-header .task-global-header { padding-left:calc(104px / var(--ui-scale,1)); }
+.workspace-window-header .task-global-header strong { font-size:13px; font-weight:550; pointer-events:none; }
+.workspace-window-header .workspace-title-brand { height:auto; gap:8px; pointer-events:none; }
+.workspace-feature-mark { width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; flex:none; color:var(--muted); pointer-events:none; }
+.workspace-window-header .task-global-header button { box-sizing:border-box; border:0; border-radius:6px; min-width:30px; height:30px; padding:6px; background:transparent; color:var(--muted); font:inherit; cursor:pointer; -webkit-app-region:no-drag; }
+.workspace-window-header .task-global-header button:hover { color:var(--ink); background:var(--hover); }
+.workspace-window-header .task-global-header button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+.workspace-window-header .task-global-header button[aria-expanded="true"] { color:var(--ink); }
+/* Hosted pages no longer reserve a second native traffic-light strip. */
+:root[data-platform] .workspace-host .sidebar,
+:root[data-platform] .workspace-host .hot-sidebar { padding-top:0; }
+.workspace-host .workspace-panels .titlebar { display:none; }
+.workspace-host .hot-workspace { grid-template-rows:var(--workspace-toolbar-height) minmax(0,1fr); }
+.workspace-host .hot-workspace-toolbar { height:var(--workspace-toolbar-height); }
+.workspace-host .hot-workspace > .board-resize-slot { top:var(--workspace-toolbar-height); }
+.workspace-host .list-toolbar,.workspace-host .reader-toolbar { height:var(--workspace-toolbar-height); min-height:var(--workspace-toolbar-height); }
+.workspace-host .task-sidebar { background:var(--panel); }
+.workspace-host .task-sidebar-start { padding-top:8px; }
+.workspace-host .task-chat { border-left:1px solid var(--hair); border-radius:0; }
+
+/* The window strip is shared by real pane controls, not repeated page titles. */
+.workspace-window-header{position:relative;overflow:hidden}
+.workspace-window-navigation{position:absolute;inset:0 auto 0 10px;display:flex;align-items:center;gap:3px;z-index:3}
+:root[data-platform="mac"] .workspace-window-navigation{left:calc(96px / var(--ui-scale,1))}
+.workspace-window-navigation button{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;-webkit-app-region:no-drag}
+.workspace-window-navigation button:hover{background:var(--hover);color:var(--ink)}
+.workspace-window-navigation button:disabled{opacity:.35;cursor:default}
+.workspace-window-navigation .icon-back{transform:rotate(180deg)}
+.workspace-sidebar-heading{height:44px;min-height:44px;padding:0 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--ink);font:600 14px var(--ui);box-sizing:border-box;flex:none}
+.workspace-sidebar-heading strong{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.workspace-sidebar-heading button{border:0;background:none;color:var(--muted);padding:4px;display:flex;cursor:pointer}
+.pane-toolbar-anchor{align-self:stretch;height:0!important;min-height:0!important;max-height:0!important;padding:0!important;margin-block:0!important;border:0!important;overflow:hidden!important;flex:none!important;pointer-events:none}
+.window-pane-toolbar{position:absolute;top:0;height:100%;min-width:0;display:flex;align-items:center;overflow:hidden;box-sizing:border-box;font:12px var(--ui);color:var(--ink)}
+.window-pane-toolbar>*{width:100%;min-width:0;box-sizing:border-box;max-height:100%;margin:0!important;background:transparent!important;border-top:0!important;border-bottom:0!important}
+.window-pane-toolbar[data-placement="tabs"]>*{flex:1 1 0}
+.window-pane-toolbar[data-placement="tabs"]::before{content:"";position:absolute;left:0;top:calc(50% - 8px);height:16px;width:1px;background:var(--hair);pointer-events:none;z-index:1}
+.window-pane-toolbar[data-placement="toggle"]{justify-content:flex-end;pointer-events:none;padding:0 6px}
+.window-pane-toolbar[data-placement="toggle"]>*{flex:0 0 auto;width:auto;display:flex;align-items:center;justify-content:flex-end;border:0;padding:0;height:28px}
+.window-pane-toolbar[data-placement="toggle"] button{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;pointer-events:auto}
+.window-pane-toolbar button,.window-pane-toolbar input,.window-pane-toolbar select{font:inherit;color:var(--ink);-webkit-app-region:no-drag}
+.window-pane-toolbar button{cursor:pointer;border:0;border-radius:5px;background:transparent;padding:5px 7px;white-space:nowrap}
+.window-pane-toolbar button:hover{background:var(--hover)}
+.window-pane-toolbar button:disabled{opacity:.4;cursor:default}
+.window-pane-toolbar button:focus-visible,.workspace-window-navigation button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.window-pane-toolbar .hot-workspace-toolbar{height:100%;padding:0 10px}
+.window-pane-toolbar .hot-icon-button{display:inline-flex;align-items:center;justify-content:center;flex:none}
+.window-pane-toolbar .calendar-day-nav{display:flex;align-items:center;gap:6px;padding:0 12px;height:100%}
+.window-pane-toolbar .calendar-day-nav h2{font-size:13px;margin:0}
+.window-pane-toolbar .calendar-layout-switch{display:flex}
+.window-pane-toolbar .calendar-jump-today{margin-left:auto}
+.window-pane-toolbar .reader-tabbar,.window-pane-toolbar .manager-tabs,.window-pane-toolbar .task-tabs{height:100%;max-height:100%;border:0;background:transparent;overflow:hidden}
+/* Title-bar strips scroll by wheel and the arrow buttons; a native scrollbar
+   would sit on top of the tabs and swallow their clicks. */
+.window-pane-toolbar .task-tabs{flex:1 1 0;overflow-x:auto;overflow-y:hidden}
+.window-pane-toolbar[data-placement] :is(.manager-tabstrip,.gallery-tabstrip,.reader-tabs,.task-tabs){scrollbar-width:none;overscroll-behavior-x:contain}
+.window-pane-toolbar :is(.manager-tabstrip,.gallery-tabstrip,.reader-tabs,.task-tabs)::-webkit-scrollbar{display:none}
+.window-pane-toolbar[data-placement] .pane-tab-scroll{display:flex;align-items:center;flex:none;width:auto;gap:1px;padding:0 4px 0 2px;height:100%}
+.window-pane-toolbar .pane-tab-scroll button{display:grid;place-items:center;width:22px;height:26px;padding:0;font-size:16px;line-height:1;color:var(--muted)}
+.window-pane-toolbar .pane-tab-scroll button:hover:not(:disabled){color:var(--ink)}
+/* The hosted strip is a row: the reader's standalone 38px height basis must
+   not become its width when its controls move into the window header. */
+.window-pane-toolbar>.reader-tabbar{flex:1 1 0}
+.window-pane-toolbar .reader-tab{height:30px;align-self:center;border-radius:6px}
+.window-pane-toolbar .reader-tab,.window-pane-toolbar .reader-tabs-overflow{border-left:0;border-right:0;border-top:0;border-bottom:0;margin-bottom:0}
+.window-pane-toolbar .reader-home-tab{flex:0 0 36px}
+.window-pane-toolbar .manager-tabstrip>div,.window-pane-toolbar .task-tabs>div{max-width:210px;border-left:0;border-right:0}
+.window-pane-toolbar[data-placement="toggle"]>*{height:28px;padding:0}
+.window-pane-toolbar .manager-tabs button,.window-pane-toolbar .task-tabs button{overflow:hidden;text-overflow:ellipsis}
+.window-pane-toolbar .task-primary{background:var(--accent);color:var(--paper)}
+.window-pane-toolbar .list-window-controls{padding:0 10px}
+.window-pane-toolbar .list-meta{height:100%}
+.has-pane-chrome .hot-workspace{grid-template-rows:0 minmax(0,1fr)}
+.has-pane-chrome .hot-workspace>.board-resize-slot{top:0}
+.has-pane-chrome .calendar-main{padding-top:12px}
+.has-pane-chrome .list-header{padding-top:10px}
+.is-sidebar-collapsed .workspace-panels .sidebar,.is-sidebar-collapsed .workspace-panels .hot-sidebar,.is-sidebar-collapsed .manager-filters,.is-sidebar-collapsed .task-sidebar{display:none}
+.is-sidebar-collapsed .window:not(.focus){--col-sidebar:0px;grid-template-columns:0 var(--col-list) minmax(0,1fr)}
+.is-sidebar-collapsed .resize-handle-slot[data-pane="sidebar"]{display:none}
+.is-sidebar-collapsed .hot-workspace{--hot-sidebar-width:0px!important}
+.is-sidebar-collapsed .hot-workspace>.board-resize-slot[data-pane="sidebar"]{display:none}
+.window-pane-toolbar .flow-runtime-heading{height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 5px;border:0}
+.window-pane-toolbar .flow-runtime-heading button{display:inline-flex;align-items:center;gap:6px}
+.window-pane-toolbar .flow-runtime-heading svg{width:16px;height:16px}
+
+.window-pane-toolbar:has(.flow-runtime-heading){background:var(--workspace-frame);z-index:2}
+
+/* A single RSS navigation tree owns all three material-library entrances.
+   Reader panes stay measured under the library surface to retain tab/scroll state. */
+.rss-reading-content{grid-column:2/-1;grid-row:1;display:grid;grid-template-columns:var(--col-list) minmax(0,1fr);min-width:0;min-height:0;}
+.rss-reading-content>.list{grid-column:1;grid-row:1;}
+.rss-reading-content>.reader-workspace{grid-column:2;grid-row:1;}
+.rss-reading-content>.pane-toolbar-anchor{grid-column:1;grid-row:1;}
+.rss-reading-content.is-reader-collapsed{grid-template-columns:minmax(0,1fr) 0;}
+.rss-reading-content.is-reader-collapsed>.reader-workspace{visibility:hidden;pointer-events:none;}
+.rss-reading-content.is-inactive,.rss-library-content.is-inactive{visibility:hidden;pointer-events:none;}
+.rss-library-content{position:absolute;inset:0 0 0 var(--col-sidebar);min-width:0;min-height:0;overflow:clip;background:var(--reader);}
+.rss-library-content .hot-workspace{--hot-sidebar-width:0px!important;}
+.rss-library-source-host:empty{display:none;}
+/* Column actions have one compact content row; the window strip stays clear. */
+.workspace-host .list-header{padding:12px 14px 8px;}
+.workspace-host .list-window-controls{margin-top:5px;}
+.workspace-host .list-meta{height:26px;gap:2px;}
+.workspace-host .list-meta-btn{height:24px;padding:3px 5px;font-size:11px;}
+.workspace-host .sidebar,.workspace-host .list,.workspace-host .hot-sidebar,.workspace-host .hot-main,.workspace-host .hot-detail,.workspace-host .manager-filters,.workspace-host .task-sidebar,.workspace-host .task-chat,.workspace-host .task-expansion{border-left:0;border-right:0;}
+.workspace-host .calendar-workspace.is-year .calendar-detail{border-left:0;}
+/* The divider owns the pane edge; the centered grip only indicates resizing.
+   Fixed gallery panes keep their own borders because they have no divider. */
+.workspace-host .resize-handle::after{top:0;bottom:0;height:auto;background:var(--hair-strong);}
+.workspace-host .resize-handle:is(:hover,:focus-visible,.is-dragging)::after{background:var(--accent);}
+/* Match the RSS subscription groups, rather than the larger feed rows. */
+.rss-library-sources{--rss-source-font-size:11px;padding:6px 0;border-top:1px solid var(--hair);margin-top:8px;font:450 var(--rss-source-font-size) var(--ui);}
+.rss-library-sources button{border:0;background:none;color:var(--ink-2);font:inherit;cursor:pointer;}
+.rss-library-sources button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+.rss-library-sources .hot-source-nav{max-height:none;overflow:visible;padding-bottom:4px;}
+.rss-library-sources .hot-main-nav button.is-active,.rss-library-sources .hot-source-nav button.is-active{font-weight:550;}
+.rss-library-sources .hot-main-nav button>span,.rss-library-sources .hot-source-nav small{font-size:var(--rss-source-font-size);font-weight:500;font-variant-numeric:tabular-nums;}
+.rss-library-sources .label-sidebar-heading strong,.rss-library-sources.calendar-library-sources .calendar-tag-member>span{font-size:var(--rss-source-font-size);}
+.rss-library-sources .hot-sidebar-foot{border:0;padding:6px 12px;}
+.rss-library-sources .label-platform-mark{flex:0 0 20px;height:20px;display:grid;place-items:center;border:1px solid var(--hair);border-radius:5px;background:var(--paper);font-size:11px;}
+.rss-library-sources .label-text-button{display:flex;align-items:center;gap:6px;font-size:11px;padding:0;}
+
+.topic-pick-banner{position:fixed;top:48px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:12px;padding:8px 8px 8px 14px;border:1px solid var(--accent,#d9534f);border-radius:999px;background:var(--panel,#fff);color:var(--ink,#222);font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.14)}.topic-pick-banner button{border:1px solid var(--hair-strong,#ccc);border-radius:999px;background:transparent;color:inherit;padding:4px 10px;font-size:12px;cursor:pointer}
+
+/* Space identity is separate from feature navigation and remains visible. */
+.space-entrances{display:flex;flex-direction:column;align-items:center;gap:5px;width:100%;position:relative}
+.space-entrance img{object-fit:contain;border-radius:7px;pointer-events:none}
+.workspace-rail .space-entrance[aria-expanded="true"]{background:var(--hover);color:var(--ink)}
+.space-switch-indicator{position:absolute;right:-2px;bottom:-2px;display:grid;place-items:center;width:13px;height:13px;border:1px solid var(--workspace-frame);border-radius:4px;background:var(--panel);color:var(--muted);pointer-events:none}
+.space-switch-indicator svg{transform:rotate(180deg)}
+.space-switch-menu{width:264px;min-width:0;max-width:calc(100vw / var(--ui-scale,1) - 16px);max-height:calc(100vh / var(--ui-scale,1) - 16px);box-sizing:border-box}
+.space-switch-heading{padding:7px 9px 8px;color:var(--muted);font:500 11px var(--ui)}
+.workspace-rail .space-switch-option{width:100%;height:auto;min-height:54px;justify-content:flex-start;gap:10px;padding:8px;text-align:left;color:var(--ink);font:12px var(--ui)}
+.workspace-rail .space-switch-option[aria-current="true"]{background:var(--accent-soft)}
+.space-switch-logo{display:grid;place-items:center;width:30px;flex:none}
+.space-switch-logo img{object-fit:contain;border-radius:7px;pointer-events:none}
+.space-switch-logo .space-logo-site{border-radius:0}
+.space-switch-info{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.space-switch-info strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:550}
+.space-switch-info small{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.space-switch-current{display:flex;flex:none;color:var(--accent)}
+.space-switch-error{position:absolute;left:48px;bottom:0;width:260px;max-height:calc(100vh / var(--ui-scale,1) - 40px);overflow:auto;box-sizing:border-box;z-index:100;padding:12px;border:1px solid var(--hair);border-radius:8px;background:var(--panel);color:var(--ink);box-shadow:0 4px 20px #0003;font:12px/1.5 var(--ui)}
+
+:root[data-mode="dark"] .space-logo-academic{filter:invert(1)}

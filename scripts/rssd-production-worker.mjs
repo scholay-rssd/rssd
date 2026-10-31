@@ -12,14 +12,19 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
   return withFileLock(join(home,'worker.lock'),async()=>{
     const outbox=new CenterOutbox({directory:join(home,'outbox'),client});
     await outbox.flush();
-    let claim=await client.activeClaim();
+    const activeFile=join(home,'active-claim.json');let claim,offline=false;
+    try{claim=await client.activeClaim();}
+    catch(error){
+      if(error.status>=400&&error.status<500&&![408,429].includes(error.status))throw error;
+      const cached=await read(activeFile);if(!cached||cached.origin!==client.origin||!cached.claim)throw error;
+      claim=cached.claim;offline=true;
+    }
     if(claim?.state==='blocked'){
       if(!resume)return {state:'blocked',demandId:claim.id,message:claim.payload.lastError};
-      await client.changeDemand(claim.id,{action:'resume',claimToken:claim.claimToken});
-      claim=await client.activeClaim();
+      if(!offline){await client.changeDemand(claim.id,{action:'resume',claimToken:claim.claimToken});claim=await client.activeClaim();}
     }
     if(claim&&(!workspaceIds.includes(claim.workspaceId)||sectionIds.length&&!sectionIds.includes(claim.sectionId)))throw Error('The active demand is outside the selected scope; resume that scope or release it explicitly');
-    if(!claim)claim=await client.claim({workspaceIds,sectionIds,...(demandId?{demandId}:{})});
+    if(!claim){await save(activeFile,{origin:client.origin,claim:null});claim=await client.claim({workspaceIds,sectionIds,...(demandId?{demandId}:{})});}
     if(!claim){await client.heartbeat({state:'idle',agentId});return {state:'idle'};}
     const directory=join(home,'jobs',protocol.hash(claim.id+':'+claim.generation));await mkdir(directory,{recursive:true,mode:0o700});
     const claimFile=join(directory,'claim.json');await save(claimFile,claim);
@@ -32,6 +37,7 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
       if(claim.payload.source){const source=claim.payload.source;context.source=await client.request('/works/'+encodeURIComponent(source.workId)+'/editions/'+source.locale+'/'+source.revision);}
       await save(contextFile,context);
     }
+    await save(activeFile,{origin:client.origin,claim});
     const heartbeat=()=>client.heartbeat({state:'running',agentId,message:claim.title}).catch(()=>{});
     await heartbeat();const timer=setInterval(heartbeat,30000);timer.unref?.();
     try{

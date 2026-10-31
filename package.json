@@ -1,13 +1,49 @@
 {
   "name": "rssd",
-  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "license": "MIT",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --test tests/*.test.mjs"
-  }
+    "test": "node --test tests/rssd-*.test.mjs tests/language-pages.test.mjs",
+    "check": "node scripts/check-syntax.mjs",
+    "build:seo": "node scripts/build-seo.mjs",
+    "admin": "node admin/server.mjs",
+    "admin:seed": "node admin/cli.mjs seed .",
+    "desktop:install": "pnpm --dir desktop install --frozen-lockfile",
+    "desktop:dev": "pnpm --dir desktop tauri dev",
+    "desktop:preview": "pnpm --dir desktop dev",
+    "desktop:test": "pnpm --dir desktop test",
+    "desktop:check": "pnpm --dir desktop exec tsc --noEmit",
+    "desktop:build:web": "pnpm --dir desktop build",
+    "desktop:build": "pnpm --dir desktop build:desktop",
+    "headless": "node desktop/scripts/agent/headless/cli.mjs",
+    "headless:produce": "node desktop/scripts/agent/headless/produce.mjs",
+    "headless:verify": "node desktop/scripts/agent/headless/verify.mjs",
+    "theme:install:personal": "pnpm --dir web/themes/personal/homepage install --frozen-lockfile",
+    "theme:build": "node scripts/build-theme-home.mjs",
+    "web:preview": "node scripts/preview-academic.mjs",
+    "demo:build": "node scripts/build-demo.mjs",
+    "demo:preview": "node scripts/build-demo.mjs --serve",
+    "rss:sources:export": "node scripts/rss-sources.mjs export",
+    "rss:sources:check": "node scripts/rss-sources.mjs check",
+    "rss:sources:read": "node scripts/rss-sources.mjs read",
+    "rss:sources:opml": "node scripts/rss-sources.mjs opml",
+    "rss:sources:sync": "node scripts/rss-sources.mjs sync",
+    "history:batch": "node scripts/history-batch.mjs",
+    "receiver": "node receiver/server.mjs"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.2",
+    "@node-rs/argon2": "2.2.1",
+    "fastify": "5.12.5",
+    "katex": "0.19.0",
+    "markdown-it": "14.1.0"
+  },
+  "devDependencies": {
+    "sharp": "0.35.5"
+  },
+  "version": "0.2.0-alpha.1",
+  "license": "MIT"
 }

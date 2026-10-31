@@ -1,0 +1,1681 @@
+//! Tauri command surface — the typed IPC boundary the React frontend calls.
+//! All SQL is delegated to `db`; commands only orchestrate.
+
+use crate::ai::{self, AiConfig, AiEvent};
+use crate::db::{self};
+use crate::error::{AppError, AppResult};
+use crate::extraction;
+use crate::ingestion::discovery::{self, DiscoveryResult};
+use crate::ingestion::sources::{self, Normalized};
+use crate::ingestion::{fetch, parse};
+use crate::models::*;
+use crate::opml;
+use crate::sanitize;
+use crate::scheduler;
+use crate::state::AppState;
+use crate::translate;
+use serde::{Deserialize, Serialize};
+use tauri::{ipc::Channel, AppHandle, Emitter, Manager, State, Webview};
+use url::Url;
+
+// ─────────────────────────── native chrome ───────────────────────────
+
+/// Repaint the native window + webview backing to `(r, g, b)` so a live resize
+/// never flashes a mismatched strip at the dragged edge. macOS-only effect (see
+/// `backing::apply`, which pins drawsBackground / underPageBackgroundColor /
+/// NSWindow); a harmless no-op elsewhere. Called from the frontend on every
+/// theme change, alongside Tauri's cross-platform `setBackgroundColor`.
+#[tauri::command]
+pub fn set_native_backing(_space: crate::spaces::Lease, window: tauri::WebviewWindow, r: u8, g: u8, b: u8) {
+    crate::backing::apply(&window, r, g, b);
+}
+
+/// The local computer's display name, for identifying local manuscript storage.
+/// Remote reader webviews cannot read it or choose a program to execute.
+#[tauri::command]
+pub async fn workbench_device_name(_space: crate::spaces::Lease, webview: Webview) -> Result<String, String> {
+    crate::hot_board::require_main(&webview)?;
+    #[cfg(target_os = "macos")]
+    {
+        let mut command = tokio::process::Command::new("/usr/sbin/scutil");
+        command
+            .args(["--get", "ComputerName"])
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .kill_on_drop(true);
+        if let Ok(Ok(output)) = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            command.output(),
+        )
+        .await
+        {
+            if output.status.success() && output.stdout.len() <= 4096 {
+                if let Ok(name) = std::str::from_utf8(&output.stdout) {
+                    let name = name.trim();
+                    if !name.is_empty() && !name.chars().any(char::is_control) {
+                        return Ok(name.to_owned());
+                    }
+                }
+            }
+        }
+    }
+    Ok(tauri_plugin_os::hostname())
+}
+
+// ─────────────────────────── optional local connectors ───────────────────────────
+
+/// Fixed local management endpoint for the optional WechRss helper. Papr never
+/// receives its QR session, cookies, account data or credentials: this probe
+/// answers only whether an HTTP service is listening on the expected loopback
+/// address. A generated RSS URL is still subscribed through ordinary `add_feed`.
+const WECHAT_CONNECTOR_ENDPOINT: &str = "http://127.0.0.1:8080/";
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WechatConnectorStatus {
+    reachable: bool,
+    endpoint: &'static str,
+}
+
+fn trusted_main_origin(label: &str, url: &Url) -> bool {
+    label == "main"
+        && ((url.scheme() == "tauri" && url.host_str() == Some("localhost"))
+            || (matches!(url.scheme(), "http" | "https")
+                && url.host_str() == Some("tauri.localhost"))
+            || (cfg!(debug_assertions)
+                && url.scheme() == "http"
+                && matches!(url.host_str(), Some("localhost" | "127.0.0.1"))))
+}
+
+/// A deliberately small, read-only health probe. It bypasses configured
+/// proxies because the destination is a fixed loopback address, does not follow
+/// redirects, and never reads the response body. Any HTTP status proves the
+/// helper is reachable; authentication state remains owned by WechRss itself.
+async fn probe_wechat_connector() -> bool {
+    let Ok(client) = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(std::time::Duration::from_millis(600))
+        .timeout(std::time::Duration::from_millis(1200))
+        .user_agent("Papr/0.15 WechRss health check")
+        .build()
+    else {
+        return false;
+    };
+    client.get(WECHAT_CONNECTOR_ENDPOINT).send().await.is_ok()
+}
+
+#[tauri::command]
+pub async fn wechat_connector_status(_space: crate::spaces::Lease, webview: Webview) -> Result<WechatConnectorStatus, String> {
+    let trusted = webview
+        .url()
+        .ok()
+        .as_ref()
+        .is_some_and(|url| trusted_main_origin(webview.label(), url));
+    if !trusted {
+        return Err("Local WechRss status is available only from the today workspace.".into());
+    }
+    Ok(WechatConnectorStatus {
+        reachable: probe_wechat_connector().await,
+        endpoint: WECHAT_CONNECTOR_ENDPOINT,
+    })
+}
+
+// ─────────────────────────── folders ───────────────────────────
+
+#[tauri::command]
+pub async fn list_folders(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<serde_json::Value> {
+    let conn = state.read().await;
+    papr_core::library::folders(&conn)
+}
+
+#[tauri::command]
+pub async fn create_folder(_space: crate::spaces::Lease, app: AppHandle, name: String) -> AppResult<i64> {
+    let result=crate::library_service::mutate(&app,vec![papr_core::library::Mutation::CreateFolder{name,parent_id:None}],"desktop",false,None,None).await.map_err(AppError::other)?;
+    result["results"][0]["id"].as_i64().ok_or_else(||AppError::other("Could not create folder"))
+}
+
+#[tauri::command]
+pub async fn rename_folder(_space: crate::spaces::Lease, app: AppHandle, id: i64, name: String) -> AppResult<()> {
+    crate::library_service::mutate(&app,vec![papr_core::library::Mutation::RenameFolder{id,name}],"desktop",false,None,None).await.map_err(AppError::other)?;Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_folder(_space: crate::spaces::Lease, app: AppHandle, id: i64) -> AppResult<()> {
+    crate::library_service::mutate(&app,vec![papr_core::library::Mutation::DeleteFolder{id}],"desktop",false,None,None).await.map_err(AppError::other)?;Ok(())
+}
+
+// ─────────────────────────── feeds ───────────────────────────
+
+#[tauri::command]
+pub async fn list_feeds(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<Vec<Feed>> {
+    let conn = state.read().await;
+    db::list_feeds(&conn)
+}
+
+/// Subscribe to a feed. Accepts either a feed URL or a website URL (in which
+/// case we auto-discover the feed). Also recognizes multi-source URLs —
+/// YouTube channels, subreddits, Mastodon profiles — and rewrites them to the
+/// real feed URL first (feature F5). Fetches once so the feed is immediately
+/// populated, then returns the stored feed.
+#[tauri::command]
+pub async fn add_feed(
+    _space: crate::spaces::Lease,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    folder_id: Option<i64>,
+) -> AppResult<Feed> {
+    let client = state.http();
+
+    // Step 0a: expand an `rsshub://route` short link into a normal feed URL on
+    // the configured RSSHub instance (default: the public rsshub.app). The
+    // expansion is a plain HTTP feed URL, so the rest of the pipeline handles
+    // it with no further special-casing. Only touch the DB when it's actually
+    // an rsshub link, so the common case pays nothing.
+    let url = if url
+        .trim()
+        .get(..9)
+        .is_some_and(|s| s.eq_ignore_ascii_case("rsshub://"))
+    {
+        let instance = {
+            let conn = state.db.lock().await;
+            db::get_setting(&conn, "rsshub_instance")?
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| sources::DEFAULT_RSSHUB_INSTANCE.to_string())
+        };
+        sources::expand_rsshub(&url, &instance).unwrap_or(url)
+    } else {
+        url
+    };
+
+    // Step 0: multi-source normalization. If the pasted URL is a known
+    // special source, rewrite it to its real feed URL. A YouTube vanity URL
+    // needs the channel page fetched to learn its channel id; that single
+    // network call lives here (the extraction logic itself is pure).
+    let (effective_url, forced_type): (String, Option<SourceType>) =
+        match sources::normalize_source(&url) {
+            Normalized::Feed { url, source_type } => (url, Some(source_type)),
+            Normalized::NeedsYoutubeResolution { page_url } => {
+                let (page_bytes, ct, _) = fetch::get(&client, &page_url).await?;
+                let html = fetch::decode_html(&page_bytes, ct.as_deref());
+                let channel_id = sources::extract_channel_id(&html)
+                    .ok_or_else(|| AppError::code("youtubeChannelNotFound"))?;
+                (
+                    sources::youtube_feed_url(&channel_id),
+                    Some(SourceType::Youtube),
+                )
+            }
+            Normalized::Untouched => (url.clone(), None),
+        };
+
+    // Step 1: fetch whatever the user gave us (or the normalized feed URL).
+    let (bytes, ct, final_url) = fetch::get(&client, &effective_url).await?;
+
+    // Step 2: if it is a feed use it directly, otherwise discover one.
+    let (feed_url, feed_bytes) = if parse::looks_like_feed(&bytes) {
+        (final_url, bytes)
+    } else {
+        let html = fetch::decode_html(&bytes, ct.as_deref());
+        let candidates = parse::discover_feeds(&html, &final_url);
+        let candidate = candidates
+            .into_iter()
+            .next()
+            .ok_or_else(|| AppError::code("noFeedFound"))?;
+        let (fb, _, _) = fetch::get(&client, &candidate).await?;
+        (candidate, fb)
+    };
+
+    let conn = state.db.lock().await;
+    let result=papr_core::library::subscribe(&conn, &feed_url, &feed_bytes, forced_type, folder_id, "desktop")?;
+    drop(conn);crate::library_service::changed(&app);Ok(result)
+}
+
+/// Feed discovery (feature F6). Searches the bundled curated directory for
+/// entries matching `query`, scoped to `lang` (the user's UI language) so the
+/// recommendations are in a language they read. When `query` looks like a URL
+/// or bare domain we ALSO fetch that page and run `parse::discover_feeds` over
+/// it, so the same box doubles as smart URL handling. Live page-scrape results
+/// are returned first (most specific to what the user typed), then the
+/// directory matches.
+///
+/// A failed page fetch is non-fatal — the directory results are still
+/// returned — so a typo or an offline site does not break discovery.
+#[tauri::command]
+pub async fn search_feed_directory(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    query: String,
+    lang: String,
+) -> AppResult<Vec<DiscoveryResult>> {
+    let mut results: Vec<DiscoveryResult> = Vec::new();
+
+    // Live page scrape — only when the query genuinely looks like a URL.
+    if discovery::looks_like_url(&query) {
+        let target = discovery::normalize_query_url(&query);
+        let client = state.http();
+        if let Ok((bytes, ct, final_url)) = fetch::get(&client, &target).await {
+            if parse::looks_like_feed(&bytes) {
+                // The pasted URL is itself a feed — surface it directly.
+                let title = parse::parse_feed(&bytes, &final_url)
+                    .ok()
+                    .and_then(|p| p.title);
+                results.push(DiscoveryResult::from_scrape(final_url, title));
+            } else {
+                let html = fetch::decode_html(&bytes, ct.as_deref());
+                for feed_url in parse::discover_feeds(&html, &final_url) {
+                    results.push(DiscoveryResult::from_scrape(feed_url, None));
+                }
+            }
+        }
+    }
+
+    // Curated directory matches (deduplicated against the scrape results),
+    // scoped to the user's UI language so the recommendations read natively.
+    for hit in discovery::search_directory(&query, &lang) {
+        if !results.iter().any(|r| r.feed_url == hit.feed_url) {
+            results.push(hit);
+        }
+    }
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn delete_feed(_space: crate::spaces::Lease, app: AppHandle, id: i64) -> AppResult<()> {
+    crate::library_service::mutate(&app,vec![papr_core::library::Mutation::ArchiveFeed{id}],"desktop",false,None,None).await.map_err(AppError::other)?;Ok(())
+}
+
+#[tauri::command]
+pub async fn move_feed(
+    _space: crate::spaces::Lease,
+    app: AppHandle,
+    id: i64,
+    folder_id: Option<i64>,
+) -> AppResult<()> {
+    crate::library_service::mutate(&app,vec![papr_core::library::Mutation::MoveFeed{id,folder_id}],"desktop",false,None,None).await.map_err(AppError::other)?;Ok(())
+}
+
+/// Set a feed's per-feed refresh interval. `None` reverts it to the global
+/// interval; `Some(525600)` (the "off" sentinel) opts the feed out of
+/// automatic refresh. The change is honoured on the scheduler's next tick.
+#[tauri::command]
+pub async fn set_feed_refresh_interval(
+    _space: crate::spaces::Lease,
+    app: AppHandle,
+    id: i64,
+    minutes: Option<i64>,
+) -> AppResult<()> {
+    crate::library_service::mutate(&app,vec![papr_core::library::Mutation::SetFeedInterval{id,minutes}],"desktop",false,None,None).await.map_err(AppError::other)?;Ok(())
+}
+
+/// Toggle a feed's auto-translate flag. When on, opening any article from this
+/// feed automatically translates it into the configured target language.
+#[tauri::command]
+pub async fn set_feed_auto_translate(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    id: i64,
+    enabled: bool,
+) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::set_feed_auto_translate(&conn, id, enabled)
+}
+
+/// Set a feed's per-feed open mode — how its articles open in the reader pane.
+/// `None` reverts the feed to the default behaviour (reader view, honouring
+/// the global auto-extract preference).
+#[tauri::command]
+pub async fn set_feed_open_mode(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    id: i64,
+    mode: Option<String>,
+) -> AppResult<()> {
+    if let Some(m) = mode.as_deref() {
+        if !matches!(m, "reader" | "extracted" | "web") {
+            return Err(AppError::other(format!("unknown open mode: {m}")));
+        }
+    }
+    let conn = state.db.lock().await;
+    db::set_feed_open_mode(&conn, id, mode.as_deref())
+}
+
+#[tauri::command]
+pub async fn rename_feed(_space: crate::spaces::Lease, app: AppHandle, id: i64, title: String) -> AppResult<()> {
+    // `db::rename_feed` trims and rejects an empty title — the one chokepoint.
+    crate::library_service::mutate(&app,vec![papr_core::library::Mutation::RenameFeed{id,title}],"desktop",false,None,None).await.map_err(AppError::other)?;Ok(())
+}
+
+/// Refresh every feed, streaming progress to the frontend over `on_progress`.
+#[tauri::command]
+pub async fn refresh_feeds(
+    _space: crate::spaces::Lease,
+    app: AppHandle,
+    on_progress: Channel<RefreshProgress>,
+    feed_id: Option<i64>,
+    folder_id: Option<i64>,
+) -> AppResult<usize> {
+    // A single feed wins over a folder when both are passed; with neither, this
+    // is the whole-library manual refresh.
+    let scope = match (feed_id, folder_id) {
+        (Some(id), _) => scheduler::RefreshScope::Feed(id),
+        (_, Some(id)) => scheduler::RefreshScope::Folder(id),
+        _ => scheduler::RefreshScope::All,
+    };
+    scheduler::refresh_all(&app, Some(on_progress), false, scope).await
+}
+
+// ─────────────────────────── articles ───────────────────────────
+
+#[tauri::command]
+pub async fn list_articles(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    query: ArticleQuery,
+    unread_only: bool,
+    search: Option<String>,
+    oldest_first: bool,
+    limit: i64,
+    offset: i64,
+) -> AppResult<Vec<ArticleSummary>> {
+    let conn = state.read().await;
+    db::list_articles(
+        &conn,
+        &query,
+        unread_only,
+        search.as_deref(),
+        oldest_first,
+        limit,
+        offset,
+    )
+}
+
+/// 0-based position of `article_id` in the list `query` would produce (same
+/// unread filter + sort), or `None` if it isn't in that list. The frontend uses
+/// it to page the virtual list down to an article opened from search and scroll
+/// it into view.
+#[tauri::command]
+pub async fn article_index(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    query: ArticleQuery,
+    unread_only: bool,
+    oldest_first: bool,
+    article_id: i64,
+) -> AppResult<Option<i64>> {
+    let conn = state.read().await;
+    db::article_index(&conn, &query, unread_only, oldest_first, article_id)
+}
+
+#[tauri::command]
+pub async fn get_article(_space: crate::spaces::Lease, state: State<'_, AppState>, id: i64) -> AppResult<ArticleDetail> {
+    let conn = state.read().await;
+    db::get_article(&conn, id).map_err(|error| match error {
+        AppError::Db(rusqlite::Error::QueryReturnedNoRows) => AppError::code("articleNotFound"),
+        other => other,
+    })
+}
+
+/// Hydrate calendar cards from feed bodies that are already in the local
+/// article database. This never fetches a network page or mutates an article.
+#[tauri::command]
+pub async fn calendar_article_bodies(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+) -> AppResult<Vec<ArticleBodyCache>> {
+    let conn = state.read().await;
+    db::calendar_article_bodies(&conn, &ids)
+}
+
+/// Queue a read/starred change for FreshRSS, but only when a server is linked.
+fn enqueue_if_connected(conn: &rusqlite::Connection, id: i64, field: &str, value: bool) {
+    if db::is_freshrss_connected(conn) {
+        let _ = db::enqueue_sync(conn, id, field, value);
+    }
+}
+
+/// Clear legacy unread badges and refresh the menu-bar tray status
+/// after an operation that changed the unread count.
+async fn refresh_unread_surfaces(app: &AppHandle) {
+    crate::notify::update_badge(app).await;
+    crate::tray::refresh(app).await;
+}
+
+#[tauri::command]
+pub async fn mark_read(_space: crate::spaces::Lease, app: AppHandle, id: i64, read: bool) -> AppResult<()> {
+    {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().await;
+        db::set_read(&conn, id, read)?;
+        enqueue_if_connected(&conn, id, "read", read);
+    }
+    refresh_unread_surfaces(&app).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mark_starred(_space: crate::spaces::Lease, app: AppHandle, id: i64, starred: bool) -> AppResult<()> {
+    let state = app.state::<AppState>();
+    let conn = state.db.lock().await;
+    db::set_starred(&conn, id, starred)?;
+    enqueue_if_connected(&conn, id, "starred", starred);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mark_read_later(_space: crate::spaces::Lease, state: State<'_, AppState>, id: i64, value: bool) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::set_read_later(&conn, id, value)
+}
+
+#[tauri::command]
+pub async fn mark_all_read(_space: crate::spaces::Lease, app: AppHandle, query: ArticleQuery) -> AppResult<usize> {
+    let n = {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().await;
+        db::mark_all_read(&conn, &query, db::is_freshrss_connected(&conn))?
+    };
+    let _ = app.emit("feeds-updated", 0);
+    refresh_unread_surfaces(&app).await;
+    Ok(n)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmartCounts {
+    unread: i64,
+    starred: i64,
+    read_later: i64,
+    agented: i64,
+}
+
+#[tauri::command]
+pub async fn smart_counts(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<SmartCounts> {
+    let conn = state.read().await;
+    let (unread, starred, read_later) = db::smart_counts(&conn)?;
+    Ok(SmartCounts {
+        unread,
+        starred,
+        read_later,
+        agented: db::agented_count(&conn)?,
+    })
+}
+
+// ─────────────────────────── full-text extraction ───────────────────────────
+
+/// Fetch the article's source page and extract its full text (Readability).
+/// Stores the result so subsequent reads are instant/offline.
+#[tauri::command]
+pub async fn extract_fulltext(_space: crate::spaces::Lease, state: State<'_, AppState>, article_id: i64) -> AppResult<String> {
+    let url = {
+        let conn = state.read().await;
+        db::get_article(&conn, article_id)?
+            .url
+            .ok_or_else(|| AppError::code("noArticleUrl"))?
+    };
+
+    let http = state.http();
+    let (bytes, ct, final_url) = fetch::get(&http, &url).await?;
+    // Decode in the page's declared charset — a non-UTF-8 page (Shift-JIS,
+    // GBK, ISO-8859-1, …) would otherwise become mojibake before Readability.
+    let html = fetch::decode_html(&bytes, ct.as_deref());
+    let lead_image = extraction::lead_image(&html, &final_url);
+
+    // Readability is not Send — run it on the blocking pool.
+    let extraction_url = final_url.clone();
+    let extracted =
+        tokio::task::spawn_blocking(move || extraction::extract_article(&html, &extraction_url))
+            .await
+            .map_err(|e| AppError::other(format!("extraction task: {e}")))??;
+    let image_url = sanitize::first_image(&extracted).or(lead_image);
+
+    let conn = state.db.lock().await;
+    db::set_extracted_html(&conn, article_id, &extracted, image_url.as_deref())?;
+    Ok(extracted)
+}
+
+// ─────────────────────────── image download ───────────────────────────
+
+/// A mainstream browser User-Agent. Some image hosts gate on it in addition to
+/// the `Referer`; sending a browser UA (and no Referer) mirrors what the webview
+/// itself does when it renders the image, so a save succeeds wherever the inline
+/// render did.
+const IMAGE_UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+    AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
+
+/// Upper bound on a saved image, so a hostile or mistyped URL can't balloon
+/// memory. Well above any real article image.
+const MAX_IMAGE_BYTES: u64 = 25 * 1024 * 1024;
+
+/// The `Referer` values to try, in order, when fetching an image. Hotlink
+/// protection cuts both ways: blacklist hosts (`*.sinaimg.cn`) 403 a foreign
+/// Referer but serve a bare request, while others (`cdnfile.sspai.com`) 403 a
+/// bare request and demand a Referer be present; strict whitelist CDNs accept
+/// only their own site — which the article URL satisfies. No single value
+/// works everywhere, so the fetch walks this chain until one succeeds.
+fn referer_candidates(image_url: &str, page_url: Option<&str>) -> Vec<Option<String>> {
+    let mut out = vec![None];
+    if let Ok(u) = Url::parse(image_url) {
+        let origin = u.origin().ascii_serialization();
+        if origin != "null" {
+            out.push(Some(format!("{origin}/")));
+        }
+    }
+    if let Some(p) = page_url {
+        if (p.starts_with("http://") || p.starts_with("https://")) && Url::parse(p).is_ok() {
+            let candidate = Some(p.to_string());
+            if !out.contains(&candidate) {
+                out.push(candidate);
+            }
+        }
+    }
+    out
+}
+
+/// Fetch a feed image's bytes — for the reader's "Save image" action and as
+/// the retry path for images the webview itself failed to load.
+///
+/// Done in Rust rather than via the webview so the request's `Referer` can be
+/// controlled: it walks [`referer_candidates`] (none → image origin → article
+/// URL) until the host serves the image, which covers both blacklist- and
+/// whitelist-style hotlink protection. `page_url` is the article's link, used
+/// as the final candidate. Transport errors abort the chain — a different
+/// Referer can't fix an unreachable host — only HTTP status errors advance it.
+#[tauri::command]
+pub async fn fetch_image(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    url: String,
+    page_url: Option<String>,
+) -> AppResult<Vec<u8>> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(AppError::code("badImageUrl"));
+    }
+    let http = state.http();
+    let mut last_err = AppError::code("badImageUrl");
+    for referer in referer_candidates(&url, page_url.as_deref()) {
+        let mut req = http.get(&url).header("User-Agent", IMAGE_UA);
+        if let Some(r) = &referer {
+            req = req.header("Referer", r.as_str());
+        }
+        match req.send().await?.error_for_status() {
+            Err(e) => last_err = e.into(),
+            Ok(resp) => {
+                if resp.content_length().is_some_and(|n| n > MAX_IMAGE_BYTES) {
+                    return Err(AppError::code("imageTooLarge"));
+                }
+                let bytes = resp.bytes().await?;
+                if bytes.len() as u64 > MAX_IMAGE_BYTES {
+                    return Err(AppError::code("imageTooLarge"));
+                }
+                return Ok(bytes.to_vec());
+            }
+        }
+    }
+    Err(last_err)
+}
+
+// ─────────────────────────── OPML ───────────────────────────
+
+#[tauri::command]
+pub async fn import_opml(_space: crate::spaces::Lease, app: AppHandle, content: String) -> AppResult<usize> {
+    let count = {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().await;
+        opml::import(&conn, &content)?
+    };
+    // Newly imported feeds have no articles yet — kick off a refresh. Pass
+    // wait_if_busy so it queues behind any in-flight refresh instead of
+    // skipping and leaving the imported feeds empty until the next tick.
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let _lease = _space;
+        let _ = scheduler::refresh_all(&app2, None, true, scheduler::RefreshScope::All).await;
+    });
+    Ok(count)
+}
+
+#[tauri::command]
+pub async fn export_opml(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<String> {
+    let conn = state.read().await;
+    let feeds = db::feeds_for_export(&conn)?;
+    opml::build(&feeds)
+}
+
+// ─────────────────────────── settings ───────────────────────────
+
+#[tauri::command]
+pub async fn get_setting(_space: crate::spaces::Lease, state: State<'_, AppState>, key: String) -> AppResult<Option<String>> {
+    let conn = state.read().await;
+    db::get_setting(&conn, &key)
+}
+
+#[tauri::command]
+pub async fn set_setting(_space: crate::spaces::Lease, state: State<'_, AppState>, key: String, value: String) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::set_setting(&conn, &key, &value)
+}
+
+// ─────────────────────────── AI ───────────────────────────
+
+/// Load the AI provider configuration from the settings table.
+fn load_ai_config(conn: &rusqlite::Connection) -> AppResult<AiConfig> {
+    AiConfig::new(
+        db::get_setting(conn, "ai_provider")?,
+        db::get_setting(conn, "ai_api_key")?,
+        db::get_setting(conn, "ai_model")?,
+        db::get_setting(conn, "ai_base_url")?,
+    )
+}
+
+/// Stream a chat completion to the webview `on_token` channel, then emit the
+/// terminal `Done` / `Error` event. Bridges the UI-free
+/// [`ai::stream_chat`] sink (which only forwards text deltas) back to the
+/// `AiEvent` channel the frontend listens on; a dropped channel asks the stream
+/// to stop early (the sink returns `false`).
+async fn stream_to_channel(
+    http: &reqwest::Client,
+    cfg: &AiConfig,
+    system: &str,
+    user: &str,
+    on_token: &Channel<AiEvent>,
+    max_tokens: u32,
+) -> AppResult<ai::ChatOutcome> {
+    let mut sink = |delta: &str| on_token.send(AiEvent::Delta(delta.to_string())).is_ok();
+    let result = ai::stream_chat(http, cfg, system, user, &mut sink, max_tokens).await;
+    match &result {
+        Ok(_) => {
+            let _ = on_token.send(AiEvent::Done);
+        }
+        Err(e) => {
+            let _ = on_token.send(AiEvent::Error(e.to_string()));
+        }
+    }
+    result
+}
+
+/// Resolve a translation engine chosen by the caller (the reader's translate
+/// switcher) into what it needs. `engine` is one of `google` / `bing` / `deepl`
+/// / `llm`; anything else falls back to the LLM. Google, DeepL and Bing are
+/// keyless free endpoints; only the LLM path needs credentials (the shared AI
+/// provider config). The engine is picked per translation.
+fn build_translate_selection(
+    conn: &rusqlite::Connection,
+    engine: &str,
+) -> AppResult<translate::Selection> {
+    Ok(match engine {
+        "google" => translate::Selection::Google,
+        "bing" => translate::Selection::Bing,
+        "deepl" => translate::Selection::Deepl,
+        _ => translate::Selection::Llm(load_ai_config(conn)?),
+    })
+}
+
+/// Truncate to at most `max` characters without splitting a UTF-8 boundary.
+fn truncate(s: &str, max: usize) -> String {
+    s.chars().take(max).collect()
+}
+
+/// A system-prompt directive so AI output matches the UI language rather than
+/// defaulting to whatever language the source article happens to be in.
+fn response_language(conn: &rusqlite::Connection) -> &'static str {
+    match db::get_setting(conn, "language").ok().flatten().as_deref() {
+        Some("zh") => "\n\nAlways write your response in Simplified Chinese.",
+        Some("ja") => "\n\nAlways write your response in Japanese.",
+        _ => "\n\nAlways write your response in English.",
+    }
+}
+
+/// The article-translation target language code: the dedicated
+/// `translate_target_lang` setting, falling back to the UI `language`, then
+/// English. Stored as a code (`en` / `zh` / `ja`); `translate::language_name`
+/// maps it to the name used in the prompt.
+fn translate_target_lang(conn: &rusqlite::Connection) -> String {
+    db::get_setting(conn, "translate_target_lang")
+        .ok()
+        .flatten()
+        .or_else(|| db::get_setting(conn, "language").ok().flatten())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "en".to_string())
+}
+
+/// Stream an AI summary of one article; the full summary is also persisted.
+#[tauri::command]
+pub async fn ai_summarize(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    article_id: i64,
+    on_token: Channel<AiEvent>,
+) -> AppResult<()> {
+    let (title, body, cfg, lang) = {
+        let conn = state.read().await;
+        let (title, body) = db::article_text(&conn, article_id)?;
+        (
+            title,
+            body,
+            load_ai_config(&conn)?,
+            response_language(&conn),
+        )
+    };
+    // A title-only item (link-aggregator posts, some podcast/video feeds carry
+    // no body text) gives the model nothing to summarize. Without this guard it
+    // would invent a "summary" from the bare title alone — and that fabricated
+    // text would then be persisted to `ai_summary`. Bail out the same way
+    // `ai_ask` / `ai_digest` do when their input is empty.
+    if body.trim().is_empty() {
+        return Err(AppError::code("noArticleBody"));
+    }
+    // The drawer renders the response as markdown (.ai-prose styles paragraphs,
+    // bullets, and bold), so we ask for structured output instead of a single
+    // dense paragraph — the reader can scan a TL;DR + bullets far faster.
+    let system = format!(
+        "You are a sharp news editor. Summarize the article so a reader can \
+         decide whether to read it in full.\n\n\
+         Format the response in markdown using exactly this shape:\n\
+         **TL;DR** — One sentence capturing the single most important point.\n\n\
+         - Key fact, finding, or claim (under ~20 words)\n\
+         - Another key point\n\
+         - 3 to 5 bullets total, one idea each, no nested bullets\n\n\
+         Output only this structure. No preamble, no closing remarks, no \
+         section headers, no extra prose.{lang}"
+    );
+    let user = format!("Title: {title}\n\n{}", truncate(&body, 8000));
+
+    let http = state.http();
+    let outcome = stream_to_channel(&http, &cfg, &system, &user, &on_token, ai::MAX_TOKENS).await?;
+    // Persist only a summary that streamed to completion. If the user closed
+    // the AI panel mid-stream the channel was dropped and `outcome.text` holds
+    // just a truncated fragment — caching that would make the next open show a
+    // broken half-summary with no way to regenerate it.
+    if outcome.completed && !outcome.text.trim().is_empty() {
+        let conn = state.db.lock().await;
+        db::set_ai_summary(&conn, article_id, outcome.text.trim())?;
+    }
+    Ok(())
+}
+
+/// Answer a question using the user's subscribed articles as RAG context.
+/// Retrieval currently uses FTS5 keyword search (semantic search is Phase 5).
+#[tauri::command]
+pub async fn ai_ask(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    question: String,
+    on_token: Channel<AiEvent>,
+) -> AppResult<()> {
+    let (cfg, context, lang) = {
+        let conn = state.read().await;
+        let cfg = load_ai_config(&conn)?;
+        // RAG retrieval is recall-oriented: match articles that share *any* of
+        // the question's keywords. `list_articles` AND-joins every search word,
+        // which for a natural-language question matches nothing.
+        let hits = db::search_articles_for_rag(&conn, &question, 6)?;
+        let mut context = String::new();
+        for (id, _title, feed_title) in hits {
+            let (title, body) = db::article_text(&conn, id)?;
+            context.push_str(&format!(
+                "## {} — {}\n{}\n\n",
+                title,
+                feed_title,
+                truncate(&body, 1200)
+            ));
+        }
+        (cfg, context, response_language(&conn))
+    };
+
+    let system = format!(
+        "You answer the user's question using only the provided \
+         articles from their RSS subscriptions. Cite the article \
+         titles you draw from. If the articles do not contain the \
+         answer, say so plainly.{lang}"
+    );
+    let user = if context.trim().is_empty() {
+        format!("No relevant articles were found.\n\nQuestion: {question}")
+    } else {
+        format!("Articles from the user's feeds:\n\n{context}---\n\nQuestion: {question}")
+    };
+
+    let http = state.http();
+    stream_to_channel(&http, &cfg, &system, &user, &on_token, ai::MAX_TOKENS).await?;
+    Ok(())
+}
+
+/// Stream an AI briefing that synthesizes the most recent articles by theme.
+#[tauri::command]
+pub async fn ai_digest(_space: crate::spaces::Lease, state: State<'_, AppState>, on_token: Channel<AiEvent>) -> AppResult<()> {
+    let (cfg, articles, lang) = {
+        let conn = state.read().await;
+        (
+            load_ai_config(&conn)?,
+            db::digest_source(&conn, 30)?,
+            response_language(&conn),
+        )
+    };
+    if articles.is_empty() {
+        return Err(AppError::code("noArticles"));
+    }
+
+    let mut corpus = String::new();
+    for (title, feed, text) in &articles {
+        corpus.push_str(&format!("- [{feed}] {title}: {}\n", truncate(text, 400)));
+    }
+
+    let system = format!(
+        "You are the user's personal news briefer. From the recent \
+         articles, write a crisp briefing: group related items into \
+         2-4 themed sections with short headers, lead with what \
+         matters most, and keep it skimmable. Plain prose, no preamble.{lang}"
+    );
+    let user = format!("Recent articles from my feeds:\n\n{corpus}");
+
+    let http = state.http();
+    stream_to_channel(&http, &cfg, &system, &user, &on_token, ai::MAX_TOKENS).await?;
+    Ok(())
+}
+
+/// Progress events streamed to the frontend during a translation. Reported once
+/// per batch (a group of whole blocks), never per token: token-level IPC across
+/// a full article would flood the webview's main thread and freeze the UI.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase", tag = "type", content = "data")]
+pub enum TranslateEvent {
+    /// The number of batches the body was split into, sent before any batch.
+    Start { total: usize },
+    /// One freshly translated, sanitized batch of HTML, plus how many batches
+    /// have completed so far.
+    Batch { html: String, done: usize },
+    /// The full sanitized translation, sent once on completion.
+    Done { html: String },
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArticlePreviewTranslation {
+    article_id: i64,
+    title: String,
+    snippet: String,
+    lang: String,
+    engine: String,
+}
+
+fn escape_preview_text(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn preview_translation_html(title: &str, snippet: &str) -> String {
+    format!(
+        "<h1>{}</h1><p>{}</p>",
+        escape_preview_text(title),
+        escape_preview_text(snippet)
+    )
+}
+
+fn text_for_selector(fragment: &str, selector: &str) -> String {
+    let doc = scraper::Html::parse_fragment(fragment);
+    let selector = scraper::Selector::parse(selector).expect("static preview selector");
+    doc.select(&selector)
+        .next()
+        .map(|el| el.text().collect::<Vec<_>>().join(" "))
+        .unwrap_or_default()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Translate only the lightweight fields needed by the article list. This does
+/// not reuse `ai_translate`: the reader command translates full article HTML,
+/// whereas the list needs title + short body preview jobs that can be scheduled
+/// as rows enter the virtualized viewport.
+#[tauri::command]
+pub async fn translate_article_preview(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    article_id: i64,
+    lang: String,
+    engine: String,
+) -> AppResult<ArticlePreviewTranslation> {
+    let engine = if engine.trim().is_empty() {
+        "llm".to_string()
+    } else {
+        engine
+    };
+    let (title, snippet, sel, target) = {
+        let conn = state.read().await;
+        let target = if lang.trim().is_empty() {
+            translate_target_lang(&conn)
+        } else {
+            lang
+        };
+        if let Some((title, snippet)) =
+            db::get_preview_translation(&conn, article_id, &target, &engine)?
+        {
+            return Ok(ArticlePreviewTranslation {
+                article_id,
+                title,
+                snippet,
+                lang: target,
+                engine,
+            });
+        }
+        let (title, body) = db::article_preview_text(&conn, article_id)?;
+        (
+            title,
+            truncate(body.trim(), db::PREVIEW_SNIPPET_CHARS),
+            build_translate_selection(&conn, &engine)?,
+            target,
+        )
+    };
+    if title.trim().is_empty() && snippet.trim().is_empty() {
+        return Err(AppError::code("noArticleBody"));
+    }
+
+    let http = state.http();
+    let backend = translate::ready(&http, sel).await?;
+    // Reuse the reader's canonical translation prompt rather than a second copy:
+    // the preview fragment is just an `<h1>`/`<p>` pair, so "preserve every HTML
+    // tag" covers it, and a single prompt can never drift between the two paths.
+    let system = translate::translate_system_prompt(translate::language_name(&target));
+    let source = preview_translation_html(&title, &snippet);
+    let raw = backend
+        .translate_batch(&http, &system, &source, &target)
+        .await?;
+    let clean = sanitize::sanitize(raw.trim(), None);
+    let translated_title = text_for_selector(&clean, "h1");
+    let translated_snippet = text_for_selector(&clean, "p");
+    if translated_title.trim().is_empty() && translated_snippet.trim().is_empty() {
+        return Err(AppError::code("emptyPreviewTranslation"));
+    }
+
+    {
+        let conn = state.db.lock().await;
+        let (current_title, current_body) = db::article_preview_text(&conn, article_id)?;
+        let current_snippet = truncate(current_body.trim(), db::PREVIEW_SNIPPET_CHARS);
+        if current_title != title || current_snippet != snippet {
+            return Err(AppError::code("articlePreviewChanged"));
+        }
+        db::set_preview_translation(
+            &conn,
+            article_id,
+            &translated_title,
+            &translated_snippet,
+            &target,
+            &engine,
+        )?;
+    }
+
+    Ok(ArticlePreviewTranslation {
+        article_id,
+        title: translated_title,
+        snippet: translated_snippet,
+        lang: target,
+        engine,
+    })
+}
+
+/// Translate one article's body into the configured target language, reporting
+/// progress per batch over `on_event`. The body is split into batches of whole
+/// blocks (so long articles and the per-request token cap are both handled) and
+/// translated batch by batch with the HTML structure preserved. The reassembled,
+/// sanitized result is cached on the article row and reused on the next open.
+///
+/// The work runs to completion independently of the reader view, so the frontend
+/// can start several translations at once and switch articles without
+/// interrupting any of them.
+#[tauri::command]
+pub async fn ai_translate(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    article_id: i64,
+    lang: String,
+    engine: String,
+    on_event: Channel<TranslateEvent>,
+) -> AppResult<()> {
+    let (source_html, sel, target) = {
+        let conn = state.read().await;
+        let detail = db::get_article(&conn, article_id)?;
+        // Translate the richest body available: the extracted full text when the
+        // user has run extraction, otherwise the feed's own HTML.
+        let source = detail
+            .extracted_html
+            .filter(|s| !s.trim().is_empty())
+            .or(detail.content_html)
+            .unwrap_or_default();
+        // The reader picks the target language and engine per translation; fall
+        // back to the stored default only if the caller sent none.
+        let target = if lang.trim().is_empty() {
+            translate_target_lang(&conn)
+        } else {
+            lang
+        };
+        (source, build_translate_selection(&conn, &engine)?, target)
+    };
+    if source_html.trim().is_empty() {
+        return Err(AppError::code("noArticleBody"));
+    }
+
+    let http = state.http();
+    // Resolve the chosen engine (fetching Bing's auth token, if selected) before
+    // the loop, so a credential or network failure surfaces before any progress
+    // is reported rather than mid-stream.
+    let backend = translate::ready(&http, sel).await?;
+
+    // Split by an engine-specific budget so a short article translates in one
+    // request and a long one is chunked to fit the engine's per-call limits.
+    let batches = translate::chunk_blocks(&source_html, translate::chunk_budget(&engine));
+    let total = batches.len();
+    let _ = on_event.send(TranslateEvent::Start { total });
+
+    let system = translate::translate_system_prompt(translate::language_name(&target));
+    let mut full = String::new();
+    for (i, batch) in batches.iter().enumerate() {
+        let raw = backend
+            .translate_batch(&http, &system, batch, &target)
+            .await?;
+        // Engine output (LLM or machine translation) is untrusted, so each batch
+        // passes through the same sanitizer as feed HTML before it reaches the
+        // webview or the database. Source URLs are already absolute (sanitized at
+        // ingestion), so no base is needed.
+        let clean = sanitize::sanitize(raw.trim(), None);
+        full.push_str(&clean);
+        full.push('\n');
+        let _ = on_event.send(TranslateEvent::Batch {
+            html: clean,
+            done: i + 1,
+        });
+    }
+
+    let final_html = full.trim().to_string();
+    if !final_html.is_empty() {
+        let conn = state.db.lock().await;
+        db::set_translation(&conn, article_id, &final_html, &target)?;
+    }
+    let _ = on_event.send(TranslateEvent::Done { html: final_html });
+    Ok(())
+}
+
+// ─────────────────────────── storage ───────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageStats {
+    db_bytes: i64,
+    article_count: i64,
+    feed_count: i64,
+    folder_count: i64,
+    cleaned_count: i64,
+}
+
+#[tauri::command]
+pub async fn storage_stats(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<StorageStats> {
+    let conn = state.read().await;
+    let (db_bytes, article_count, feed_count) = db::storage_stats(&conn)?;
+    let folder_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM folders", [], |r| r.get(0))
+        .unwrap_or(0);
+    let cleaned_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM article_structured", [], |r| r.get(0))
+        .unwrap_or(0);
+    Ok(StorageStats {
+        db_bytes,
+        article_count,
+        feed_count,
+        folder_count,
+        cleaned_count,
+    })
+}
+
+/// Delete read articles older than `days` (starred / read-later are kept).
+#[tauri::command]
+pub async fn cleanup_articles(_space: crate::spaces::Lease, app: AppHandle, days: i64) -> AppResult<usize> {
+    let n = {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().await;
+        db::cleanup_old_articles(&conn, days)?
+    };
+    let _ = app.emit("feeds-updated", 0);
+    Ok(n)
+}
+
+/// Reclaim free database pages.
+#[tauri::command]
+pub async fn vacuum_db(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::vacuum(&conn)
+}
+
+/// Clear every stored setting (AI keys, sync credentials, preferences).
+#[tauri::command]
+pub async fn reset_settings(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::reset_settings(&conn)
+}
+
+/// Delete all feeds, folders and articles. Irreversible.
+#[tauri::command]
+pub async fn clear_all_data(_space: crate::spaces::Lease, app: AppHandle) -> AppResult<()> {
+    {
+        let state = app.state::<AppState>();
+        let conn = state.db.lock().await;
+        db::clear_all_data(&conn)?;
+    }
+    let _ = app.emit("feeds-updated", 0);
+    refresh_unread_surfaces(&app).await;
+    Ok(())
+}
+
+// ─────────────────────────── network ───────────────────────────
+
+/// Rebuild the HTTP client from the persisted proxy / timeout settings so the
+/// change takes effect without an app restart.
+#[tauri::command]
+pub async fn apply_network_settings(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<()> {
+    let client = {
+        // Pure settings read — use the read pool, not the writer lock.
+        let conn = state.read().await;
+        fetch::build_client_from_settings(&conn)
+    };
+    state.set_http(client);
+    Ok(())
+}
+
+// ─────────────────────────── FreshRSS sync ───────────────────────────
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FreshRssStatus {
+    connected: bool,
+    url: Option<String>,
+    /// Which GReader-compatible backend is connected: "freshrss" or
+    /// "miniflux". Always present (defaults to "freshrss") so the UI never
+    /// has to guess for older installs.
+    provider: String,
+}
+
+#[tauri::command]
+pub async fn freshrss_connect(
+    _space: crate::spaces::Lease,
+    app: AppHandle,
+    url: String,
+    username: String,
+    password: String,
+    provider: Option<String>,
+) -> AppResult<()> {
+    let state = app.state::<AppState>();
+    crate::sync::connect(
+        &state.db,
+        &state.http(),
+        &url,
+        &username,
+        &password,
+        provider.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn freshrss_disconnect(_space: crate::spaces::Lease, app: AppHandle) -> AppResult<()> {
+    crate::sync::disconnect(&app.state::<AppState>().db).await
+}
+
+#[tauri::command]
+pub async fn freshrss_status(_space: crate::spaces::Lease, app: AppHandle) -> AppResult<FreshRssStatus> {
+    let info = crate::sync::connected_url(&app.state::<AppState>().db).await?;
+    let (url, provider) = match info {
+        Some((u, p)) => (Some(u), p),
+        None => (None, "freshrss".to_string()),
+    };
+    Ok(FreshRssStatus {
+        connected: url.is_some(),
+        url,
+        provider,
+    })
+}
+
+/// Run a full FreshRSS sync now; returns the number of reconciled articles.
+#[tauri::command]
+pub async fn freshrss_sync(_space: crate::spaces::Lease, app: AppHandle) -> AppResult<usize> {
+    let n = {
+        let state = app.state::<AppState>();
+        crate::sync::sync_now(&state.db, &state.http()).await?
+    };
+    let _ = app.emit("feeds-updated", 0);
+    refresh_unread_surfaces(&app).await;
+    Ok(n)
+}
+
+/// Rebuild the tray menu — used after a language change.
+#[tauri::command]
+pub async fn refresh_tray(_space: crate::spaces::Lease, app: AppHandle) -> AppResult<()> {
+    crate::tray::refresh(&app).await;
+    Ok(())
+}
+
+/// Drain a `papr://subscribe` URL that was delivered before the webview could
+/// receive the `deep-link-subscribe` event (a cold-start launch). The frontend
+/// calls this once on mount; returns `None` when there is nothing pending.
+#[tauri::command]
+pub async fn take_pending_deep_link(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<Option<String>> {
+    Ok(state.take_pending_deep_link())
+}
+
+// ─────────────────────────── tags ───────────────────────────
+
+#[tauri::command]
+pub async fn list_tags(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<Vec<Tag>> {
+    let conn = state.read().await;
+    db::list_tags(&conn)
+}
+
+#[tauri::command]
+pub async fn create_tag(_space: crate::spaces::Lease, state: State<'_, AppState>, name: String) -> AppResult<i64> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::code("emptyTagName"));
+    }
+    let conn = state.db.lock().await;
+    db::create_tag(&conn, name)
+}
+
+#[tauri::command]
+pub async fn rename_tag(_space: crate::spaces::Lease, state: State<'_, AppState>, id: i64, name: String) -> AppResult<()> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::code("emptyTagName"));
+    }
+    let conn = state.db.lock().await;
+    db::rename_tag(&conn, id, name)
+}
+
+#[tauri::command]
+pub async fn set_tag_color(_space: crate::spaces::Lease, state: State<'_, AppState>, id: i64, color: String) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::set_tag_color(&conn, id, &color)
+}
+
+#[tauri::command]
+pub async fn delete_tag(_space: crate::spaces::Lease, state: State<'_, AppState>, id: i64) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::delete_tag(&conn, id)
+}
+
+/// Attach or detach a tag from one article.
+#[tauri::command]
+pub async fn set_article_tag(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    article_id: i64,
+    tag_id: i64,
+    on: bool,
+) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::set_article_tag(&conn, article_id, tag_id, on)
+}
+
+// ─────────────────────────── filter rules ───────────────────────────
+
+#[tauri::command]
+pub async fn list_rules(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<Vec<Rule>> {
+    let conn = state.read().await;
+    db::list_rules(&conn)
+}
+
+#[tauri::command]
+pub async fn create_rule(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    name: String,
+    feed_id: Option<i64>,
+    field: String,
+    query: String,
+    action: String,
+) -> AppResult<i64> {
+    if query.trim().is_empty() {
+        return Err(AppError::code("emptyRuleQuery"));
+    }
+    let conn = state.db.lock().await;
+    db::create_rule(&conn, name.trim(), feed_id, &field, query.trim(), &action)
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn update_rule(
+    state: State<'_, AppState>,
+    id: i64,
+    name: String,
+    enabled: bool,
+    feed_id: Option<i64>,
+    field: String,
+    query: String,
+    action: String,
+) -> AppResult<()> {
+    if query.trim().is_empty() {
+        return Err(AppError::code("emptyRuleQuery"));
+    }
+    let conn = state.db.lock().await;
+    db::update_rule(
+        &conn,
+        id,
+        name.trim(),
+        enabled,
+        feed_id,
+        &field,
+        query.trim(),
+        &action,
+    )
+}
+
+#[tauri::command]
+pub async fn delete_rule(_space: crate::spaces::Lease, state: State<'_, AppState>, id: i64) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::delete_rule(&conn, id)
+}
+
+/// Apply a rule's action to the already-stored articles it matches and return
+/// how many were acted on. The frontend calls this right after saving a rule so
+/// an enabled rule affects the existing backlog, not just future articles. A
+/// `skip` rule deletes its matches, so the UI confirms before invoking this.
+#[tauri::command]
+pub async fn apply_rule_to_existing(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    feed_id: Option<i64>,
+    field: String,
+    query: String,
+    action: String,
+) -> AppResult<usize> {
+    if query.trim().is_empty() {
+        return Err(AppError::code("emptyRuleQuery"));
+    }
+    let conn = state.db.lock().await;
+    db::apply_rule_to_existing(&conn, feed_id, &field, query.trim(), &action)
+}
+
+/// Persist a reordered tag list (ids in the new display order).
+#[tauri::command]
+pub async fn reorder_tags(_space: crate::spaces::Lease, state: State<'_, AppState>, ids: Vec<i64>) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::reorder_tags(&conn, &ids)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RulePreview {
+    count: i64,
+    samples: Vec<String>,
+}
+
+/// Dry-run a draft rule against already-stored articles.
+#[tauri::command]
+pub async fn preview_rule(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    feed_id: Option<i64>,
+    field: String,
+    query: String,
+) -> AppResult<RulePreview> {
+    let conn = state.read().await;
+    let (count, samples) = db::preview_rule(&conn, feed_id, &field, query.trim())?;
+    Ok(RulePreview { count, samples })
+}
+
+// ─────────────────────────── newsletter sources ───────────────────────────
+
+/// A configured email-newsletter source, as shown in the UI (no password).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewsletterSource {
+    feed_id: i64,
+    title: String,
+    host: String,
+    port: u16,
+    username: String,
+    folder: String,
+}
+
+/// Legacy payload retained for callers; adding email sources is disabled.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewsletterInput {
+    /// A display name for the source (falls back to the username).
+    pub title: Option<String>,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    /// Legacy IMAP credential field; the disabled command never stores it.
+    pub password: String,
+    /// Legacy mailbox name, e.g. `INBOX` or `Newsletters`.
+    pub folder: String,
+}
+
+/// Retained for older clients in this RSS-only build. Refuse before connecting
+/// or writing to the RSS database.
+#[tauri::command]
+pub async fn add_newsletter_source(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    input: NewsletterInput,
+) -> AppResult<Feed> {
+    let _ = (state, input);
+    Err(AppError::other(
+        "Email-to-RSS ingestion is disabled. This build is RSS-only; email accounts are not supported.",
+    ))
+}
+
+/// Every configured newsletter source (passwords omitted).
+#[tauri::command]
+pub async fn list_newsletter_sources(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+) -> AppResult<Vec<NewsletterSource>> {
+    let conn = state.read().await;
+    Ok(db::list_newsletter_sources(&conn)?
+        .into_iter()
+        .map(|r| NewsletterSource {
+            feed_id: r.feed_id,
+            title: r.title,
+            host: r.host,
+            port: r.port,
+            username: r.username,
+            folder: r.folder,
+        })
+        .collect())
+}
+
+/// Remove a newsletter source and all of its ingested articles.
+#[tauri::command]
+pub async fn remove_newsletter_source(_space: crate::spaces::Lease, state: State<'_, AppState>, feed_id: i64) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::delete_newsletter_source(&conn, feed_id)
+}
+
+// ─────────────────────────── highlights (F7) ───────────────────────────
+
+/// Create a highlight on an article. The frontend supplies the quote plus its
+/// anchoring context (prefix / suffix window and the plain-text offset).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn create_highlight(
+    state: State<'_, AppState>,
+    article_id: i64,
+    quote: String,
+    prefix: String,
+    suffix: String,
+    text_offset: i64,
+    color: String,
+    note: String,
+) -> AppResult<i64> {
+    if quote.trim().is_empty() {
+        return Err(AppError::code("emptyHighlight"));
+    }
+    let conn = state.db.lock().await;
+    db::insert_highlight(
+        &conn,
+        &db::NewHighlight {
+            article_id,
+            quote: &quote,
+            prefix: &prefix,
+            suffix: &suffix,
+            text_offset,
+            color: &color,
+            note: &note,
+        },
+    )
+}
+
+/// Every highlight on one article, in reading order.
+#[tauri::command]
+pub async fn list_highlights(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    article_id: i64,
+) -> AppResult<Vec<Highlight>> {
+    let conn = state.read().await;
+    db::list_highlights(&conn, article_id)
+}
+
+/// Every highlight across all articles — for the Highlights browser.
+#[tauri::command]
+pub async fn list_all_highlights(_space: crate::spaces::Lease, state: State<'_, AppState>) -> AppResult<Vec<Highlight>> {
+    let conn = state.read().await;
+    db::list_all_highlights(&conn)
+}
+
+/// Replace a highlight's note (an empty string clears it).
+#[tauri::command]
+pub async fn update_highlight_note(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    id: i64,
+    note: String,
+) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::update_highlight_note(&conn, id, &note)
+}
+
+/// Change a highlight's colour (a palette key).
+#[tauri::command]
+pub async fn set_highlight_color(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    id: i64,
+    color: String,
+) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::set_highlight_color(&conn, id, &color)
+}
+
+#[tauri::command]
+pub async fn delete_highlight(_space: crate::spaces::Lease, state: State<'_, AppState>, id: i64) -> AppResult<()> {
+    let conn = state.db.lock().await;
+    db::delete_highlight(&conn, id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wechat_connector_is_fixed_to_loopback() {
+        let endpoint = Url::parse(WECHAT_CONNECTOR_ENDPOINT).unwrap();
+        assert_eq!(endpoint.scheme(), "http");
+        assert_eq!(endpoint.host_str(), Some("127.0.0.1"));
+        assert_eq!(endpoint.port(), Some(8080));
+        assert!(endpoint.username().is_empty());
+        assert!(endpoint.password().is_none());
+    }
+
+    #[test]
+    fn local_connector_probe_is_available_only_to_the_main_app_origin() {
+        for (label, raw, expected) in [
+            ("main", "tauri://localhost", true),
+            ("main", "https://tauri.localhost", true),
+            ("page-view", "tauri://localhost", false),
+            ("main", "https://example.com", false),
+        ] {
+            assert_eq!(
+                trusted_main_origin(label, &Url::parse(raw).unwrap()),
+                expected,
+                "{label} {raw}",
+            );
+        }
+    }
+
+    // --- preview-translation helpers: the plain-text round-trip the list uses ---
+
+    #[test]
+    fn escape_preview_text_escapes_markup_sensitive_chars() {
+        assert_eq!(
+            escape_preview_text(r#"A & B < C > "D""#),
+            "A &amp; B &lt; C &gt; &quot;D&quot;",
+        );
+    }
+
+    #[test]
+    fn preview_html_escaping_survives_a_bracket_in_the_title() {
+        // A title like "Rust <T>: generics" must not inject a stray tag: after
+        // escaping and re-parsing, the fragment is still exactly one h1 + one p,
+        // and the text extracted back out matches the source verbatim.
+        let html = preview_translation_html("Rust <T>: generics", "a & b");
+        assert_eq!(text_for_selector(&html, "h1"), "Rust <T>: generics");
+        assert_eq!(text_for_selector(&html, "p"), "a & b");
+    }
+
+    #[test]
+    fn text_for_selector_extracts_and_collapses_whitespace() {
+        let frag = "<h1>  Hello   world </h1><p>one\n two</p>";
+        assert_eq!(text_for_selector(frag, "h1"), "Hello world");
+        assert_eq!(text_for_selector(frag, "p"), "one two");
+    }
+
+    #[test]
+    fn text_for_selector_returns_empty_when_the_tag_is_absent() {
+        assert_eq!(text_for_selector("<p>body only</p>", "h1"), "");
+    }
+
+    // --- referer_candidates: the Referer fallback chain for image fetches. ---
+
+    #[test]
+    fn referer_candidates_tries_bare_then_origin_then_page() {
+        // Order matters: no Referer defeats blacklist-style protection
+        // (*.sinaimg.cn), the image's own origin satisfies hosts that demand a
+        // Referer be present (cdnfile.sspai.com), and the article URL is what
+        // a strict whitelist CDN expects.
+        let got = referer_candidates(
+            "https://cdnfile.sspai.com/2025/a.png?imageMogr2/thumbnail",
+            Some("https://sspai.com/post/110992"),
+        );
+        assert_eq!(
+            got,
+            vec![
+                None,
+                Some("https://cdnfile.sspai.com/".to_string()),
+                Some("https://sspai.com/post/110992".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn referer_candidates_without_page_url() {
+        let got = referer_candidates("https://wx1.sinaimg.cn/large/a.jpg", None);
+        assert_eq!(got, vec![None, Some("https://wx1.sinaimg.cn/".to_string())]);
+    }
+
+    #[test]
+    fn referer_candidates_skips_non_http_page_url() {
+        // A feed can ship anything as the article link; only an http(s) URL
+        // is a plausible Referer.
+        let got = referer_candidates("https://ex.com/a.png", Some("mailto:editor@ex.com"));
+        assert_eq!(got, vec![None, Some("https://ex.com/".to_string())]);
+    }
+
+    #[test]
+    fn referer_candidates_dedupes_page_equal_to_origin() {
+        // Article link identical to the image origin would be a wasted retry.
+        let got = referer_candidates("https://ex.com/a.png", Some("https://ex.com/"));
+        assert_eq!(got, vec![None, Some("https://ex.com/".to_string())]);
+    }
+}

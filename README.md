@@ -1,9 +1,33 @@
 # RSSD
 
-RSSD connects personal production devices to a shared editorial center and independent publishing destinations.
+RSSD connects personal writing devices to an editorial center and independent
+publishing destinations. This is the public v2 development checkpoint, not a
+completed production migration.
 
-This first public source checkpoint contains the versioned production protocol, durable client outbox and production worker coordinator. Desktop, Linux packaging, Web publishing and theme migration are still in progress; this checkpoint is not a completed RSSD v2 release.
+## Workspace
 
-Run `npm test` with Node.js 24 or newer. Tests use synthetic content and require no accounts, private repository, network services or credentials.
+Clone with `git clone --recurse-submodules https://github.com/scholay-rssd/rssd.git`.
+Use Node.js 24+, pnpm 9.15.4 and Rust for native builds.
 
-Related repositories: [Center](https://github.com/scholay-rssd/rssd-center), [Themes](https://github.com/scholay-rssd/rssd-themes), [Sites](https://github.com/scholay-rssd/rssd-sites), [Examples](https://github.com/scholay-rssd/rssd-examples). The Postiz-derived center is licensed separately under AGPL-3.0.
+```sh
+npm ci
+npm test
+npm run demo:build
+npm run desktop:install
+npm run desktop:build:web
+```
+
+The root assembles `desktop/`, `receiver/`, `web/engine/` and the pinned public
+submodules `web/themes/`, `sites/`, `web/demo/` and `center/`. The center is a
+separate Postiz v2.25.1-derived AGPL project with its own build and lockfile.
+The desktop's native identity and data paths remain `com.thomas.papr`.
+
+Calendar seed files contain no private corpus. Existing local databases must
+be preserved when upgrading; article migration and production cutover require
+explicit reconciliation. Demo builds use fictional fixtures only. Personal
+manuscripts, tokens, receipts, database backups and private Git history are not
+part of this repository.
+
+The new center protocol, durable outbox, worker coordination, bilingual site
+receiver and desktop center panel are implemented. Destination coverage,
+restoration, browser exports and production cutovers are still in progress.

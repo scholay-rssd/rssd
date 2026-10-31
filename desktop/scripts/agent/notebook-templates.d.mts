@@ -1,0 +1,12 @@
+import type {Notebook,NoteBlock,NoteGroup,TitleTemplate} from './notebook.mjs';
+export const DEFAULT_TITLE_TEMPLATE:TitleTemplate;
+export type ContentTemplate={id:string;name:string;prompt:string;mode:string;kind?:'article'|'section'|'material';days?:number;materials?:{name:string;prompt:string}[];enrichRecordId?:string};
+export type TemplateSelection={titlePreset?:TitleTemplate;key:string;spaceId:string;instanceId:string;template:ContentTemplate;before:{kind:Notebook['kind'];skills:string[]};addedSkills:string[];fields:Record<string,{before?:unknown;applied:unknown}>;structuralIds:string[];baseline:{blocks:NoteBlock[];groups:NoteGroup[];order:string[]}};
+export const TEMPLATE_MODES:string[];
+export function templateKind(mode:string):Notebook['kind'];
+export function templateTaskMode(mode:string):string;
+export function templateKey(spaceId:string,t:{mode?:string;id:string}):string;
+export function validateTemplate(t:ContentTemplate):ContentTemplate;
+export function releaseTemplate(n:Notebook):{note:Notebook;removed:number;retained:number};
+export function selectTemplate(n:Notebook,t:ContentTemplate|null,options:{spaceId:string;makeId:()=>string;headings?:string[]}):{note:Notebook;removed:number;retained:number};
+export function stampTemplateBaseline(n:Notebook):Notebook;

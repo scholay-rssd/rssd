@@ -1,0 +1,1 @@
+{"name":"scholay-workbench-runtime","private":true,"type":"module","version":"1.0.0","dependencies":{"@agentclientprotocol/claude-agent-acp":"0.93.0","@agentclientprotocol/codex-acp":"2.2.2","katex":"0.19.0","markdown-it":"14.1.0","playwright-core":"1.62.1","sharp":"0.35.5"}}

@@ -1,0 +1,47 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,readFile,rm} from 'node:fs/promises';
+import {createServer} from 'node:http';
+import {join,resolve,sep} from 'node:path';
+import {tmpdir} from 'node:os';
+import {createReceiver} from '../receiver/server.mjs';
+import {buildAndActivate} from '../receiver/build.mjs';
+import {verifyLive} from '../admin/release-verification.mjs';
+import {profiles} from '../scripts/site-config.mjs';
+import {sectionsForSite} from '../contracts/site-sections.mjs';
+import {contentKey} from '../contracts/rssd-publication.cjs';
+import p from '../contracts/rssd-v1.cjs';
+
+test('HTTP receiver builds real bilingual pages, verifies public files, and retains old release on failure',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'rssd-http-')),base=join(dir,'public'),current=join(base,'current');
+  const server=createServer(async(req,res)=>{try{
+    const pathname=new URL(req.url,'http://localhost').pathname,path=resolve(current,'.'+pathname+(pathname.endsWith('/')?'index.html':''));
+    if(!path.startsWith(current+sep))throw Error('Invalid path');const data=await readFile(path);res.writeHead(200,{'Content-Type':path.endsWith('.json')?'application/json':'text/plain'});res.end(data);
+  }catch{res.writeHead(404);res.end();}});
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  const site={...profiles.find(x=>x.id==='metho'),origin:'http://127.0.0.1:'+server.address().port,languages:['zh-CN','en']};
+  const token='fixture-site-credential-not-real-1234567890',sectionId=sectionsForSite(site)[0].id;
+  let failVerification=false;
+  const receiver=await createReceiver({config:{home:join(dir,'state'),source:resolve('.'),sites:[{site,publicRoot:base,tokenHash:p.hash(token)}]},
+    build:options=>buildAndActivate({...options,verify:manifest=>{if(failVerification)throw Error('Simulated public verification failure');return verifyLive(manifest,site.origin,false);}})});
+  t.after(async()=>{await receiver.app.close();await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});});
+  const endpoint='/api/rssd-receiver/v1/sites/metho/submissions',headers={authorization:'Bearer '+token};
+  const packet={version:1,requestId:'request-en',siteId:site.id,workspaceId:site.spaceId,sectionId,workId:'example',locale:'en',revision:1,contentHash:'a'.repeat(64),route:'/en/news/example/',content:{locale:'en',title:'English first',bodyMarkdown:'Complete English body.',metadata:{date:'2026-10-31'}}};
+  assert.equal((await receiver.app.inject({method:'POST',url:endpoint,payload:packet})).statusCode,401);
+  const received=await receiver.app.inject({method:'POST',url:endpoint,headers,payload:packet});assert.equal(received.statusCode,200);assert.equal(received.json().state,'queued');
+  await receiver.tick();const receipt=(await receiver.app.inject({url:endpoint+'/'+packet.requestId,headers})).json();assert.equal(receipt.state,'success',receipt.error);
+  assert.match(await (await fetch(site.origin+packet.route)).text(),/Complete English body/);
+  const visible=await(await fetch(site.origin+'/rssd-content/'+contentKey(packet)+'.json')).json();assert.equal(visible.requestId,packet.requestId);
+  const prior=JSON.parse(await readFile(join(current,'release.json'),'utf8'));
+  const update={...packet,requestId:'request-en-2',revision:2,contentHash:'b'.repeat(64),content:{...packet.content,title:'Revised English'}};
+  await receiver.app.inject({method:'POST',url:endpoint,headers,payload:update});failVerification=true;await receiver.tick();
+  assert.equal((await receiver.app.inject({url:endpoint+'/'+update.requestId,headers})).json().state,'failed');
+  assert.equal(JSON.parse(await readFile(join(current,'release.json'),'utf8')).release,prior.release);
+  failVerification=false;await receiver.app.inject({method:'POST',url:endpoint+'/'+update.requestId+'/retry',headers,payload:{}});await receiver.tick();
+  assert.equal((await receiver.app.inject({url:endpoint+'/'+update.requestId,headers})).json().state,'success');
+  const chinese={...packet,requestId:'request-zh',locale:'zh-CN',route:'/news/example/',content:{locale:'zh-CN',title:'后补中文',bodyMarkdown:'完整的中文正文。',metadata:{date:'2026-10-31'}}};
+  await receiver.app.inject({method:'POST',url:endpoint,headers,payload:chinese});await receiver.tick();
+  assert.equal((await receiver.app.inject({url:endpoint+'/'+chinese.requestId,headers})).json().state,'success');
+  assert.match(await (await fetch(site.origin+packet.route)).text(),/hreflang="zh-CN"/);
+  assert.match(await (await fetch(site.origin+chinese.route)).text(),/完整的中文正文/);
+});

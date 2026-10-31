@@ -1,0 +1,18 @@
+.workspace-host:has(>.background-queue){grid-template-rows:var(--workspace-title-height,44px) minmax(0,1fr) 30px}
+.background-queue{grid-column:2;grid-row:3;position:relative;z-index:53;min-width:0;color:var(--ink);font:11px/1.4 var(--ui)}
+.background-queue-toggle{display:flex;align-items:center;gap:12px;width:100%;height:30px;border:0;padding:0 9px;background:transparent;color:var(--muted);font:inherit;cursor:pointer;min-width:0;text-align:left}
+.background-queue-toggle strong{color:var(--ink);font-weight:550;white-space:nowrap}
+.background-queue-toggle-end{display:inline-flex;align-items:center;gap:5px;margin-left:auto;white-space:nowrap}
+.background-queue-toggle .background-queue-attention{color:var(--accent)}
+.queue-chevron-open{transform:rotate(90deg)}.queue-chevron-closed{transform:rotate(-90deg)}
+.background-task-drawer{position:absolute;bottom:34px;right:0;width:min(680px,100%);max-height:min(420px,65vh);display:flex;flex-direction:column;border:1px solid var(--hair);border-radius:10px;background:var(--panel);box-shadow:0 10px 35px #0002;overflow:hidden}
+.background-task-drawer header{display:flex;align-items:center;gap:12px;min-height:42px;padding:0 12px;border-bottom:1px solid var(--hair)}
+.background-task-drawer header strong{font-size:12px;font-weight:600}.background-task-drawer header>span{color:var(--muted);margin-right:auto}
+.background-task-drawer header button{display:grid;place-items:center;border:0;border-radius:5px;background:transparent;color:var(--muted);width:25px;height:25px;cursor:pointer}
+.background-task-drawer header button:hover,.background-queue-item:hover{background:var(--hover)}
+.background-queue-list{min-height:0;overflow:auto;flex:1}.background-queue-item{display:flex;align-items:center;gap:10px;width:100%;padding:10px 13px;background:transparent;border:0;border-bottom:1px solid var(--hair);text-align:left;color:var(--ink);font:inherit;cursor:pointer}
+.background-queue-item.is-selected{background:var(--accent-soft)}.background-queue-title{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px}.background-queue-title strong{font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.background-queue-title>span{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.background-queue-state{color:var(--muted);white-space:nowrap}.background-queue-dot{height:6px;width:6px;flex:none;border-radius:50%;background:var(--muted)}.background-queue-dot.running{background:var(--accent)}.background-queue-dot.attention{background:#bc7826}.background-queue-dot.complete{background:#65946f}
+.background-queue-detail{padding:10px 13px;background:var(--paper);border-top:1px solid var(--hair);overflow:auto;max-height:130px;overflow-wrap:anywhere}.background-queue-detail p{margin:5px 0;color:var(--muted)}.background-queue-detail small{color:var(--muted)}
+.background-task-drawer footer{padding:8px 13px;border-top:1px solid var(--hair);color:var(--muted);font-size:10px}.background-queue-empty,.background-queue-error{padding:16px;margin:0;color:var(--muted)}.background-queue-error{padding:8px 13px;color:#a26e27}
+.background-queue button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+@media(max-width:580px){.background-queue-toggle{gap:7px}.background-queue-toggle-end{font-size:0}.background-queue-toggle-end svg{font-size:initial}.background-task-drawer{width:100%}.background-task-drawer header>span{display:none}.background-task-drawer header strong{margin-right:auto}}

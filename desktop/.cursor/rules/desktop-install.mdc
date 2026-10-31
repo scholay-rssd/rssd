@@ -1,0 +1,14 @@
+---
+description: Rebuild and replace the macOS desktop app after product changes, and remove old bundles first.
+alwaysApply: true
+---
+
+# Desktop install
+
+After a product change that should reach the installed app, rebuild and replace it. Do not leave the previous build running.
+
+1. Quit `scholay today` (`osascript` quit, then `killall papr-desktop` and the bundled `scholay-mcp` if they are still running).
+2. Delete historical app bundles before installing: `/Applications/scholay today.app`, `target/release/bundle/macos/scholay today.app`, Trash copies named `scholay today*.app`, and any leftover `previous-mac-app` bundle. Do not delete Downloads release archives, videos, or unrelated projects.
+3. Run `pnpm build:desktop` (`tauri build --bundles app --ci --no-sign --locked`).
+4. Copy the new bundle to `/Applications/scholay today.app`, run `xattr -cr` on it, and open it.
+5. The app is unsigned. If macOS blocks the first open, the user may need to choose “仍要打开”.

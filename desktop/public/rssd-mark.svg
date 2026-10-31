@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="8 12 112 104">
+  <!-- RSSD's orthogonal A550-like letterforms. Open spacing for small icons. -->
+  <g fill="none" stroke="currentColor" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M16.5 108V20H30.5V108M16.5 64H30.5 M57.5 20H43.5V64H57.5V108H43.5 M84.5 20H70.5V64H84.5V108H70.5 M97.5 20H111.5V108H97.5Z" stroke-width="7"/>
+  </g>
+</svg>

@@ -1,0 +1,11 @@
+export type InternalNotes=Partial<Record<'supplement'|'writing'|'images'|'verification'|'other',string>>;
+export type BlockInternalNotes=Record<string,{notes:InternalNotes;anchor?:{type:string;text:string}}>;
+export type PrivateEditorialData={internalNotes:InternalNotes;blockNotes?:BlockInternalNotes;modelSignatures:ModelSignature[]};
+export type ModelSignature={runId:string;agentId:string;agentName:string;modelId:string|null;modelName:string|null;device?:string|null;startedAt:string;finishedAt?:string;action:string;status:'running'|'completed'|'interrupted'};
+export const INTERNAL_NOTE_FIELDS:Readonly<Record<keyof InternalNotes,string>>;
+export function internalNoteErrors(value:unknown):string[];
+export function blockNoteErrors(value:unknown):string[];
+export function appendInternalNotes(previous:InternalNotes|undefined,patch:InternalNotes):InternalNotes;
+export function privateEditorialData(value:{internalNotes?:InternalNotes;blockNotes?:BlockInternalNotes;modelSignatures?:ModelSignature[];blocks?:{id:string;type:string;text:string}[]}):PrivateEditorialData;
+export function restorePrivateEditorial(notebook:{blocks:{id:string;type:string;text:string}[]},data:Partial<PrivateEditorialData>):PrivateEditorialData;
+export function validatePrivateEditorial(value:unknown):PrivateEditorialData&{version:1;bodySha:string};

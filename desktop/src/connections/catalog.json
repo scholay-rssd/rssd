@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "id": "google-books", "name": "Google 书库", "category": "books", "icon": "google",
+      "description": "从 Google File Search 书库浏览已索引的书籍与资料。",
+      "capabilities": ["书库目录", "文档目录"], "auth": "api-key", "secretLabel": "Gemini API Key",
+      "setupUrl": "https://aistudio.google.com/api-keys", "docsUrl": "https://ai.google.dev/gemini-api/docs/file-search",
+      "requirement": "需要开通 Gemini API，并已有 File Search 书库。当前接入读取书库和文档目录；Drive 同步、上传与读书问答另行接入。",
+      "targetLabel": "指定书库（可选）", "targetPlaceholder": "fileSearchStores/your-library",
+      "targetHelp": "留空浏览当前 API 项目的书库；填写书库 ID 后浏览文档。", "targetRequired": false
+    },
+    {
+      "id": "feedly", "name": "Feedly", "category": "reading", "icon": "feedly",
+      "description": "读取团队文件夹，以及指定资讯流中的文章。",
+      "capabilities": ["团队文件夹", "文章预览"], "auth": "bearer", "secretLabel": "Feedly API Token",
+      "setupUrl": "https://feedly.com/i/team/api", "docsUrl": "https://developers.feedly.com/reference/authorization",
+      "requirement": "需要 Feedly API 访问权限。官方自助 Token 面向 Enterprise 客户；普通阅读会员不代表已开通 API。",
+      "targetLabel": "资讯流 Stream ID（可选）", "targetPlaceholder": "enterprise/…/category/…",
+      "targetHelp": "留空浏览团队文件夹，也可填入 AI Feed、文件夹或 Board 的 Stream ID。", "targetRequired": false
+    },
+    {
+      "id": "inoreader", "name": "Inoreader", "category": "reading", "icon": "inoreader",
+      "description": "读取订阅目录、收藏和选定资料流中的文章。",
+      "capabilities": ["订阅目录", "文章预览"], "auth": "oauth-token", "secretLabel": "OAuth Access Token",
+      "setupUrl": "https://www.inoreader.com/developers/oauth", "docsUrl": "https://www.inoreader.com/developers/",
+      "requirement": "需要有 API 权限的账号和已注册应用签发的只读 OAuth 访问令牌。本版使用现有令牌，过期后需更新；浏览器授权与自动续期尚未接入。",
+      "targetLabel": "资料流 Stream ID（可选）", "targetPlaceholder": "user/-/state/com.google/starred",
+      "targetHelp": "留空浏览订阅；填写收藏、标签或订阅的 Stream ID 后浏览文章。", "targetRequired": false
+    },
+    {
+      "id": "figma", "name": "Figma", "category": "design", "icon": "figma",
+      "description": "连接设计文件，浏览页面与画板并回到原始设计。",
+      "capabilities": ["文件验证", "画板目录"], "auth": "personal-token", "secretLabel": "Figma Personal Access Token",
+      "setupUrl": "https://www.figma.com/settings", "docsUrl": "https://developers.figma.com/docs/rest-api/authentication/",
+      "requirement": "使用具备 file_content:read 权限的个人访问令牌，并确保账号能读取所选文件。页面生成属于后续制作步骤。",
+      "targetLabel": "设计文件或画板链接", "targetPlaceholder": "https://www.figma.com/design/…",
+      "targetHelp": "支持 Design / File 链接及 node-id；连接时会检查所选文件的读取权限。", "targetRequired": true
+    },
+    {
+      "id": "github", "name": "GitHub", "category": "code", "icon": "github",
+      "description": "浏览可访问的仓库，查看指定仓库的版本发布。",
+      "capabilities": ["仓库目录", "版本发布"], "auth": "personal-token", "secretLabel": "GitHub Personal Access Token",
+      "setupUrl": "https://github.com/settings/personal-access-tokens", "docsUrl": "https://docs.github.com/en/rest/repos/repos",
+      "requirement": "建议创建限定仓库的 Fine-grained Token。查看版本发布需要 Contents: read 权限；Today 仅调用只读接口。",
+      "targetLabel": "指定仓库（可选）", "targetPlaceholder": "owner/repository 或 GitHub 仓库链接",
+      "targetHelp": "留空浏览可访问的仓库；指定仓库后浏览版本发布。", "targetRequired": false
+    }
+  ]
+}

@@ -98,19 +98,22 @@ export class CenterOutbox {
   async flush(){const results=[];for(const entry of await this.list())if(entry.state==='pending')results.push(await this.flushOne(entry.requestId));return results;}
 }
 
-export async function saveCenterConnection(directory,{origin,token}){
+export async function saveCenterConnection(directory,{origin,token,persistToken=true}){
   const client=createCenterClient({origin,token}),identity=await client.identity();
   if(identity.protocolVersion!==1||!identity.workerId||!identity.orgId)throw Error('Center did not return a compatible device identity');
   const path=join(directory,'connection.json');
   return withFileLock(path+'.lock',async()=>{
     let old;try{old=await json(path);}catch(error){if(error.code!=='ENOENT')throw error;}
     if(old&&(old.identity.orgId!==identity.orgId||old.origin!==client.origin)){
-      const oldClient=createCenterClient(old),entries=await new CenterOutbox({directory:join(directory,'outbox'),client:oldClient}).list();
+      const oldClient=createCenterClient({...old,token:old.token||token}),entries=await new CenterOutbox({directory:join(directory,'outbox'),client:oldClient}).list();
       if(entries.length)throw Error('Archive this center’s retained submissions before connecting another center');
+      let drafts=[];try{drafts=await readdir(join(directory,'drafts'));}catch(error){if(error.code!=='ENOENT')throw error;}
+      const active=await json(join(directory,'active-claim.json')).catch(error=>{if(error.code==='ENOENT')return null;throw error;});
+      if(drafts.length||active?.claim)throw Error('Archive this center’s local drafts and resolve the active claim before switching centers');
     }
-    const value={version:1,origin:client.origin,token,identity};await atomic(path,value);
+    const value={version:1,origin:client.origin,...(persistToken?{token}:{}),identity};await atomic(path,value);
     return {origin:value.origin,identity};
   });
 }
-export async function loadCenterConnection(directory){const value=await json(join(directory,'connection.json'));return {client:createCenterClient(value),identity:value.identity};}
+export async function loadCenterConnection(directory,{token=process.env.RSSD_CENTER_TOKEN}={}){const value=await json(join(directory,'connection.json'));return {client:createCenterClient({...value,token:token||value.token}),identity:value.identity};}
 export {atomic as writeCenterJson};

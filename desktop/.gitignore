@@ -1,0 +1,66 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+.pnpm-store/
+dist
+dist-ssr
+*.local
+
+# Rust / Cargo build output (the Cargo workspace root target dir)
+/target
+
+# Stray compiler scratch output
+a.out
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+._*
+
+# ralph-loop local state
+.claude/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Personal runtime data / credentials must never enter this public repository.
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.pem
+*.key
+credentials.json
+cookies.json
+storage-state*.json
+auth-state*.json
+/backups/
+/outputs/
+/state/
+/logs/
+/.local/
+/artifacts/
+/test-results/
+/design-qa.md
+*.app/
+*.dmg
+*.exe
+*.msi
+*.pdb

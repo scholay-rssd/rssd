@@ -1,0 +1,73 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "RSSD",
+  "version": "0.16.5",
+  "identifier": "com.thomas.papr",
+  "mainBinaryName": "papr-desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1430",
+    "beforeBuildCommand": "node scripts/prepare-public-bridge.mjs && node scripts/prepare-mcp.mjs && node scripts/prepare-workbench.mjs && pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "dragDropEnabled": false,
+        "title": "RSSD",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 920,
+        "minHeight": 560,
+        "backgroundColor": "#FBF9F3",
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 20,
+          "y": 20
+        }
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "papr"
+        ]
+      }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc5OUYwOERDMzI3ODFCRTYKUldUbUczZ3kzQWlmZVp0NlFMajZxSFVKV2xhY1NkWmczTWxRc1BiKzE5RFVNcCtoZnFPWm1aMEQK",
+      "endpoints": [
+        "https://today.scholay.com/updates/today/latest.json"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "macOS": {
+      "infoPlist": "Info.plist"
+    },
+    "resources": {
+      "../THIRD_PARTY_HOTBOARD.md": "THIRD_PARTY_HOTBOARD.md",
+      "../LICENSE": "LICENSE",
+      "../target/bundle-resources/mcp/": "mcp/",
+      "../target/bundle-resources/workbench/": "workbench/"
+    },
+    "createUpdaterArtifacts": true,
+    "targets": "all",
+    "category": "News",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

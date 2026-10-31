@@ -1,0 +1,12 @@
+export type SectionWritingMode='essay'|'documentation'|'design'|'encyclopedia'|'xiwen'|'observation'|'opensource'|'calendar'|'history';
+export type SiteSection={id:string;name:string;defaultMode?:SectionWritingMode;order?:number;enabled?:boolean;writable?:boolean;aliases?:string[]};
+export type SectionCatalog={version:1;revision:string;sections:SiteSection[];syncedAt?:string;status?:'ready'|'cached'|'offline'|'unavailable';error?:string};
+export type SectionSite={id:string;sectionCatalog?:SectionCatalog;sections?:SiteSection[]};
+export const SITE_SECTIONS:Record<string,SiteSection[]>;
+export function sectionsForSite(site:SectionSite):SiteSection[];
+export function activeSectionsForSite(site:SectionSite):SiteSection[];
+export function writableSectionsForSite(site:SectionSite):SiteSection[];
+export function validateSectionCatalog(value:unknown):SectionCatalog;
+export function requirePublishSection(value:unknown,site:SectionSite):string;
+export function sectionWritingMode(siteId:string|SectionSite,sectionId:string):SectionWritingMode|undefined;
+export function validateSectionId(value:unknown,site:SectionSite):string|undefined;

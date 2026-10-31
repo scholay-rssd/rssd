@@ -1,0 +1,138 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { tr } from "../uiText";
+interface Props {
+  /** Pixel width of the pane this handle resizes, at drag start. */
+  width: number;
+  /** `right`: dragging right grows the pane (sidebar / list, handle on the
+   *  pane's right edge). `left`: dragging left grows the pane (the AI drawer,
+   *  handle on its left edge). */
+  side: "left" | "right";
+  /** Lower clamp for the resulting width (px). */
+  min: number;
+  /** Upper clamp for the resulting width (px). */
+  max: number;
+  /** Called continuously during the drag with the new, clamped width. */
+  onResize: (width: number) => void;
+  /** Accessible label for the separator. */
+  label: string;
+  /** Persistent divider and grip for layouts without a visible pane border. */
+  visible?: boolean;
+  /** Screen pixels per layout pixel, for panes inside CSS zoom. */
+  scale?: number;
+  /** Temporarily yield an adjacent native webview during pointer dragging. */
+  onDragChange?: (dragging: boolean) => void;
+  onReset?: () => void;
+}
+
+/**
+ * A thin draggable separator between two panes. Implemented with native
+ * pointer events (no third-party resize library) to stay lightweight and match
+ * the project's hand-rolled interaction code.
+ *
+ * The drag is tracked from the pointer's start X and the pane's start width, so
+ * a slow first frame can't desync the handle from the cursor. Move/up are bound
+ * on `window` so the drag survives the cursor outrunning the 7px hit area, and
+ * the body `col-resize` cursor + a no-select guard make the gesture feel native.
+ *
+ * We deliberately do NOT use `setPointerCapture`: the handle's slot moves every
+ * frame (its `left` tracks the live `--col-*` variable), and WebKit (the macOS
+ * Tauri webview) releases the capture whenever the captured element changes
+ * position — which dropped the drag and flickered the line mid-gesture. The
+ * An optional visible variant draws a stable divider and grip; neither uses
+ * pointer capture or changes the handle's geometry during the gesture.
+ */
+export default function ResizeHandle({ width, side, min, max, onResize, label, visible = false, scale = 1, onDragChange, onReset }: Props) {
+  // Latest props in a ref so the move/up listeners (bound once per drag) always
+  // read fresh values without re-binding mid-drag.
+  const latest = useRef({ width, side, min, max, onResize, scale, onDragChange, onReset });
+  latest.current = { width, side, min, max, onResize, scale, onDragChange, onReset };
+  const cleanupDrag = useRef<(() => void) | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Ignore secondary buttons so a right-click context menu can't start a drag.
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.focus({ preventScroll: true });
+    cleanupDrag.current?.();
+    const startX = e.clientX;
+    const { width: startW, scale: startScale, onDragChange } = latest.current;
+    const dragScale = Number.isFinite(startScale) && startScale > 0 ? startScale : 1;
+
+    const oldCursor = document.body.style.cursor;
+    const oldSelect = document.body.style.userSelect;
+    setDragging(true);
+    onDragChange?.(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const move = (ev: PointerEvent) => {
+      const { side, min, max, onResize } = latest.current;
+      const dx = (ev.clientX - startX) / dragScale;
+      // `right` panes grow as the cursor moves right; `left` panes (drawer on
+      // the right) grow as it moves left.
+      const raw = side === "right" ? startW + dx : startW - dx;
+      onResize(Math.min(max, Math.max(min, raw)));
+    };
+    const up = () => {
+      document.body.style.cursor = oldCursor;
+      document.body.style.userSelect = oldSelect;
+      setDragging(false);
+      onDragChange?.(false);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("blur", up);
+      cleanupDrag.current = null;
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    window.addEventListener("blur", up);
+    cleanupDrag.current = up;
+  }, []);
+
+  // Keyboard a11y: arrow keys nudge the boundary in 16px steps for users who
+  // can't drag.
+  const onKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const { width, side, min, max, onResize, onReset } = latest.current;
+    const step = e.shiftKey ? 48 : 16;
+    let delta = 0;
+    if (e.key === "Enter" && onReset) { e.preventDefault(); onReset(); return; }
+    if (e.key === "ArrowLeft") delta = side === "right" ? -step : step;
+    else if (e.key === "ArrowRight") delta = side === "right" ? step : -step;
+    else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      onResize(e.key === "Home" ? min : max);
+      return;
+    } else return;
+    e.preventDefault();
+    onResize(Math.min(max, Math.max(min, width + delta)));
+  }, []);
+
+  // Belt-and-braces: if this handle unmounts mid-drag (e.g. focus mode hides
+  // the panes), make sure the global cursor/select overrides are cleared.
+  useEffect(() => {
+    return () => {
+      cleanupDrag.current?.();
+    };
+  }, []);
+
+  return (
+    <div
+      className={`resize-handle${visible ? " is-visible" : ""}${dragging ? " is-dragging" : ""}`}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      title={tr("{{label}}：拖动或使用左右方向键{{value}}", {label, value: onReset ? tr("；双击或按 Enter 恢复默认比例") : ""})}
+      aria-valuenow={Math.round(width)}
+      aria-valuemin={min}
+      aria-valuemax={Math.round(max)}
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      onDoubleClick={onReset}
+    />
+  );
+}

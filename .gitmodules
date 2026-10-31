@@ -1,0 +1,13 @@
+[submodule "web/themes"]
+	path = web/themes
+	url = https://github.com/scholay-rssd/rssd-themes.git
+[submodule "sites"]
+	path = sites
+	url = https://github.com/scholay-rssd/rssd-sites.git
+[submodule "web/demo"]
+	path = web/demo
+	url = https://github.com/scholay-rssd/rssd-examples.git
+[submodule "center"]
+	path = center
+	url = https://github.com/scholay-rssd/rssd-center.git
+	branch = rssd

@@ -1,0 +1,415 @@
+//! The app remains the single writer. MCP uses a permission-restricted local
+//! Unix socket / Windows named pipe; remote WebViews cannot control the service.
+use crate::{article_clean, db, hot_board, state::AppState};
+use papr_core::library::{self, Mutation};
+use serde_json::{json, Value};
+use tauri::{AppHandle, Emitter, Manager, State, Webview};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+
+pub fn changed(app: &AppHandle) {
+    let _ = app.emit("library-changed", ());
+}
+
+pub async fn mutate(
+    app: &AppHandle,
+    actions: Vec<Mutation>,
+    actor: &str,
+    dry_run: bool,
+    expected: Option<i64>,
+    request_key: Option<&str>,
+) -> Result<Value, String> {
+    let state = app.state::<AppState>();
+    let result = {
+        let c = state.db.lock().await;
+        if actor == "mcp"
+            && (!db::setting_flag(&c, "mcp_enabled", false)
+                || !db::setting_flag(&c, "mcp_writable", false))
+        {
+            return Err("Agent access was disabled before this change could be committed".into());
+        }
+        library::apply(&c, &actions, actor, dry_run, expected, request_key)
+            .map_err(|e| e.to_string())?
+    };
+    if !dry_run {
+        changed(app);
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn list_agented_groups(
+    _space: crate::spaces::Lease,
+    state: State<'_, AppState>,
+    webview: Webview,
+) -> Result<Value, String> {
+    hot_board::require_main(&webview)?;
+    let c = state.read().await;
+    library::groups(&c).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn library_apply(
+    _space: crate::spaces::Lease,
+    app: AppHandle,
+    webview: Webview,
+    actions: Vec<Mutation>,
+    dry_run: bool,
+    expected_revision: Option<i64>,
+    request_key: Option<String>,
+) -> Result<Value, String> {
+    hot_board::require_main(&webview)?;
+    mutate(
+        &app,
+        actions,
+        "desktop",
+        dry_run,
+        expected_revision,
+        request_key.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn library_status(
+    _space: crate::spaces::Lease,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    webview: Webview,
+) -> Result<Value, String> {
+    hot_board::require_main(&webview)?;
+    let c = state.read().await;
+    let executable = app
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?
+        .join(if cfg!(windows) { "mcp/scholay-mcp.exe" } else { "mcp/scholay-mcp" });
+    let dir = std::path::PathBuf::from(crate::spaces::text("stateDirectory")?);
+    let socket = scholay_local_ipc::endpoint(&dir).map_err(|_| "Cannot resolve the local bridge")?;
+    Ok(
+        json!({"enabled":db::setting_flag(&c,"mcp_enabled",false),"writable":db::setting_flag(&c,"mcp_writable",false),
+      "editorial":db::setting_flag(&c,"mcp_editorial",false),"articles":db::setting_flag(&c,"mcp_articles",false),"articleClean":db::setting_flag(&c,"mcp_article_clean",false),
+      "revision":library::revision(&c).map_err(|e|e.to_string())?,"archived":library::archived(&c).map_err(|e|e.to_string())?,
+      "history":library::history(&c).map_err(|e|e.to_string())?,"configuration":{"mcpServers":{"scholay-today":{"command":executable,"args":["--socket",socket]}}}}),
+    )
+}
+
+#[tauri::command]
+pub async fn library_permissions(
+    _space: crate::spaces::Lease,
+    app: AppHandle,
+    state: State<'_, AppState>,
+    webview: Webview,
+    enabled: bool,
+    writable: bool,
+    articles: bool,
+    article_clean: bool,
+    editorial: Option<bool>,
+) -> Result<(), String> {
+    hot_board::require_main(&webview)?;
+    let c = state.db.lock().await;
+    // The dependency chain is enforced here, so a stale view can never leave a
+    // capability enabled underneath a switch the user turned off.
+    let writable = writable && enabled;
+    let articles = articles && enabled;
+    let article_clean = article_clean && articles;
+    for (key, value) in [
+        ("mcp_enabled", enabled),
+        ("mcp_editorial", editorial.unwrap_or(false) && enabled),
+        ("mcp_writable", writable),
+        ("mcp_articles", articles),
+        ("mcp_article_clean", article_clean),
+    ] {
+        db::set_setting(&c, key, if value { "true" } else { "false" })
+            .map_err(|e| e.to_string())?;
+    }
+    changed(&app);
+    Ok(())
+}
+
+async fn dispatch(app: &AppHandle, request: Value) -> Result<Value, String> {
+    let method = request["method"].as_str().ok_or("Missing method")?;
+    let p = &request["params"];
+    let state = app.state::<AppState>();
+    {
+        // Each capability has its own switch: changing the library, reading
+        // article bodies, and letting the app fetch original pages for cleaning
+        // are separate decisions the user makes in Settings.
+        const READ_ONLY: &str =
+            "This server is read-only. The user must enable write access in Settings.";
+        const NO_ARTICLES: &str = "Reading article content over MCP is disabled. The user must enable it in Settings → Agent access.";
+        const NO_CLEANING: &str = "Structured cleaning is disabled. The user must allow the app to fetch original pages in Settings → Agent access.";
+        let required: &[(&str, &str)] = match method {
+            "draft_list" | "draft_read" | "draft_preview" | "publication_status" | "draft_save" | "draft_create" => &[("mcp_editorial", "Enable manuscript access in Settings → Agent access first")],
+            "library_list" => &[],
+            "library_apply" | "feed_add" => &[("mcp_writable", READ_ONLY)],
+            "article_list" | "article_read" | "article_clean_status" | "page_list" => {
+                &[("mcp_articles", NO_ARTICLES)]
+            }
+            // Cleaning also surfaces the cleaned text, so it needs both.
+            "article_clean" | "page_read" | "feed_read" => &[
+                ("mcp_articles", NO_ARTICLES),
+                ("mcp_article_clean", NO_CLEANING),
+            ],
+            _ => return Err("Unknown method".into()),
+        };
+        let c = state.read().await;
+        if !db::setting_flag(&c, "mcp_enabled", false) {
+            return Err("MCP is disabled. Enable it in Settings → Agent access.".into());
+        }
+        for (flag, message) in required {
+            if !db::setting_flag(&c, flag, false) {
+                return Err((*message).into());
+            }
+        }
+    }
+    match method {
+        "page_list" | "page_read" | "feed_read" => {
+            let result = if method == "page_list" { crate::page_source::list(app, p).await? } else if method == "feed_read" { crate::page_source::read_feed(p.clone()).await? } else { crate::page_source::read(app, p.clone()).await? };
+            // Recheck after asynchronous DNS/capture/fetch: disabling Agent
+            // access while a read is running must suppress the returned body.
+            let c = state.read().await;
+            if !db::setting_flag(&c, "mcp_enabled", false) || !db::setting_flag(&c, "mcp_articles", false) || matches!(method, "page_read" | "feed_read") && !db::setting_flag(&c, "mcp_article_clean", false) {
+                return Err("Agent source access was disabled before this result could be returned".into());
+            }
+            Ok(result)
+        }
+        "draft_list" | "draft_read" | "draft_preview" | "publication_status" | "draft_save" | "draft_create" => crate::editorial::call(method,p.clone()).await,
+        "library_list" => {
+            let c = state.read().await;
+            Ok(
+                json!({"revision":library::revision(&c).map_err(|e|e.to_string())?,"feeds":db::list_feeds(&c).map_err(|e|e.to_string())?,"folders":library::folders(&c).map_err(|e|e.to_string())?,"groups":library::groups(&c).map_err(|e|e.to_string())?,"archived":library::archived(&c).map_err(|e|e.to_string())?}),
+            )
+        }
+        "library_apply" => {
+            if p["dry_run"].as_bool() == Some(false) && p["expected_revision"].as_i64().is_none() {
+                return Err("Read library_list and supply expected_revision before writing".into());
+            }
+            let actions: Vec<Mutation> = serde_json::from_value(p["actions"].clone())
+                .map_err(|_| "Invalid library actions")?;
+            // V1 only allows public subscription URLs from agents. Approved
+            // loopback connectors are added through the desktop's feed dialog.
+            for action in &actions {
+                if let Mutation::SetFeedUrl { url, .. } = action {
+                    crate::public_fetch::resolve(url).await?;
+                }
+            }
+            mutate(
+                app,
+                actions,
+                "mcp",
+                p["dry_run"].as_bool().unwrap_or(true),
+                p["expected_revision"].as_i64(),
+                p["request_key"].as_str(),
+            )
+            .await
+        }
+        "feed_add" => {
+            let url = p["url"].as_str().ok_or("Missing URL")?;
+            let (bytes, _, url) = crate::public_fetch::fetch(url, None, 8 * 1024 * 1024).await?;
+            if !crate::ingestion::parse::looks_like_feed(&bytes) {
+                return Err("Provide a direct RSS/Atom URL. Website discovery is available in the desktop app.".into());
+            }
+            let feed = {
+                let c = state.db.lock().await;
+                if !db::setting_flag(&c, "mcp_enabled", false)
+                    || !db::setting_flag(&c, "mcp_writable", false)
+                {
+                    return Err(
+                        "Agent access was disabled before this subscription could be saved".into(),
+                    );
+                }
+                library::subscribe(&c, &url, &bytes, None, p["folder_id"].as_i64(), "mcp")
+                    .map_err(|_| "Could not subscribe. Check the URL and folder in the app.")?
+            };
+            changed(app);
+            Ok(json!(feed))
+        }
+        "article_list" => {
+            let selection = article_clean::selection(p, None)?;
+            // group_id filters the shortlist only. article_clean keeps its own
+            // unread / not-yet-cleaned selection and ignores this field.
+            let group_id = match p.get("group_id") {
+                None | Some(Value::Null) => None,
+                Some(value) => Some(
+                    value
+                        .as_i64()
+                        .filter(|id| *id > 0)
+                        .ok_or("group_id must be a positive integer")?,
+                ),
+            };
+            let c = state.read().await;
+            article_clean::list(&c, &selection, group_id)
+        }
+        "article_read" => {
+            let article_id = p["article_id"]
+                .as_i64()
+                .filter(|id| *id > 0)
+                .ok_or("Provide a positive article_id")?;
+            let markdown = match p["format"].as_str() {
+                None | Some("markdown") => true,
+                Some("blocks") => false,
+                _ => return Err("format accepts markdown or blocks".into()),
+            };
+            let offset = p["offset"].as_u64().unwrap_or(0) as usize;
+            let limit = match p["limit"] {
+                Value::Null => article_clean::DEFAULT_READ_BLOCKS,
+                ref value => match value.as_u64() {
+                    Some(n) if n >= 1 && n as usize <= article_clean::MAX_READ_BLOCKS => n as usize,
+                    _ => {
+                        return Err(format!(
+                            "limit accepts 1–{} blocks",
+                            article_clean::MAX_READ_BLOCKS
+                        ))
+                    }
+                },
+            };
+            let budget = article_clean::read_budget(p)?;
+            let c = state.read().await;
+            article_clean::read(&c, article_id, markdown, offset, limit, budget)
+        }
+        "article_clean" => {
+            // A run of up to 200 articles cannot finish inside one request, so
+            // this only queues the job; progress comes from article_clean_status.
+            let force = p["force"].as_bool().unwrap_or(false);
+            let selection = article_clean::selection(p, if force { None } else { Some(false) })?;
+            let request_key = match p["request_key"].as_str() {
+                Some(key) if key.chars().count() > 128 => {
+                    return Err("request_key is limited to 128 characters".into())
+                }
+                Some(key) => Some(key.to_owned()),
+                None => None,
+            };
+            let ids = {
+                let c = state.read().await;
+                if p["dry_run"].as_bool().unwrap_or(true) {
+                    return article_clean::preview(&c, &selection);
+                }
+                article_clean::candidate_ids(&c, &selection)?
+            };
+            if ids.is_empty() {
+                return Ok(json!({"started":false,"count":0,
+                  "message":"Nothing to clean for this selection. Pass force: true to re-clean articles that were already cleaned."}));
+            }
+            article_clean::start(app, ids, force, request_key)
+        }
+        "article_clean_status" => match p["job_id"].as_str() {
+            Some(id) => article_clean::job(id).ok_or_else(|| "No such cleaning job".to_string()),
+            None => Ok(article_clean::active_job()
+                .unwrap_or_else(|| json!({"running":false,"message":"No cleaning job is running"}))),
+        },
+        _ => Err("Unknown method".into()),
+    }
+}
+
+fn inactive_space_read(dir:&std::path::Path,request:Value)->Result<Value,String>{
+    let method=request["method"].as_str().ok_or("Missing method")?;
+    if !["library_list","article_list","article_read"].contains(&method){return Err("此空间暂不执行修改或页面抓取，请切回原空间继续".into());}
+    // The listener owns this path for its entire lifetime. Never consult the
+    // currently selected AppState when servicing an inactive space's socket.
+    let c=crate::db::open_reader(&dir.join("papr.db")).map_err(|e|e.to_string())?;
+    if !db::setting_flag(&c,"mcp_enabled",false){return Err("MCP is disabled in this space".into());}
+    if method!="library_list"&&!db::setting_flag(&c,"mcp_articles",false){return Err("Reading article content over MCP is disabled in this space".into());}
+    let p=&request["params"];
+    match method {
+        "library_list"=>Ok(json!({"revision":library::revision(&c).map_err(|e|e.to_string())?,"feeds":db::list_feeds(&c).map_err(|e|e.to_string())?,"folders":library::folders(&c).map_err(|e|e.to_string())?,"groups":library::groups(&c).map_err(|e|e.to_string())?,"archived":library::archived(&c).map_err(|e|e.to_string())?})),
+        "article_list"=>{
+            let selection=article_clean::selection(p,None)?;
+            let group_id=match p.get("group_id"){None|Some(Value::Null)=>None,Some(value)=>Some(value.as_i64().filter(|id|*id>0).ok_or("group_id must be a positive integer")?)};
+            article_clean::list(&c,&selection,group_id)
+        },
+        "article_read"=>{
+            let id=p["article_id"].as_i64().filter(|id|*id>0).ok_or("Provide a positive article_id")?;
+            let markdown=match p["format"].as_str(){None|Some("markdown")=>true,Some("blocks")=>false,_=>return Err("format accepts markdown or blocks".into())};
+            let offset=p["offset"].as_u64().unwrap_or(0) as usize;
+            let limit=match p["limit"]{Value::Null=>article_clean::DEFAULT_READ_BLOCKS,ref value=>match value.as_u64(){Some(n) if n>=1&&(n as usize)<=article_clean::MAX_READ_BLOCKS=>n as usize,_=>return Err(format!("limit accepts 1–{} blocks",article_clean::MAX_READ_BLOCKS))}};
+            article_clean::read(&c,id,markdown,offset,limit,article_clean::read_budget(p)?)
+        },
+        _=>Err("Unknown method".into()),
+    }
+}
+
+pub fn spawn(app: AppHandle) {
+    static STARTED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let Ok(space_id) = crate::spaces::text("spaceId") else { return; };
+    let mut started = STARTED.lock().unwrap_or_else(|e| e.into_inner());
+    if started.contains(&space_id) { return; }
+    started.push(space_id.clone());
+    let Ok(dir) = crate::spaces::text("stateDirectory").map(std::path::PathBuf::from) else {
+            return;
+        };
+    tauri::async_runtime::spawn(async move {
+        let Ok(socket) = scholay_local_ipc::endpoint(&dir) else { return };
+        let Ok(mut listener) = scholay_local_ipc::Listener::bind(&socket).await else {
+            log::warn!("Agent bridge could not bind");
+            return;
+        };
+        let limit = std::sync::Arc::new(tokio::sync::Semaphore::new(8));
+        loop {
+            let Ok(stream) = listener.accept().await else {
+                break;
+            };
+            let Ok(permit) = limit.clone().try_acquire_owned() else {
+                continue;
+            };
+            let app = app.clone();
+            let space_id = space_id.clone();
+            let dir=dir.clone();
+            tauri::async_runtime::spawn(async move {
+                let _permit = permit;
+                let (read, mut write) = tokio::io::split(stream);
+                let mut line = String::new();
+                let mut reader = BufReader::new(read.take(700001));
+                let read = reader.read_line(&mut line);
+                // Keep the bounded reader alive across await.
+                let read_result =
+                    tokio::time::timeout(std::time::Duration::from_secs(5), read).await;
+                if !matches!(read_result,Ok(Ok(n)) if n>0 && n<=131072) {
+                    return;
+                }
+                let response = match serde_json::from_str::<Value>(&line) {
+                    Ok(request) => match tokio::time::timeout(
+                        std::time::Duration::from_secs(90),
+                        async {
+                            let _space = crate::spaces::Lease::acquire()?;
+                            if crate::spaces::text("spaceId")? != space_id {
+                                return tauri::async_runtime::spawn_blocking(move||inactive_space_read(&dir,request)).await.map_err(|_|"空间订阅读取已中断")?;
+                            }
+                            dispatch(&app, request).await
+                        },
+                    )
+                    .await
+                    {
+                        Ok(Ok(value)) => json!({"result":value}),
+                        Ok(Err(error)) => json!({"error":error}),
+                        Err(_) => {
+                            json!({"error":"Request timed out; read current state before retrying"})
+                        }
+                    },
+                    Err(_) => json!({"error":"Invalid JSON request"}),
+                };
+                let _ = write.write_all(format!("{response}\n").as_bytes()).await;
+            });
+        }
+    });
+}
+
+#[cfg(test)]
+mod inactive_tests {
+    use super::*;
+    #[test]
+    fn inactive_socket_reads_only_its_database_and_cannot_bypass_capability_flags(){
+        let root=std::env::temp_dir().join(format!("today-inactive-rss-{}",uuid::Uuid::new_v4()));
+        let first=AppState::open_space(&root.join("first"),false).unwrap();
+        let second=AppState::open_space(&root.join("second"),false).unwrap();
+        for state in [&first,&second]{let c=state.db.try_lock().unwrap();db::set_setting(&c,"mcp_enabled","1").unwrap();}
+        {let c=first.db.try_lock().unwrap();library::apply(&c,&[Mutation::CreateFolder{name:"Only first".into(),parent_id:None}],"desktop",false,None,None).unwrap();}
+        let result=inactive_space_read(&root.join("first"),json!({"method":"library_list","params":{}})).unwrap();
+        assert!(result.to_string().contains("Only first"));
+        assert!(!inactive_space_read(&root.join("second"),json!({"method":"library_list","params":{}})).unwrap().to_string().contains("Only first"));
+        for method in ["library_apply","draft_save","article_clean","page_read"]{assert!(inactive_space_read(&root.join("first"),json!({"method":method,"params":{}})).is_err());}
+        assert!(inactive_space_read(&root.join("first"),json!({"method":"article_list","params":{}})).is_err());
+        {let c=first.db.try_lock().unwrap();db::set_setting(&c,"mcp_enabled","0").unwrap();}
+        assert!(inactive_space_read(&root.join("first"),json!({"method":"library_list","params":{}})).is_err());
+        drop(first);drop(second);std::fs::remove_dir_all(root).unwrap();
+    }
+}

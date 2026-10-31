@@ -1,0 +1,683 @@
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
+import { invoke } from "./lib/nativeCore";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import * as api from "./api";
+import { applyUiScale } from "./lib/uiScale";
+import { useUi, READER_FONTS, resolveMode, systemPrefersDark } from "./store";
+import type { Palette, ResolvedMode } from "./store";
+import { useArticleActions } from "./hooks/articleActions";
+import { readCurrentItems } from "./lib/currentList";
+import { checkForUpdates } from "./lib/updater";
+import { applyThemeAccent } from "./lib/appearance";
+import { enqueuePageView } from "./lib/pageViewQueue";
+import { fitPaneWidths, paneResizeMax, resizePaneWidths, type PaneWidths } from "./lib/paneGeometry";
+import { toast as toastApi, reportError } from "./toast";
+import type { ArticleQuery, ArticleSummary, Feed } from "./types";
+import Sidebar from "./components/Sidebar";
+import ArticleList from "./components/ArticleList";
+import ReaderWorkspace from "./components/ReaderWorkspace";
+import CommandPalette, { type CommandAction } from "./components/CommandPalette";
+import SettingsDialog from "./components/SettingsDialog";
+import AddFeedDialog from "./components/AddFeedDialog";
+import ExploreDialog from "./components/ExploreDialog";
+import PromptDialog from "./components/PromptDialog";
+import PlayerBar from "./components/PlayerBar";
+import ResizeHandle from "./components/ResizeHandle";
+import Icon from "./components/Icon";
+import PaneToolbar from "./components/PaneToolbar";
+import { useReaderTabs } from "./lib/readerTabs";
+import { PANEL_BOUNDS } from "./store";
+import { currentRssQuery, type RssLibrarySection } from "./lib/rssLibrary";
+
+import { tr } from "./uiText";
+// Native window backing per (palette, mode). The webview is made non-opaque in
+// lib.rs (to kill the white resize flash), so a resize exposes THIS colour in
+// the strip the webview hasn't repainted yet. Each mirrors that theme's
+// `--reader` (the widest pane, and the edge a resize is dragged from) so the
+// strip blends. Keep in lockstep with `--reader` / `--resize-backing` in
+// styles.css and the cold-start match in lib.rs.
+const BACKING: Record<Palette, Record<ResolvedMode, string>> = {
+  paper: { light: "#FBF9F3", dark: "#1D1E1F" },
+  frost: { light: "#FFFFFF", dark: "#1D1F23" },
+  contrast: { light: "#FFFFFF", dark: "#000000" },
+};
+
+// "#RRGGBB" → [r, g, b]. Used to hand the native backing colour to the
+// set_native_backing command, which paints macOS surfaces the JS setters miss.
+function hexRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+// Apply the startup preference only once per application load, so a remount
+// does not replace the user's current feed or article selection.
+let startupViewApplied = false;
+export function resetStartupView(){startupViewApplied=false;}
+
+export default function App({ active = true, onCaptureBusyChange, onRequestActivate, librarySection = "articles", onLibraryChange, onLibraryHostChange, libraryContent }: { active?: boolean; onCaptureBusyChange?: (busy: boolean) => void; onRequestActivate?: () => void; librarySection?: RssLibrarySection; onLibraryChange?: (section: RssLibrarySection) => void; onLibraryHostChange?: (host: HTMLDivElement | null) => void; libraryContent?: ReactNode }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const readingActive = active && librarySection === "articles";
+  const [readerHidden, setReaderHidden] = useState(false);
+  const rssTabId = useReaderTabs(s => s.activeId);
+  const capturing = useReaderTabs(s => s.captureTabId !== null);
+  useEffect(() => { if (readingActive && rssTabId) setReaderHidden(false); }, [readingActive, rssTabId]);
+
+  const palette = useUi((s) => s.palette);
+  const mode = useUi((s) => s.mode);
+  const webDarkMode = useUi((s) => s.prefs.webDarkMode);
+  const density = useUi((s) => s.density);
+  const uiScale = useUi((s) => s.uiScale);
+  // OS colour scheme, tracked live so `mode: "system"` follows it without a
+  // restart. Only matters while `mode === "system"`, but the listener is cheap
+  // and always mounted so a switch to System takes effect immediately.
+  const [systemDark, setSystemDark] = useState(systemPrefersDark);
+  useEffect(() => {
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq) return;
+    const onChange = () => setSystemDark(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  // The concrete light/dark actually applied: `mode` unless it's "system", in
+  // which case the OS decides.
+  const effectiveMode: ResolvedMode = mode === "system" ? (systemDark ? "dark" : "light") : mode;
+  useEffect(() => {
+    // Apply theme to resident RSS and workspace pages without reopening them.
+    void enqueuePageView(() => api.setPageViewTheme(webDarkMode && effectiveMode === "dark")).catch(reportError);
+  }, [effectiveMode, webDarkMode]);
+  const readerFont = useUi((s) => s.readerFont);
+  const readerSize = useUi((s) => s.readerSize);
+  const readerLeading = useUi((s) => s.readerLeading);
+  const readerWidth = useUi((s) => s.readerWidth);
+  const sidebarWidth = useUi((s) => s.sidebarWidth);
+  const listWidth = useUi((s) => s.listWidth);
+  const aiWidth = useUi((s) => s.aiWidth);
+  const [viewportWidth, setViewportWidth] = useState(() => document.documentElement.clientWidth || window.innerWidth);
+  const [paneResizeSnapshot, setPaneResizeSnapshot] = useState<{ viewport: number; widths: PaneWidths } | null>(null);
+  useEffect(() => {
+    const measure = () => {
+      setViewportWidth(document.documentElement.clientWidth || window.innerWidth);
+      setPaneResizeSnapshot(null);
+    };
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
+  const displayPanes = paneResizeSnapshot?.viewport === viewportWidth
+    ? paneResizeSnapshot.widths
+    : fitPaneWidths(viewportWidth, sidebarWidth, listWidth, PANEL_BOUNDS);
+  const resizePane = (pane: "sidebar" | "list", width: number) => {
+    const widths = resizePaneWidths(viewportWidth, displayPanes, pane, width, PANEL_BOUNDS);
+    setPaneResizeSnapshot({ viewport: viewportWidth, widths });
+    // Only an explicit drag/keyboard action changes the requested preference.
+    // The other pane's temporary compression must never overwrite its setting.
+    useUi.getState().setPanel(pane === "sidebar" ? { sidebarWidth: widths.sidebarWidth } : { listWidth: widths.listWidth });
+  };
+  const reduceMotion = useUi((s) => s.prefs.reduceMotion);
+  const focusMode = useUi((s) => s.focusMode);
+  useEffect(() => { if (focusMode) setReaderHidden(false); }, [focusMode]);
+
+  const [refreshing, setRefreshing] = useState(false);
+  const [cpOpen, setCpOpen] = useState(false);
+  const [settings, setSettings] = useState<{ open: boolean; section?: string }>({
+    open: false,
+  });
+  const [addFeed, setAddFeed] = useState(false);
+  // Feed URL handed over by a `papr://subscribe` deep link (browser extension).
+  const [addFeedUrl, setAddFeedUrl] = useState<string | undefined>(undefined);
+  // The standalone Explore (curated-directory marketplace) dialog.
+  const [explore, setExplore] = useState(false);
+  const [newFolder, setNewFolder] = useState(false);
+
+  // Mirror "any covering modal is open" into the store. The reader's
+  // original-page view is a native child webview that floats above the whole
+  // DOM, so it would occlude a dialog opened over the reader (issue #54). The
+  // reader watches this flag and tears the view down while a modal is up.
+  const setModalOpen = useUi((s) => s.setModalOpen);
+  useEffect(() => {
+    setModalOpen(settings.open || (active && (cpOpen || addFeed || explore || newFolder)));
+  }, [active, cpOpen, settings.open, addFeed, explore, newFolder, setModalOpen]);
+  useEffect(() => {
+    if (active) return;
+    setCpOpen(false);
+    setAddFeed(false);
+    setExplore(false);
+    setNewFolder(false);
+  }, [active]);
+
+  // ── apply appearance to the document root ──
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.palette = palette;
+    root.dataset.mode = effectiveMode;
+    root.dataset.density = density;
+    applyUiScale(uiScale);
+    // Keep the backend's pre-paint copy on the *resolved* mode, so an OS scheme
+    // change while running (mode: "system") is reflected on the next launch too.
+    api.setSetting("mode", effectiveMode).catch(() => {});
+    applyThemeAccent(root.style, palette, effectiveMode);
+    // Keep the native window backing on the themed reader colour. The webview is
+    // non-opaque on macOS (see backing.rs), so a live resize exposes the NSWindow
+    // background in the strip the webview hasn't repainted yet — use --reader so
+    // that strip blends with the reader pane it sits next to. (On Win/Linux the
+    // webview is opaque, so setBackgroundColor here mainly covers their own
+    // resize/overscroll; harmless on macOS where it's the NSWindow colour.)
+    const backing = BACKING[palette][effectiveMode];
+    // getCurrentWindow() reads Tauri internals synchronously. In a Vite
+    // browser preview those internals are missing, and React 19 treats the
+    // thrown effect as a render crash.
+    try {
+      getCurrentWindow().setBackgroundColor(backing).catch(() => {});
+      getCurrentWebview().setBackgroundColor(backing).catch(() => {});
+    } catch {
+      /* browser preview */
+    }
+    // macOS only: the calls above can't reach `underPageBackgroundColor`, the
+    // overscroll/resize *gutter* that otherwise stays stuck on the light config
+    // colour and flashes white at a fast-resize edge. set_native_backing pins it
+    // (plus drawsBackground + NSWindow) in one shot; a no-op off macOS.
+    const [r, g, b] = hexRgb(backing);
+    invoke("set_native_backing", { r, g, b }).catch(() => {});
+  }, [palette, effectiveMode, density, uiScale]);
+
+  // ── dismiss the boot splash once the app shell has mounted ──
+  useEffect(() => {
+    const el = document.getElementById("app-loading");
+    if (!el) return;
+    el.classList.add("hide");
+    const timer = window.setTimeout(() => el.remove(), 360);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.reduceMotion = String(reduceMotion);
+  }, [reduceMotion]);
+
+  // Apply the startup view preference once, on first mount.
+  useEffect(() => {
+    if (startupViewApplied) return;
+    startupViewApplied = true;
+    const { startupView, hideReadOnStartup } = useUi.getState().prefs;
+    // Smart-view header labels in the *current* UI language. Smart-view
+    // selections persist a translated label into `lastView`; re-deriving it
+    // here keeps the header correct after a language switch (a feed/folder/tag
+    // label is a proper name, so that case keeps the persisted value).
+    const labels: Record<string, string> = {
+      all: t("smart.all"),
+      starred: t("smart.starred"),
+      agented: "Agented",
+    };
+    if (startupView !== "last") {
+      useUi
+        .getState()
+        .select({ kind: "starred" }, labels.starred);
+    } else if (startupView === "last") {
+      // Restore the view that was open when the app last closed.
+      try {
+        const raw = localStorage.getItem("lastView");
+        if (raw) {
+          const saved = JSON.parse(raw) as { query?: ArticleQuery; label?: string };
+          if (saved.query?.kind) {
+            // The persisted label was captured in whatever language was
+            // active when the view was last selected — for a smart view it
+            // would now be stale if the user has since changed languages, so
+            // re-translate it from the current locale.
+            saved.query = currentRssQuery(saved.query);
+            const label = labels[saved.query.kind] ?? saved.label ?? "";
+            useUi.getState().select(saved.query, label);
+          }
+        }
+      } catch {
+        /* ignore a corrupt persisted value */
+      }
+    }
+    if (hideReadOnStartup && !useUi.getState().unreadOnly) {
+      useUi.getState().toggleUnreadOnly();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const root = document.documentElement.style;
+    const font = READER_FONTS[readerFont];
+    root.setProperty("--reader-font", font.stack);
+    root.setProperty("--reader-font-adjust", font.adjust);
+    root.setProperty("--reader-size", `${readerSize}px`);
+    root.setProperty("--reader-leading", String(readerLeading / 100));
+    root.setProperty("--reader-width", `${readerWidth}px`);
+  }, [readerFont, readerSize, readerLeading, readerWidth]);
+
+  // ── apply the draggable pane widths as the grid/drawer CSS variables ──
+  // These drive `.window`'s grid columns and the AI drawer's width; the resize
+  // handles write preferences to the store. Only the rendered widths are
+  // viewport-clamped here; resizing the window never overwrites preferences.
+  useEffect(() => {
+    const root = document.documentElement.style;
+    root.setProperty("--col-sidebar", `${displayPanes.sidebarWidth}px`);
+    root.setProperty("--col-list", `${displayPanes.listWidth}px`);
+    root.setProperty("--ai-width", `${aiWidth}px`);
+  }, [displayPanes.sidebarWidth, displayPanes.listWidth, aiWidth]);
+
+  // ── toast ──
+  const showToast = toastApi.show;
+
+  // Article-action failures route to an error toast, not a silent default one.
+  const actions = useArticleActions(toastApi.error);
+
+  // ── background refresh events from the Rust scheduler ──
+  useEffect(() => {
+    const un = listen("library-changed", () => {
+      for (const key of ["feeds", "folders", "counts", "articles", "library-status", "agented-groups"]) void qc.invalidateQueries({ queryKey: [key] });
+    });
+    return () => { void un.then((f) => f()); };
+  }, [qc]);
+  // An agent-requested cleaning job finished: whatever is open re-reads its
+  // stored structured document.
+  useEffect(() => {
+    const un = listen("articles-cleaned", () => {
+      void qc.invalidateQueries({ queryKey: ["structured"] });
+      void qc.invalidateQueries({ queryKey: ["structured-documents"] });
+      void qc.invalidateQueries({ queryKey: ["articles"] });
+      void qc.invalidateQueries({ queryKey: ["counts"] });
+    });
+    return () => { void un.then((f) => f()); };
+  }, [qc]);
+  useEffect(() => {
+    const un = listen("feeds-updated", () => {
+      qc.invalidateQueries({ queryKey: ["feeds"] });
+      qc.invalidateQueries({ queryKey: ["counts"] });
+      qc.invalidateQueries({ queryKey: ["articles"] });
+    });
+    return () => {
+      un.then((f) => f());
+    };
+  }, [qc]);
+
+  // Settings live on the host rail, so they stay available outside RSS.
+  useEffect(() => {
+    const open = () => setSettings({ open: true });
+    const onHost = (event: Event) => setSettings({open:true,section:(event as CustomEvent<{section?:string}>).detail?.section});
+    window.addEventListener("papr-open-settings", onHost);
+    const un = listen("tray-open-settings", open);
+    return () => {
+      window.removeEventListener("papr-open-settings", onHost);
+      void un.then((f) => f());
+    };
+  }, []);
+
+  // ── papr://subscribe deep links from the browser extension (F6) ──
+  useEffect(() => {
+    const un = listen<string>("deep-link-subscribe", (e) => {
+      onRequestActivate?.();
+      setAddFeedUrl(e.payload);
+      setAddFeed(true);
+    });
+    // A cold-start link arrives during the backend's `setup()` — before this
+    // listener exists — so the `emit` above is dropped. The backend buffers
+    // that URL; drain it once on mount so a launch-by-deep-link still opens
+    // the Add-feed dialog.
+    api
+      .takePendingDeepLink()
+      .then((url) => {
+        if (url) {
+          onRequestActivate?.();
+          setAddFeedUrl(url);
+          setAddFeed(true);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      un.then((f) => f());
+    };
+  }, [onRequestActivate]);
+
+  // ── Auto-update: one quiet check shortly after launch ──
+  // Delayed so it doesn't compete with the first feed refresh for bandwidth;
+  // `silent` keeps a missing release feed (or a dev build) from raising noise.
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      void checkForUpdates({ silent: true });
+    }, 4000);
+    const interval = window.setInterval(() => { void checkForUpdates({ silent: true }); }, 6 * 60 * 60 * 1000);
+    return () => { window.clearTimeout(id); window.clearInterval(interval); };
+  }, []);
+
+  // A ref — not the `refreshing` state — is the concurrency guard: it must be
+  // read-and-set synchronously, and the kick-off has side effects (a network
+  // refresh, a toast). A setState updater must stay pure; React invokes it
+  // twice under StrictMode, which previously fired the refresh twice in dev.
+  // `refreshing` state is kept purely to drive the sidebar spinner.
+  const refreshingRef = useRef(false);
+  const doRefresh = useCallback((scope?: { feedId?: number; folderId?: number }) => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    setRefreshing(true);
+    showToast(
+      scope?.feedId != null
+        ? t("app.refreshingFeed")
+        : scope?.folderId != null
+          ? t("app.refreshingFolder")
+          : t("app.refreshing"),
+    );
+    api
+      .refreshFeeds(undefined, scope)
+      .then((n) => {
+        // Refresh only the caches a feed fetch can actually change — a bare
+        // `invalidateQueries()` would also refetch unrelated queries (rules,
+        // FreshRSS status, the open feed-discovery search).
+        actions.refreshAfterFetch();
+        showToast(n > 0 ? t("app.foundNew", { count: n }) : t("app.upToDate"));
+      })
+      .catch(reportError)
+      .finally(() => {
+        refreshingRef.current = false;
+        setRefreshing(false);
+      });
+  }, [actions, showToast, t]);
+
+  const markAllRead = useCallback(async () => {
+    try {
+      const n = await api.markAllRead(useUi.getState().query);
+      actions.refreshAfterBulk();
+      showToast(n > 0 ? t("app.markedRead", { count: n }) : t("app.nothingToMark"));
+    } catch (e) {
+      reportError(e);
+    }
+  }, [actions, showToast, t]);
+
+  const openSettings = (section?: string) => setSettings({ open: true, section });
+
+  // ── command-palette actions ──
+  const handleCommand = (action: CommandAction) => {
+    switch (action) {
+      case "mark-all-read": markAllRead(); break;
+      case "toggle-theme":
+        // Flip to the opposite of what's *shown* — so from "system" it lands on
+        // an explicit light/dark rather than appearing to do nothing.
+        useUi.getState().setMode(effectiveMode === "dark" ? "light" : "dark");
+        break;
+      case "toggle-focus":
+        useUi.getState().setFocusMode(!useUi.getState().focusMode);
+        break;
+      case "toggle-ai":
+        if (useUi.getState().selectedArticleId != null)
+          useUi.getState().setAiOpen(!useUi.getState().aiOpen);
+        break;
+      case "refresh": doRefresh(); break;
+      case "add-feed": setAddFeed(true); break;
+      case "new-folder": setNewFolder(true); break;
+      case "opml": openSettings("subscriptions"); break;
+      case "open-settings": openSettings(); break;
+    }
+  };
+
+  const navigateFeed = (feed: Feed) => {
+    onLibraryChange?.("articles");
+    useUi.getState().select({ kind: "feed", value: feed.id }, feed.title);
+  };
+  const navigateArticle = (a: ArticleSummary) => {
+    onLibraryChange?.("articles");
+    useUi.getState().select({ kind: "feed", value: a.feedId }, a.feedTitle);
+    useUi.getState().openArticle(a.id);
+  };
+
+  // ── global keyboard shortcuts (design app.jsx parity) ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const inField = tag === "INPUT" || tag === "TEXTAREA";
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === ",") {
+        e.preventDefault();
+        const settingsOpen = !!document.querySelector(".settings-backdrop");
+        if (
+          !settingsOpen &&
+          document.querySelector(
+            ".cp-backdrop, .modal-backdrop, .tag-picker, .hl-popover",
+          )
+        )
+          return;
+        setSettings((s) => ({ open: !s.open }));
+        return;
+      }
+      if (!active) return;
+
+      // The modifier-key shortcuts (⌘K / ⌘, / ⌘R) are *application-global* —
+      // they must fire regardless of where focus sits. The INPUT/TEXTAREA
+      // guard below only suppresses the single-key list/reader shortcuts so a
+      // plain "j" typed into a search box doesn't navigate; it must not block
+      // a ⌘-combo. Crucially, the command palette and Settings each own a
+      // focused text field, so gating these on focus would make ⌘K / ⌘, fail
+      // to *close* their own dialog — the one path Escape isn't the only key
+      // for.
+
+      // ⌘K / ⌘, open their own modal. Firing them while another modal is
+      // already open would stack a second dialog on top — two focus traps
+      // then fight over the keyboard, and dismissing the inner one drops
+      // focus to nowhere. So suppress the *open* half when a blocking modal
+      // is up; the *close* (toggle-off) half stays live so ⌘K still shuts
+      // the command palette and ⌘, still shuts Settings.
+      if (mod && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        const cpOpen = !!document.querySelector(".cp-backdrop");
+        if (
+          !cpOpen &&
+          document.querySelector(
+            ".settings-backdrop, .modal-backdrop, .tag-picker, .hl-popover",
+          )
+        )
+          return;
+        setCpOpen((o) => !o);
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "r") {
+        e.preventDefault();
+        if (readingActive) doRefresh();
+        else window.dispatchEvent(new CustomEvent("scholay-rss-library-refresh"));
+        return;
+      }
+      if (mod) return;
+      if (!readingActive) return;
+
+      // Past this point only the single-key list/reader shortcuts remain —
+      // a bare "j" / "s" / "a" etc. Those must never fire while the user is
+      // typing into a text field, so bail once the modifier combos above
+      // have had their chance.
+      if (inField) return;
+
+      // Skip list/reader shortcuts while any overlay owns the keyboard.
+      // `.hl-popover` is the highlight edit dialog inside the reader and
+      // `.hl-toolbar` is the floating colour toolbar shown when text is
+      // selected: without them here, j/k would navigate away (destroying the
+      // overlay — and, for the toolbar, the live selection the user was about
+      // to highlight), s/u/b would act on the article, and Escape would close
+      // the AI drawer instead of just the overlay.
+      if (
+        document.querySelector(
+          ".cp-backdrop, .settings-backdrop, .modal-backdrop, .ctx-menu, .tag-picker, .hl-popover, .hl-toolbar",
+        )
+      )
+        return;
+
+      const st = useUi.getState();
+
+      const items = readCurrentItems(qc);
+      const idx = items.findIndex((a) => a.id === st.selectedArticleId);
+      const sel = st.selectedArticleId == null ? undefined : qc.getQueryData<import("./types").ArticleDetail>(["article", st.selectedArticleId]) ?? items.find(item => item.id === st.selectedArticleId);
+      const go = (delta: number) => {
+        if (items.length === 0) return;
+        const next = items[Math.min(items.length - 1, Math.max(0, idx + delta))];
+        if (next) st.openArticle(next.id, st.query.kind === "agented" ? "formatted" : undefined);
+      };
+
+      switch (e.key.toLowerCase()) {
+        case "j": e.preventDefault(); go(idx < 0 ? 0 : 1); break;
+        case "k": e.preventDefault(); go(-1); break;
+        case "o":
+          if (sel?.url) { e.preventDefault(); openUrl(sel.url).catch(() => {}); }
+          break;
+        case "s":
+          if (sel) {
+            e.preventDefault();
+            actions.setStarred(sel.id, !sel.isStarred);
+            showToast(sel.isStarred ? t("app.starRemoved") : t("app.starred"), "S");
+          }
+          break;
+        case "u":
+          if (sel) { e.preventDefault(); actions.setRead(sel.id, !sel.isRead); }
+          break;
+        case "i":
+          if (st.selectedArticleId != null) {
+            e.preventDefault();
+            st.setAiOpen(!st.aiOpen);
+          }
+          break;
+        case "f": e.preventDefault(); st.setFocusMode(!st.focusMode); break;
+        case "v": e.preventDefault(); st.toggleUnreadOnly(); break;
+        case "a":
+          if (e.shiftKey) { e.preventDefault(); markAllRead(); }
+          else { e.preventDefault(); setAddFeed(true); }
+          break;
+        case "d":
+          if (e.shiftKey) {
+            e.preventDefault();
+            st.setMode(resolveMode(st.mode) === "dark" ? "light" : "dark");
+          }
+          break;
+        case "escape":
+          st.setFocusMode(false);
+          st.setAiOpen(false);
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // `t` is listed so the shortcut toasts re-bind after a language change.
+    // `cpOpen` is intentionally absent — the handler only ever calls
+    // setCpOpen (a functional update), so it doesn't depend on the value;
+    // listing it would needlessly re-bind the listener on every ⌘K.
+  }, [active, readingActive, qc, actions, doRefresh, markAllRead, showToast, t]);
+
+  return (
+    <>
+      <div className="app-shell">
+        <div className={`window ${focusMode && librarySection === "articles" ? "focus" : ""}`}>
+          <Sidebar
+            librarySection={librarySection}
+            onLibraryChange={onLibraryChange}
+            onLibraryHostChange={onLibraryHostChange}
+            onAddFeed={() => setAddFeed(true)}
+            onExplore={() => setExplore(true)}
+            onSearchClick={() => setCpOpen(true)}
+            onRefresh={doRefresh}
+            refreshing={refreshing}
+            onToast={showToast}
+          />
+          <div className={`rss-reading-content ${librarySection !== "articles" ? "is-inactive" : ""}${readerHidden ? " is-reader-collapsed" : ""}`} aria-hidden={librarySection !== "articles"} inert={librarySection !== "articles"}>
+            <PaneToolbar placement="toggle" active={readingActive && !focusMode} alignTo=".list"><div className="pane-extension-controls"><button type="button" aria-label={readerHidden ? tr("展开阅读区") : tr("收起阅读区")} title={readerHidden ? tr("展开阅读区") : tr("收起阅读区")} aria-expanded={!readerHidden} aria-controls="reading-panel-rss" disabled={capturing} onClick={() => setReaderHidden(v => !v)}><Icon name="panel-right" size={16}/></button></div></PaneToolbar>
+            <ArticleList onToast={showToast} />
+            <ReaderWorkspace onToast={showToast} active={readingActive && !readerHidden} onCaptureBusyChange={onCaptureBusyChange}/>
+          </div>
+          {libraryContent && <div className={`rss-library-content ${librarySection === "articles" ? "is-inactive" : ""}`} aria-hidden={librarySection === "articles"} inert={librarySection === "articles"}>{libraryContent}</div>}
+          {/* Pane resize handles. Hidden in focus mode (the sidebar + list are
+              hidden then, collapsing the grid to a single reader column). They
+              sit at the column boundaries via the `left` offset below. */}
+          {(!focusMode || librarySection !== "articles") && (
+            <>
+              <div
+                className="resize-handle-slot"
+                data-pane="sidebar"
+                style={{ left: "var(--col-sidebar)" }}
+              >
+                <ResizeHandle
+                  width={displayPanes.sidebarWidth}
+                  side="right"
+                  min={PANEL_BOUNDS.sidebar.min}
+                  max={paneResizeMax(viewportWidth, "sidebar", PANEL_BOUNDS, displayPanes)}
+                  onResize={(w) => resizePane("sidebar", w)}
+                  label={t("app.resizeSidebar")}
+                />
+              </div>
+              {librarySection === "articles" && !readerHidden && <div
+                className="resize-handle-slot"
+                style={{ left: "calc(var(--col-sidebar) + var(--col-list))" }}
+              >
+                <ResizeHandle
+                  width={displayPanes.listWidth}
+                  side="right"
+                  min={PANEL_BOUNDS.list.min}
+                  max={paneResizeMax(viewportWidth, "list", PANEL_BOUNDS, displayPanes)}
+                  onResize={(w) => resizePane("list", w)}
+                  label={t("app.resizeList")}
+                />
+              </div>}
+            </>
+          )}
+        </div>
+        <PlayerBar />
+      </div>
+
+      <CommandPalette
+        open={active && cpOpen}
+        onClose={() => setCpOpen(false)}
+        onAction={handleCommand}
+        onNavigateFeed={navigateFeed}
+        onNavigateArticle={navigateArticle}
+      />
+
+      {settings.open && (
+        <SettingsDialog
+          onClose={() => setSettings({ open: false })}
+          onToast={showToast}
+          initialSection={settings.section}
+          onAddFeed={() => {
+            setSettings({ open: false });
+            onRequestActivate?.();
+            setAddFeed(true);
+          }}
+        />
+      )}
+
+      {active && addFeed && (
+        <AddFeedDialog
+          onClose={() => {
+            setAddFeed(false);
+            setAddFeedUrl(undefined);
+          }}
+          onToast={showToast}
+          initialUrl={addFeedUrl}
+        />
+      )}
+
+      {active && explore && (
+        <ExploreDialog
+          onClose={() => setExplore(false)}
+          onToast={showToast}
+        />
+      )}
+
+      {active && newFolder && (
+        <PromptDialog
+          title={t("app.newFolderTitle")}
+          placeholder={t("app.folderNamePlaceholder")}
+          onSubmit={(v) =>
+            api
+              .createFolder(v)
+              .then(() => {
+                qc.invalidateQueries({ queryKey: ["folders"] });
+                showToast(t("app.folderCreated"));
+              })
+              .catch(reportError)
+          }
+          onClose={() => setNewFolder(false)}
+        />
+      )}
+
+    </>
+  );
+}

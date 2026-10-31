@@ -1,0 +1,12 @@
+import type {Notebook,NoteBlock,NotebookScope} from './notebook.mjs';
+export type HeadingMode='numbered'|'fixed'|'source'|'ai';
+export const HEADING_MODES:Record<HeadingMode,string>;
+export function protocolHeading(n:Pick<Notebook,'kind'>,b:NoteBlock):boolean;
+export function editableHeading(n:Pick<Notebook,'kind'>,b:NoteBlock):boolean;
+export function headingLabels(blocks:NoteBlock[]):Record<string,string>;
+export function setHeadingPreference(n:Notebook,mode:'auto'|HeadingMode):Notebook;
+export function setBlockHeadingPreference(n:Notebook,id:string,mode:'manual'|'inherit'|HeadingMode):Notebook;
+export function applyHeadingPlan(n:Notebook,plan:{mode:HeadingMode;reason?:string;entries:{id:string;mode?:HeadingMode;text?:string;sourceId?:string}[]},scope:NotebookScope):Notebook;
+export function headingFormatErrors(n:Notebook):{path:string;message:string}[];
+export function assertHeadingOwnership(n:Notebook,previous:Notebook,scope?:NotebookScope):void;
+export const HEADING_INSTRUCTIONS:string;

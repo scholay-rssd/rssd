@@ -1,0 +1,37 @@
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.next/
+out/
+.seo-output/
+
+# Local configuration and logs
+.env
+.env.*
+!.env.example
+*.log
+__pycache__/
+*.pyc
+.admin-local/
+.admin-qa/
+.local/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.p12
+*.pfx
+*.key
+*.pem
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+.claude/launch.json
+
+editorial/
+data.json
+open-source.json
+news.json
+theme-homepages/

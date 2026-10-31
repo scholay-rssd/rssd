@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholay SEO 中文写作"
+  short_description: "保护原文边界，创建或修改 Scholay 中文 canonical SEO 文章"
+  default_prompt: "使用 $scholay-seo-writing 创建或修改一篇中文 canonical SEO 文章，并在完成后交给只读 QA。"

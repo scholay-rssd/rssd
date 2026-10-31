@@ -1,0 +1,9 @@
+//! Read-only access to Scholay's cloud cache. No TikHub token or collector
+//! operation is exposed to the renderer, embedded websites, or MCP callers.
+use serde_json::{json, Value};
+
+#[tauri::command]
+pub async fn pull_label_cloud(_space: crate::spaces::Lease, webview: tauri::Webview) -> Result<Value, String> {
+    crate::hot_board::require_main(&webview)?;
+    crate::publications::run("labels-cloud.mjs", "read", json!({})).await
+}

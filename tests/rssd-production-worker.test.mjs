@@ -45,3 +45,20 @@ test('center outage during a claimed task still leaves both language packets on 
   const result=await runProductionTurn({...f,agentId:'example',workspaceIds:['research'],producer:async({locale})=>({title:locale,bodyMarkdown:'Complete body'})});
   assert.equal(result.state,'pending');assert.equal(result.submissions.length,2);assert.equal(f.packets.length,0);
 });
+
+test('after restart, an offline device can finish its cached claim without acquiring another task',async t=>{
+  const f=await fixture(t);
+  await assert.rejects(runProductionTurn({...f,agentId:'example',workspaceIds:['research'],producer:async()=>{throw Error('Device interrupted');}}),/Device interrupted/);
+  f.client.activeClaim=async()=>{throw new CenterError('Center offline');};
+  f.client.claim=async()=>{throw Error('Must not claim while offline');};
+  f.client.submission=async()=>{throw new CenterError('Offline');};
+  f.client.work=async()=>{throw Error('Must use cached base revisions');};
+  const result=await runProductionTurn({...f,agentId:'example',workspaceIds:['research'],resume:true,producer:async({locale})=>({title:locale,bodyMarkdown:'Completed offline after restart'})});
+  assert.equal(result.state,'pending');assert.equal(result.submissions.length,2);assert.equal(f.packets.length,0);
+});
+test('an explicit authorization rejection never falls back to a cached claim',async t=>{
+  const f=await fixture(t);
+  await assert.rejects(runProductionTurn({...f,agentId:'example',workspaceIds:['research'],producer:async()=>{throw Error('Stopped');}}));
+  f.client.activeClaim=async()=>{throw new CenterError('Revoked',{status:401});};
+  await assert.rejects(runProductionTurn({...f,agentId:'example',workspaceIds:['research'],resume:true,producer:async()=>{throw Error('Must not run');}}),{status:401});
+});

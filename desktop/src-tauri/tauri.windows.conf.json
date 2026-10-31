@@ -1,0 +1,38 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "RSSD",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 920,
+        "minHeight": 560,
+        "backgroundColor": "#FBF9F3",
+        "decorations": true
+      }
+    ]
+  },
+  "bundle": {
+    "resources": {
+      "../target/bundle-resources/connectors/": "connectors/"
+    },
+    "targets": [
+      "nsis"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": [
+          "English",
+          "SimpChinese"
+        ],
+        "displayLanguageSelector": true
+      }
+    }
+  }
+}
