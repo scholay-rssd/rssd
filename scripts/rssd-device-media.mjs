@@ -26,7 +26,24 @@ export async function prepareEditionMedia({edition,home,directory,client,workspa
   if(!asset){const bytes=await fetchBytes(image.src,{maxBytes:m.MAX_BYTES});asset=await stageMedia({directory:join(home,'media'),origin:client.origin,workspaceId,bytes,name:image.alt||'article-image'});mapping[image.src]=asset;await save(mappingFile,mapping);}
   media.set(asset.id,{id:asset.id,alt:image.alt||''});bodyMarkdown=bodyMarkdown.replaceAll(image.src,asset.url);
  }
- return {...edition,bodyMarkdown,media:[...media.values()]};
+ const metadata=structuredClone(edition.metadata||{});
+ if(metadata.platformContent){
+  p.object(metadata.platformContent,'platform content');
+  for(const content of Object.values(metadata.platformContent)){
+   p.object(content,'platform content');const ids=new Set(p.array(content.mediaIds||[],'platform media',20).map(id=>p.id(id)));
+   for(const url of p.array(content.mediaUrls||[],'platform media URLs',20)){
+    signal?.throwIfAborted();p.text(url,'platform media URL',4096);
+    const internal=url.match(/^(?:https?:\/\/[^/]+)?\/api\/rssd\/v1\/media\/([a-zA-Z0-9._:-]+)\/raw$/);
+    if(internal){ids.add(internal[1]);if(!media.has(internal[1]))media.set(internal[1],{id:internal[1],alt:'Platform image'});continue;}
+    p.publicUrl(url);let asset=mapping[url];
+    if(asset&&(asset.origin!==client.origin||asset.workspaceId!==workspaceId))throw Error('Cached image belongs to a different center or workspace');
+    if(!asset){const bytes=await fetchBytes(url,{maxBytes:m.MAX_BYTES});asset=await stageMedia({directory:join(home,'media'),origin:client.origin,workspaceId,bytes,name:'platform-image'});mapping[url]=asset;await save(mappingFile,mapping);}
+    ids.add(asset.id);if(!media.has(asset.id))media.set(asset.id,{id:asset.id,alt:'Platform image'});
+   }
+   content.mediaIds=p.array([...ids],'platform media',20);delete content.mediaUrls;
+  }
+ }
+ return {...edition,bodyMarkdown,metadata,media:[...media.values()]};
 }
 export async function uploadPacketMedia({packet,directory,client}){
  for(const id of new Set(packet.editions.flatMap(e=>e.media.map(m=>m.id)))){

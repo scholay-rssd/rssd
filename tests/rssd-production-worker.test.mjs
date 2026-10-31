@@ -27,6 +27,13 @@ test('Chinese is accepted before English generation and translations retain the 
   assert.equal(f.packets[0].workId,f.packets[1].workId);
   assert.deepEqual(f.packets[1].editions[0].translationOf,{workId:result.workId,locale:'zh-CN',revision:1});
 });
+
+test('platform delivery instructions are frozen with the original claim across a restart',async t=>{
+ const f=await fixture(t);f.task.payload.destinations=[{destinationId:'social',kind:'postiz',platform:'linkedin',locale:'en'}];let original;
+ await assert.rejects(runProductionTurn({...f,agentId:'example',workspaceIds:['research'],producer:async({writingPolicy})=>{original=writingPolicy;assert.match(writingPolicy.instructions,/metadata.platformContent/);assert.match(writingPolicy.instructions,/linkedin/);throw Error('Quota exhausted');}}),/Quota exhausted/);
+ f.task.payload.destinations=[{destinationId:'changed',kind:'postiz',platform:'facebook',locale:'en'}];
+ await runProductionTurn({...f,agentId:'example',workspaceIds:['research'],resume:true,producer:async({writingPolicy})=>{assert.deepEqual(writingPolicy,original);return {title:'Complete work',bodyMarkdown:'Body'};}});
+});
 test('quota failure blocks the existing claim; explicit resume does not regenerate accepted Chinese',async t=>{
   const f=await fixture(t);let chineseCalls=0;
   await assert.rejects(runProductionTurn({...f,agentId:'example',workspaceIds:['research'],producer:async({locale})=>{

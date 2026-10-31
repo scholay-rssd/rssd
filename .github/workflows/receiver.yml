@@ -15,13 +15,16 @@ jobs:
         with:
           node-version: '24'
       - run: npm ci --no-audit --no-fund
+      - run: python3 -m unittest discover -s tests -p test_receiver_installer.py
       - run: node scripts/package-receiver.mjs
       - name: Build and verify bilingual pages using only the installed artifact
         run: |
           set -eu
-          mkdir "$RUNNER_TEMP/rssd-receiver"
-          tar -xzf artifacts/rssd-web-receiver-*-linux-x64.tar.gz -C "$RUNNER_TEMP/rssd-receiver"
-          RSSD_RECEIVER_ARTIFACT_DIR="$RUNNER_TEMP/rssd-receiver" "$RUNNER_TEMP/rssd-receiver/node" --test tests/rssd-receiver-http.test.mjs
+          archive=$(find artifacts -name 'rssd-web-receiver-*-linux-x64.tar.gz' -print -quit)
+          checksum=$(cut -d ' ' -f 1 "$archive.sha256")
+          python3 scripts/install-receiver.py "$archive" --sha256 "$checksum" --root "$RUNNER_TEMP/rssd-receiver" > "$RUNNER_TEMP/receiver-installation.json"
+          release=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["release"])' "$RUNNER_TEMP/receiver-installation.json")
+          RSSD_RECEIVER_ARTIFACT_DIR="$release" "$release/node" --test tests/rssd-receiver-http.test.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: rssd-web-receiver-linux-x64-${{ github.sha }}

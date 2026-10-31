@@ -1,0 +1,30 @@
+[Unit]
+Description=RSSD multi-site publication receiver
+After=network.target
+ConditionPathExists=/etc/rssd-receiver/config.json
+
+[Service]
+Type=simple
+User=rssd-receiver
+Group=rssd-receiver
+WorkingDirectory=/opt/rssd-receiver/current
+Environment=NODE_ENV=production
+Environment=RSSD_RECEIVER_CONFIG=/etc/rssd-receiver/config.json
+ExecStart=/opt/rssd-receiver/current/node receiver/server.mjs
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=180
+KillSignal=SIGTERM
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rssd-receiver /opt/rssd-public
+MemoryHigh=384M
+MemoryMax=512M
+CPUQuota=75%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

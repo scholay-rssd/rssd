@@ -31,6 +31,16 @@ test('media scope and byte integrity are enforced before a work can leave the ou
  const result=await outbox.flushOne('scope-image');assert.equal(result.state,'needs_attention');assert.equal(result.error.code,'media_conflict');
  assert.throws(()=>m.decodeImage({...asset.manifest,data:Buffer.from('not an image').toString('base64')}));
 });
+
+test('platform-only images are cached and converted to scoped media IDs without entering the article body',async t=>{
+ const home=await temp(t);let downloads=0;
+ const input={locale:'en',title:'Text article',bodyMarkdown:'Complete body with no inline image.',metadata:{platformContent:{social:{text:'Platform post',mediaUrls:['https://images.example/platform.png'],settings:{visibility:'PUBLIC'}}}}};
+ const options={edition:input,home,directory:join(home,'job'),client:{origin:'https://center.example'},workspaceId:'research',fetchBytes:async()=>{downloads++;return png;}};
+ const result=await prepareEditionMedia(options);await prepareEditionMedia(options);assert.equal(downloads,1);assert.equal(result.bodyMarkdown,input.bodyMarkdown);assert.equal(result.media.length,1);
+ assert.deepEqual(result.metadata.platformContent.social.mediaIds,[result.media[0].id]);assert.equal(result.metadata.platformContent.social.mediaUrls,undefined);assert.deepEqual(result.metadata.platformContent.social.settings,{visibility:'PUBLIC'});
+ const original={...input,metadata:{platformContent:{social:{mediaUrls:['https://center.example/api/rssd/v1/media/'+result.media[0].id+'/raw']}}}};
+ const reuse=await prepareEditionMedia({...options,edition:original});assert.equal(downloads,1);assert.deepEqual(reuse.metadata.platformContent.social.mediaIds,[result.media[0].id]);
+});
 test('receiver images are scoped to a private site store, content-addressed and idempotent',async t=>{
  const home=await temp(t),store=new ReceiverMedia(home),manifest=m.imageManifest(png);
  await assert.rejects(store.status(manifest.sha256),{status:404});assert.deepEqual(await store.accept(manifest.sha256,{...manifest,data:png.toString('base64')}),manifest);

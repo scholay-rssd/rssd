@@ -6,6 +6,7 @@ import {withFileLock} from './editorial-lock.mjs';
 import {CenterOutbox,writeCenterJson} from './rssd-center-client.mjs';
 import {prepareEditionMedia} from './rssd-device-media.mjs';
 import {ARTICLE_WRITING_INSTRUCTIONS,ARTICLE_WRITING_POLICY} from '../contracts/article-writing-policy.mjs';
+import {platformProductionInstructions} from '../contracts/rssd-platform-content.cjs';
 
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};
 const save=writeCenterJson;
@@ -35,7 +36,8 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
     let context=await read(contextFile);
     if(!context){
       let work=null;try{work=await client.work(workId);}catch(error){if(error.status!==404)throw error;}
-      context={work,writingPolicy,baseRevisions:Object.fromEntries((work?.editions||[]).map(e=>[e.locale,e.revision]))};
+      const deliveryInstructions=platformProductionInstructions(claim);
+      context={work,writingPolicy:deliveryInstructions?{...writingPolicy,instructions:writingPolicy.instructions+deliveryInstructions,deliverySchemaVersion:1}:writingPolicy,baseRevisions:Object.fromEntries((work?.editions||[]).map(e=>[e.locale,e.revision]))};
       if(claim.payload.source){const source=claim.payload.source;context.source=await client.request('/works/'+encodeURIComponent(source.workId)+'/editions/'+source.locale+'/'+source.revision);}
       await save(contextFile,context);
     }
