@@ -1,0 +1,106 @@
+.library-manager{display:flex;flex:1;min-width:0;min-height:0;overflow:hidden;background:var(--paper);--wash:var(--panel)}
+.manager-filters{width:var(--workspace-sidebar-width,220px);flex:none;display:flex;flex-direction:column;min-height:0;overflow:auto;border-right:1px solid var(--hair);background:var(--panel)}
+.manager-locations,.manager-categories{flex:none;display:flex;flex-direction:column;min-height:0}.manager-categories{border-top:1px solid var(--hair);margin-top:8px}
+.manager-locations>header,.manager-categories>header{height:var(--workspace-toolbar-height,42px);display:flex;align-items:center;padding:0 16px;font-size:12px;color:var(--muted)}
+.library-manager fieldset{border:0;margin:0;padding:0 10px 8px;display:flex;flex-direction:column;gap:4px}.library-manager fieldset button{display:flex;align-items:center;gap:8px;text-align:left;min-height:36px;padding:7px 9px;border-color:transparent;font-size:12px}.library-manager fieldset button small{margin-left:auto;color:var(--muted);font-size:10px;font-variant-numeric:tabular-nums}.library-manager button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--hair-strong);color:var(--accent)}
+.manager-content{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}.manager-tabs{display:flex;align-items:stretch;overflow-x:auto;flex:none;height:42px;border-bottom:1px solid var(--hair-strong);gap:0}.manager-tabs>button,.manager-tabs>div{flex:none;display:flex;align-items:center;border:0;border-radius:0;border-right:1px solid var(--hair);padding:0 12px}.manager-tabs button{font-size:12px;white-space:nowrap;border:0;background:transparent}.manager-tabs>div{padding:0 5px 0 10px;max-width:220px}.manager-tabs small{margin-left:5px;color:var(--muted)}.manager-tabs .is-selected,.manager-tabs>button[aria-selected=true]{box-shadow:inset 0 -2px var(--accent);background:var(--panel);color:var(--accent)}
+.manager-collection,.manager-work{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}.manager-work>.work-detail{height:100%}.manager-search{display:flex;align-items:center;gap:8px;padding:12px;border-bottom:1px solid var(--hair)}.manager-search input{flex:1;min-width:80px;font-size:12px;height:32px}.manager-search select{height:32px;font-size:11px}.manager-search summary{padding:6px;cursor:pointer;display:flex}.manager-card-scroll{overflow:auto;flex:1;min-height:0;padding:16px;scrollbar-gutter:stable}.manager-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(250px,100%),1fr));gap:12px}.manager-card{display:flex;flex-direction:column;text-align:left;gap:12px;min-width:0;min-height:166px;padding:16px!important;border:1px solid var(--hair)!important;background:var(--panel);border-radius:9px!important;transition:border-color .12s,background .12s}.manager-card:hover{border-color:var(--accent)!important;background:var(--paper)}.manager-card strong{font-size:14px;font-weight:550;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.manager-card-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--muted);font-size:10px}.manager-card-meta .is-public{color:var(--accent)}.manager-card p{font-size:12px;line-height:1.6;color:var(--muted);margin:0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.manager-card footer{display:flex;align-items:center;justify-content:space-between;margin-top:auto;color:var(--muted);font-size:10px}.manager-card footer>span{display:flex;gap:7px}.manager-card footer i{display:flex}.manager-card .editorial-action-icon{width:15px;height:15px}.manager-load-more{display:block;margin:18px auto;font-size:12px}.library-manager .work-notice{display:flex;gap:12px;align-items:center;justify-content:space-between}
+@media(max-width:1100px){.manager-filters{width:200px}.library-manager fieldset{padding:6px}.library-manager fieldset button{padding:7px 5px;font-size:11px;gap:5px}.manager-card-scroll{padding:12px}}
+.library-manager .manager-tabs button{border:0;border-radius:0;background:transparent}.library-manager .manager-tabs>button[aria-selected=true]{background:var(--panel)}.library-manager .manager-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+
+.manager-locations fieldset button>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.manager-locations fieldset button>svg,.manager-locations fieldset button>small{flex:none}
+
+/* A fixed home precedes the independently scrolling work tabs. */
+.manager-tabs{gap:4px;align-items:center;overflow:hidden;min-width:0;height:38px;border-bottom:0;background:transparent;padding:0 5px}
+.manager-tabs>.reader-home-tab{flex:none;width:36px;height:30px;max-width:36px;padding:0;border:0;border-radius:6px}
+.manager-tabs>.manager-tabstrip{display:flex;align-items:center;flex:1;min-width:0;max-width:none;padding:0;gap:3px;overflow-x:auto;overflow-y:hidden;border:0;scrollbar-width:thin}
+.manager-tabstrip>div{display:flex;align-items:center;flex:0 0 190px;min-width:0;max-width:230px;height:30px;padding:0 3px 0 7px;border-radius:6px;color:var(--muted)}
+.manager-tabstrip>div>button:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:left;padding:4px 5px}
+.manager-tabstrip>div>button:last-child{flex:none;width:24px;height:24px;padding:0;border-radius:4px;color:var(--muted)}
+.manager-tabs .is-selected{box-shadow:none;background:var(--panel);color:var(--ink)}
+.manager-tabstrip>div>button:last-child:hover{background:var(--hover);color:var(--ink)}
+.manager-search{padding:7px 12px;gap:12px;flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto}
+.manager-search-field{display:flex;justify-content:center;min-width:0}
+.manager-search-field input{flex:0 1 480px;width:100%;max-width:480px;min-width:0;box-sizing:border-box}
+.manager-search input,.manager-search select{height:30px}
+.manager-search-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;min-width:0}
+.library-manager button.manager-refresh{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;flex:none;width:30px;height:30px;min-height:30px;padding:0;line-height:1}
+.manager-refresh>.editorial-action-icon{display:block;width:17px;height:17px;transform-origin:center}
+.manager-card-scroll.is-empty{display:flex;scrollbar-gutter:auto}
+.library-manager .manager-empty{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px}
+.manager-empty p{margin:0;max-width:360px;overflow-wrap:anywhere}
+.manager-empty button{flex:none}
+.category-icon{display:block;width:17px;height:17px;flex:none}
+.manager-categories fieldset button>span{flex:1;min-width:0;text-align:left}
+.manager-category-label{display:inline-flex;align-items:center;gap:5px;min-width:0}
+.manager-card .category-icon{width:14px;height:14px}
+@media(max-width:700px){.manager-search{gap:8px;padding-inline:10px}.manager-search-actions select{max-width:104px}}
+.manager-refresh[aria-busy=true] .editorial-action-icon{animation:manager-refresh-spin 1s linear infinite}
+@keyframes manager-refresh-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.manager-refresh[aria-busy=true] .editorial-action-icon{animation:none}}
+
+/* ── Library: filter strip on top, one dense row per work, calm neutral palette ── */
+.library-manager{flex-direction:column}
+.manager-filters{width:auto;flex:none;flex-direction:row;align-items:center;gap:14px;min-height:0;overflow:visible;padding:8px 14px;border-right:0;border-bottom:1px solid var(--hair);background:var(--panel)}
+.manager-locations,.manager-categories{flex-direction:row;align-items:center;margin:0;border:0;min-width:0}
+.manager-categories{flex:1;overflow:hidden}
+.manager-locations>header,.manager-categories>header{display:none}
+.library-manager .manager-filters fieldset{flex-direction:row;align-items:center;gap:4px;padding:0;min-width:0}
+.library-manager .manager-locations fieldset{padding:2px;border:1px solid var(--hair-strong);border-radius:9px;background:var(--paper)}
+.library-manager .manager-categories fieldset{overflow-x:auto;scrollbar-width:none}
+.library-manager .manager-filters fieldset button{flex:none;min-height:28px;padding:4px 10px;border-radius:7px;gap:6px;white-space:nowrap}
+.library-manager .manager-filters fieldset button small{margin-left:2px}
+.library-manager .manager-locations fieldset button[aria-pressed=true]{background:var(--panel);border-color:var(--hair-strong);color:var(--ink);box-shadow:var(--shadow-raise)}
+.library-manager .manager-categories fieldset button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.library-manager .manager-categories fieldset button[aria-pressed=true] small{color:inherit;opacity:.7}
+.manager-card-scroll{padding:0 0 12px}
+.manager-grid{display:block}
+.manager-card{display:grid!important;grid-template-columns:128px minmax(0,2.2fr) minmax(0,3fr) 64px 34px 88px;grid-template-areas:"cat title sum st loc date";align-items:center;column-gap:14px;min-height:0;height:38px;padding:0 18px!important;border:0!important;border-bottom:1px solid var(--hair)!important;border-radius:0!important;background:transparent;width:100%}
+.manager-card:hover{background:var(--hover);border-color:var(--hair)!important}
+.manager-card-meta,.manager-card footer{display:contents}
+.manager-card-meta>span:first-child{grid-area:cat;color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.manager-card-meta>span:nth-child(2){grid-area:st;font-size:11px;color:var(--muted);white-space:nowrap}.manager-card-meta>span.is-public{color:var(--success)}
+.manager-card strong{grid-area:title;display:block;font-size:13px;font-weight:550;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-line-clamp:unset}
+.manager-card p{grid-area:sum;margin:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.manager-card footer time{grid-area:date;justify-self:end;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.manager-card footer>span{grid-area:loc;display:flex;justify-content:flex-end;gap:4px;color:var(--muted)}
+.manager-card footer>span i{display:inline-flex}
+.manager-card .category-icon{width:13px;height:13px}
+@media(max-width:640px){.manager-filters{flex-direction:column;align-items:stretch;gap:8px}}
+/* On wide screens the strip, search row and list share one centred column instead of spreading edge to edge. */
+.library-manager{--manager-max:1180px;--manager-gutter:max(14px,calc((100% - var(--manager-max))/2))}
+.manager-filters{padding-inline:var(--manager-gutter)}
+.manager-search{padding-inline:var(--manager-gutter)}
+.manager-card-scroll{padding-inline:var(--manager-gutter)}
+.manager-card{padding-inline:12px!important;border-radius:6px!important}
+
+/* Split view: the list stays on the left, opened works are tabs in the expansion area on the right. */
+.library-manager{position:relative}
+.manager-split{flex:1;min-height:0;display:flex}
+.manager-split>.manager-collection{flex:1;min-width:0;container-type:inline-size}
+.library-manager[data-view=split] .manager-split>.manager-collection{flex:0 0 clamp(340px,38%,620px);border-right:1px solid var(--hair-strong)}
+.manager-expansion{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--panel)}
+.manager-expansion>.manager-work{flex:1;min-height:0}
+.manager-row{position:relative}
+.manager-card[aria-current=true]{background:var(--selected)}
+/* Status only: publishing is a deliberate action inside the work, not a list switch. Clicks pass through to the card. */
+.library-manager .manager-row-status{position:absolute;top:50%;right:160px;transform:translateY(-50%);width:84px;font-size:11px;white-space:nowrap;color:var(--muted);pointer-events:none}.library-manager .manager-row-status.is-public{color:var(--success)}
+
+.manager-card{grid-template-columns:128px minmax(0,2.2fr) minmax(0,3fr) 84px 34px 88px}
+@container(max-width:900px){.manager-card{grid-template-columns:104px minmax(0,1fr) 84px 34px 84px;grid-template-areas:"cat title st loc date"}.manager-card p{display:none}.library-manager .manager-row-status{right:156px}}
+@container(max-width:620px){.manager-card{grid-template-columns:minmax(0,1fr) 84px 74px;grid-template-areas:"title st date";column-gap:10px}.manager-card-meta>span:first-child,.manager-card footer>span{display:none}.library-manager .manager-row-status{right:96px}}
+.manager-confirm-scrim{position:absolute;inset:0;z-index:20;display:grid;place-items:center;background:#0000002e}
+.manager-confirm{width:min(360px,86%);padding:18px 20px;border:1px solid var(--hair-strong);border-radius:12px;background:var(--panel);box-shadow:0 12px 32px #0003}
+.manager-confirm strong{font-size:14px}.manager-confirm p{margin:8px 0 16px;font-size:12px;line-height:1.6;color:var(--muted)}.manager-confirm div{display:flex;justify-content:flex-end;gap:8px}
+
+/* The filter strip sits above the list only; the midline is draggable. */
+.manager-collection>.manager-filters{flex-wrap:wrap;row-gap:6px}
+.manager-divider{position:relative;flex:none;width:0;z-index:6}
+.library-manager[data-view=split] .manager-split>.manager-collection{max-width:calc(100% - 380px);min-width:320px}
+@container(max-width:620px){.manager-collection>.manager-filters{padding-inline:10px;gap:8px}.manager-collection>.manager-filters .manager-categories{flex:1 1 100%}}
+
+.manager-use{flex:none;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.manager-use select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--hair-strong);border-radius:6px;padding:3px 6px;max-width:150px}
+/* A cloud work with an editing copy says so before its title. */
+.manager-card strong>.manager-editing{display:inline-block;margin-right:6px;vertical-align:1px;font-weight:500;padding:0 6px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:11px;white-space:nowrap}
+.manager-card strong>.manager-english-missing{display:inline-block;margin-right:6px;vertical-align:1px;font-weight:500;padding:0 6px;border-radius:999px;background:color-mix(in oklab,var(--warn) 14%,transparent);color:var(--warn);font-size:11px;white-space:nowrap}

@@ -1,0 +1,10 @@
+.private-preview-shell{position:relative}
+.preview-internal-overlay{position:absolute;inset:0;pointer-events:none;user-select:none}
+.preview-internal-position{position:absolute;display:inline-flex;pointer-events:auto;line-height:1}
+.preview-internal-overlay .notebook-private-trigger{min-width:20px;width:20px;min-height:22px;height:22px;padding:2px;margin:0;border:0;box-shadow:none;background:transparent;color:var(--muted);border-radius:4px;opacity:.55}
+.preview-internal-overlay .notebook-private-trigger:hover,.preview-internal-overlay .notebook-private-trigger:focus-visible,.preview-internal-overlay .notebook-private-trigger[aria-expanded=true]{opacity:1;color:var(--accent);background:var(--hover)}
+.preview-internal-error{position:absolute;right:0;top:0;max-width:260px;font-size:11px;line-height:1.5;color:var(--muted);pointer-events:auto}
+@media print{.preview-internal-overlay,.notebook-private-popover{display:none!important}}
+/* In the article preview the error sits above the text instead of over the title. */
+.preview-internal-error.is-inline{position:static;display:block;max-width:none;margin:0 0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preview-internal-notice{display:block;margin:0 0 8px;font-size:11px;color:var(--muted)}

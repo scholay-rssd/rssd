@@ -1,0 +1,38 @@
+/* Station and permanent preview side by side; data-preview-side swaps them. */
+.flow-split{flex:1;min-height:0;min-width:0;display:flex}
+.flow-split[data-preview-side=left]{flex-direction:row-reverse}
+/* The station is its own size container, so its existing narrow-width rules follow the room it really has. */
+.flow-station{flex:1 1 0;min-width:0;min-height:0;display:flex;flex-direction:column;container-type:inline-size}
+.flow-preview{flex:0 0 clamp(300px,36%,600px);min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--reader,var(--panel));border-left:1px solid var(--hair)}
+.flow-split[data-preview-side=left] .flow-preview{border-left:0;border-right:1px solid var(--hair)}
+.flow-preview>header{flex:none;display:flex;align-items:center;justify-content:space-between;gap:8px;height:34px;padding:0 8px 0 14px;border-bottom:1px solid var(--hair);font-size:12px;color:var(--muted)}
+.flow-preview>header button{display:grid;place-items:center;width:26px;height:24px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer}
+.flow-preview>header button:hover{background:var(--hover);color:var(--ink)}
+.flow-preview-scroll{flex:1;min-height:0;overflow:auto;padding:20px 22px;box-sizing:border-box}
+.article-preview-body.editorial-prose{font-size:15px;line-height:1.8;max-width:640px}
+.article-preview-body.editorial-prose h1{font-size:22px}.article-preview-body.editorial-prose h2{font-size:18px;margin:1.4em 0 .6em}.article-preview-body.editorial-prose h3{font-size:16px;margin:0 0 .4em}
+.article-preview-body small{display:block;font-size:12px;color:var(--muted)}
+.preview-element{position:relative;margin:0 -8px 10px;padding:8px 30px 8px 8px;border-radius:8px}
+.preview-element:hover,.preview-element:focus-within{background:var(--hover)}
+.preview-element>p:last-of-type,.preview-element>h2,.preview-element>blockquote{margin-bottom:.3em}
+.preview-element>h2{margin-top:0}
+.preview-element blockquote{margin:0;padding-left:12px;border-left:3px solid var(--hair-strong);color:var(--ink-2)}
+.preview-remove{position:absolute;top:6px;right:6px;display:grid;place-items:center;width:20px;height:20px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);font:14px/1 var(--ui);cursor:pointer;opacity:0}
+.preview-element:hover>.preview-remove,.preview-remove:focus-visible{opacity:1}
+.preview-remove:hover:not(:disabled){background:var(--danger-soft,var(--hair));color:var(--danger,var(--ink))}
+.preview-remove:disabled{cursor:default}
+.preview-lines{display:flex;flex-direction:column;gap:9px;padding:4px 0}
+.preview-lines i{display:block;height:11px;border-radius:4px;background:var(--hair)}
+.preview-lines i:last-child:not(:first-child){width:62%}
+.preview-pending .preview-lines i{height:20px;width:70%}
+.preview-element.is-placeholder{border:1px dashed var(--hair-strong);padding-right:8px}
+.preview-element.is-placeholder[data-preview-id]{padding-right:30px}
+.is-filling .preview-lines i{background:linear-gradient(90deg,var(--hair) 0%,var(--hover) 50%,var(--hair) 100%);background-size:200% 100%;animation:preview-fill 1.4s linear infinite}
+@keyframes preview-fill{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.is-filling .preview-lines i{animation:none}}
+.preview-empty{color:var(--muted);font-size:13px}.preview-empty p{margin:14px 0 0}
+.preview-figure{margin:0}.preview-figure>div{display:grid;place-items:center;height:120px;border:1px dashed var(--hair-strong);border-radius:8px;color:var(--muted);font-size:12px}.preview-figure figcaption{margin-top:6px;font-size:12.5px;color:var(--muted)}
+.preview-module{border:1px solid var(--hair);border-radius:8px;padding:8px 10px}.preview-module>span{font-size:11.5px;color:var(--muted)}.preview-module>p{margin:.3em 0 0;font-size:13.5px}
+.preview-note{font-size:13px;color:var(--muted)}
+/* Too narrow for two columns: the station keeps the room and the preview steps aside. */
+@container(max-width:760px){.flow-preview{display:none}}

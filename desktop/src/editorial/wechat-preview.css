@@ -1,0 +1,21 @@
+.wechat-preview{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--wash)}.wechat-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--hair);flex-wrap:wrap}.wechat-toolbar strong{font-size:12px}.wechat-toolbar small{display:block;color:var(--muted);font-size:10px;margin-top:4px}.wechat-toolbar button{font-size:11px}.wechat-paper-scroll{overflow:auto;flex:1;padding:24px 14px}.wechat-paper{max-width:640px;margin:auto;padding:28px 32px;background:#fff;color:#292e2b;box-shadow:0 2px 16px #0000000c;min-height:100%;border-radius:3px}.wechat-paper img{max-width:100%}.wechat-paper table{display:block;max-width:100%;overflow:auto}
+
+/* 公众号排版: a titled strip with a clear primary action, a calm success note, and the paper floating on the wash. */
+.wechat-toolbar{padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--hair)}
+.wechat-toolbar strong{display:inline-flex;align-items:center;font-size:13px}.wechat-toolbar strong:before{content:'';width:8px;height:8px;margin-right:8px;border-radius:2px;background:#07c160}
+.wechat-toolbar small{margin-top:3px}
+.wechat-toolbar button{padding:6px 16px;border:0;border-radius:999px;background:var(--accent);color:#fff;font-size:12px;font-weight:550;cursor:pointer}.wechat-toolbar button:hover:not(:disabled){filter:brightness(1.07)}.wechat-toolbar button:disabled{opacity:.5;cursor:default}
+.wechat-preview>.editorial-message{margin:10px 16px 0;padding:8px 12px;border-radius:8px;font-size:12px}.wechat-preview>.editorial-message[role=status]{background:color-mix(in srgb,var(--success) 10%,var(--paper));color:var(--ink);border:1px solid color-mix(in srgb,var(--success) 28%,var(--hair))}.wechat-preview>.editorial-message[role=status]:before{content:'✓ ';color:var(--success);font-weight:700}
+.wechat-paper{border-radius:6px;box-shadow:0 4px 22px #00000014}
+
+/* Style picker and copy button, placed in the host toolbar (no row of their own). */
+.wechat-controls-slot{display:contents}
+.wechat-controls{display:flex;align-items:center;gap:8px;flex:none;margin-left:auto}
+.wechat-toolbar.wechat-controls{justify-content:flex-end;margin:0}
+.wechat-style-picker{display:flex;flex:none;gap:2px;padding:2px;border:1px solid var(--hair-strong);border-radius:8px;background:var(--paper)}
+.wechat-controls .wechat-style-picker button.wechat-style-option,.content-library .wechat-controls .wechat-style-picker button.wechat-style-option:hover:not(:disabled){min-height:0;padding:3px 10px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:12px;font-weight:500;filter:none;box-shadow:none}
+.content-library .wechat-controls .wechat-style-picker button.wechat-style-option:hover:not(:disabled){color:var(--ink)}
+.wechat-controls .wechat-style-picker button.wechat-style-option[aria-pressed=true],.content-library .wechat-controls .wechat-style-picker button.wechat-style-option[aria-pressed=true]:hover:not(:disabled){background:var(--panel-2);color:var(--ink);box-shadow:var(--shadow-raise)}
+.wechat-controls button.wechat-copy,.content-library .wechat-controls button.wechat-copy:hover:not(:disabled){flex:none;min-height:0;padding:4px 12px;border:0;border-radius:6px;background:var(--accent-soft);color:var(--accent-ink);font-size:12px;font-weight:550;white-space:nowrap;cursor:pointer}
+.content-library .wechat-controls button.wechat-copy:hover:not(:disabled){filter:brightness(.97)}
+.wechat-controls button.wechat-copy:disabled{opacity:.5;cursor:default}

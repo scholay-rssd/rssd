@@ -30,8 +30,8 @@ __pycache__/
 .vscode/
 .claude/launch.json
 
-editorial/
-data.json
-open-source.json
-news.json
-theme-homepages/
+/editorial/
+/data.json
+/open-source.json
+/news.json
+/theme-homepages/
