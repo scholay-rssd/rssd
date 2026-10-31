@@ -45,7 +45,7 @@ export async function buildDemoVariant(variant,{output=join(root,'.local/demo'),
   const manifest=await buildSiteRelease({job:{id:'demo-'+site.id,snapshot,snapshot_hash:'demo-fixture'},target,site,source,now});
   await rm(source,{recursive:true,force:true});
   const routes=Object.fromEntries(JSON.parse(await readFile(join(target,'published-content.json'),'utf8')).records.map(r=>[r.id,r.route]));
-  const pages=new Set(Object.keys(manifest.hashes).filter(f=>f.endsWith('index.html')).map(f=>'/'+f.replace(/index\.html$/,'')));
+  const pages=new Set(Object.keys({...manifest.hashes,...manifest.byteHashes}).filter(f=>f.endsWith('index.html')).map(f=>'/'+f.replace(/index\.html$/,'')));
   return {variant,site,theme,target,manifest,routes,pages};
 }
 

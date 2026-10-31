@@ -10,17 +10,21 @@ import {originalLanguageSnapshot,renderLanguagePages} from './language-pages.mjs
 import {finalizeLanguageNavigation} from './language-navigation.mjs';
 import {attachBrowserExports} from './browser-export/build.mjs';
 import {attachGuestbook} from './guestbook-page.mjs';
+import {prepareSnapshotAssets} from './publication-assets.mjs';
 export {annualDate} from '../themes/journal/render.mjs';
 const renderers={'academic-v1':renderAcademic,'journal-v1':renderJournal};
 export async function buildSiteRelease({job,target,site=SITE,source,previousRoot,now=new Date()}){
  const selected=themeForSite(site);
  if(!selected||!renderers[selected.renderer])throw Error('Unsupported Theme renderer');
- const sourceJob={...job,snapshot:originalLanguageSnapshot(job.snapshot)};
+ const assetHashes={};
+ const prepared=await prepareSnapshotAssets(job.snapshot,{target,previousRoot,inline:selected.renderer==='academic-v1',byteHashes:assetHashes});
+ const sourceJob={...job,snapshot:originalLanguageSnapshot(prepared)};
  const base=(selected.contentAdapter==='academic-v1'?adaptAcademicSnapshot:adaptPublishedSnapshot)(sourceJob.snapshot,site);
  const organization=await loadOrganization(source,site.id);
  const {content}=await attachKnowledgeGraph(organizeContent(base,organization),{source,site});
  const theme=resolveTheme(site,content);
  const manifest=await renderers[theme.renderer]({job:sourceJob,target,site,source,previousRoot,now,theme,content,organization});
+ manifest.byteHashes={...manifest.byteHashes,...assetHashes};
  const localized=await renderLanguagePages({job,target,site,previousRoot,now,manifest});
  const navigated=await finalizeLanguageNavigation({target,site,manifest:localized});
  await attachGuestbook({target,site,manifest:navigated});

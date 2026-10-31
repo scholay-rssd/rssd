@@ -20,7 +20,7 @@ export const englishBrands=Object.freeze({
 });
 export function originalLanguageSnapshot(snapshot){
  const editions=new Set((snapshot.news||[]).filter(x=>articleLocale(x)!=='zh-CN').map(x=>'news:'+x.id));
- return {...snapshot,news:(snapshot.news||[]).filter(x=>articleLocale(x)==='zh-CN'),permalinks:Object.fromEntries(Object.entries(snapshot.permalinks||{}).filter(([id])=>!editions.has(id)))};
+ return {...snapshot,news:(snapshot.news||[]).filter(x=>articleLocale(x)==='zh-CN'),permalinks:Object.fromEntries(Object.entries(snapshot.permalinks||{}).filter(([id,route])=>!editions.has(id)&&!route.startsWith('/en/')))};
 }
 function alternates(site,zh,en){return [['zh-CN',zh],['en',en],['x-default',zh]].map(([lang,route])=>`<link rel="alternate" hreflang="${lang}" href="${esc(site.origin+route)}">`).join('');}
 function languageSwitch(zh,en,locale){return `<nav class="language-switch" aria-label="${locale==='en'?'Article language':'文章语言'}"><a data-language-switch="zh-CN" href="${esc(zh)}"${locale==='zh-CN'?' aria-current="page"':''}>中文</a> · <a data-language-switch="en" href="${esc(en)}"${locale==='en'?' aria-current="page"':''}>English</a></nav>`;}
@@ -31,7 +31,7 @@ function addLanguageUi(html,{site,zh,en,locale}){
  html=html.replace('</header>',languageSwitch(zh,en,locale)+'</header>');
  return html.replace('</body>','<script defer src="/site-language.js"></script></body>');
 }
-function EnglishShell(template,{site,title,summary,route,body,sourceRoute,index=false}){
+function EnglishShell(template,{site,title,summary,route,body,sourceRoute,index=false,directory="/en/"}){
  const brand=englishBrands[site.id]||{name:site.name,slogan:site.slogan||''};
  const url=site.origin+route,academic=/class="seo-main"|class="[^"]*\bapp-bar\b/.test(template);
  const themeButton=academic?(template.match(/<button\b[^>]*\bid="theme-toggle"[^>]*>[\s\S]*?<\/button>/)?.[0]||''):'';
@@ -52,7 +52,7 @@ function EnglishShell(template,{site,title,summary,route,body,sourceRoute,index=
  html=html.replace(main,`<main id="main"${academic?' class="seo-main"':''}>${body}</main>`);
  // Keep each Theme's authored shell and assets. Only the language view's own
  // header/footer slots are localized; translated prose is never string-replaced.
- html=html.replace(/<header\b([^>]*)>[\s\S]*?<\/header>/,(_,attrs)=>`<header${attrs}>${academic?'<div class="app-bar-inner">':''}${brandLink}<nav${academic?' class="main-nav"':''} aria-label="Main navigation">${academic?'<div class="section-nav">':''}<a href="/en/">Articles</a><a href="/">Chinese site</a>${academic?'</div>':''}</nav>${themeButton}${siteLinks}${academic?'</div>':''}</header>`)
+ html=html.replace(/<header\b([^>]*)>[\s\S]*?<\/header>/,(_,attrs)=>`<header${attrs}>${academic?'<div class="app-bar-inner">':''}${brandLink}<nav${academic?' class="main-nav"':''} aria-label="Main navigation">${academic?'<div class="section-nav">':''}<a href="${esc(directory)}">Articles</a><a href="/">Chinese site</a>${academic?'</div>':''}</nav>${themeButton}${siteLinks}${academic?'</div>':''}</header>`)
   .replace(/<footer\b([^>]*)>[\s\S]*?<\/footer>/,(_,attrs)=>`<footer${attrs}><span>${esc(brand.name)} · ${esc(brand.slogan)}</span><span class="footer-links"><a href="/en/content-feed.xml">RSS</a><a href="/">中文</a></span></footer>`)
   .replace(/<a\b[^>]*class=["']skip["'][^>]*>[\s\S]*?<\/a>/g,'<a class="skip" href="#main">Skip to content</a>');
  const schema={'@context':'https://schema.org','@type':index?'CollectionPage':'Article','@id':url,url,inLanguage:'en',name:title,...(!index?{headline:title,mainEntityOfPage:url}:{}),description:summary,isPartOf:{'@type':'WebSite','@id':site.origin+'/#website',url:site.origin+'/',name:brand.name}};
@@ -72,7 +72,13 @@ export async function renderLanguagePages({job,target,previousRoot,site,now,mani
   const identities=JSON.stringify({version:1,siteId:site.id,articles:Object.fromEntries([...all,...structured].map(data=>[data.id,{sha256:sourceContentSha256(data),route:data.sourceRoute||job.snapshot.permalinks?.['news:'+data.id]||'/news/'+data.id+'/',locale:articleLocale(data),...(data.translationOf?{translationOf:data.translationOf}:{})}]))});
   await writeFile(join(target,'publishing-identities.json'),identities);manifest.hashes['publishing-identities.json']=digest(identities);
  }
- if(!editions.length)return manifest;
+ if(!site.languages?.includes('en'))return manifest;
+ // Custom homepages keep their compiled HTML and hydration data. The shared
+ // English article directory has its own static route next to that homepage.
+ const custom=Boolean(manifest.homepage);
+ let nativeEnglishHome=false;
+ if(custom)try{await readFile(join(target,'en/index.html'));nativeEnglishHome=true;}catch(error){if(error.code!=='ENOENT')throw error;}
+ const directory=nativeEnglishHome?'/en/journal/':'/en/';
  let prior={};if(previousRoot)try{prior=JSON.parse(await readFile(join(previousRoot,'language-seo.json'),'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
  const seo=createSeoState(prior,now),paths=new Map(),write=async(path,bytes)=>{
   await mkdir(dirname(join(target,path)),{recursive:true});await writeFile(join(target,path),bytes);
@@ -84,20 +90,26 @@ export async function renderLanguagePages({job,target,previousRoot,site,now,mani
   const original=sources.get(data.translationOf?.articleId),sourceRoute=original?(original.sourceRoute||job.snapshot.permalinks?.['news:'+original.id]||'/news/'+original.id+'/'):null;
   const route=job.snapshot.permalinks?.['news:'+data.id]||'/en/news/'+(original?.id||data.id)+'/';
   if(!/^\/en\/(?:[A-Za-z0-9_\-\u0080-\uFFFF]+\/)+$/.test(route))throw Error('Invalid English article permalink');
-  const file=sourceRoute?sourceRoute.slice(1)+'index.html':'index.html',template=await readFile(join(target,file),'utf8');
+  const file=sourceRoute?sourceRoute.slice(1)+'index.html':custom?'journal/index.html':'index.html',template=await readFile(join(target,file),'utf8');
   const rendered=renderArticleParts(data.markdown.replace(/^# [^\n]+\n+/,''),{site});
   const stale=Boolean(original&&sourceContentSha256(original)!==data.translationOf.sha256);
   const body=`<article class="${/class="seo-main"/.test(template)?'record-page news-article':'reading'}"${sourceRoute?` data-community-source-route="${esc(sourceRoute)}"`:''}><a class="back" href="/en/">← All articles</a><div class="entry-meta">${esc(data.date)} · ${esc(data.author)}</div>${stale?'<p class="muted">This English edition reflects an earlier revision of the Chinese source.</p>':''}<div class="prose"><h1>${esc(data.title)}</h1><p class="lead">${esc(data.summary)}</p><div class="article-body">${rendered.body}</div>${rendered.endnotes?`<div class="article-body article-endnotes">${rendered.endnotes}</div>`:''}</div></article>`;
-  const english=EnglishShell(template,{site,title:data.title,summary:data.summary,route,body,sourceRoute});
+  const english=EnglishShell(template,{site,title:data.title,summary:data.summary,route,body,sourceRoute,directory}).replace(/href="\/en\/">(Articles|← All articles)/g,`href="${directory}">$1`);
   await write(route.slice(1)+'index.html',english);paths.set(route,seo.page(route,english).lastmod);
   if(sourceRoute){const chinese=addLanguageUi(template,{site,zh:sourceRoute,en:route,locale:'zh-CN'});await write(file,chinese);paths.set(sourceRoute,seo.page(sourceRoute,chinese).lastmod);}
-  records.push({id:data.id,...(original?{sourceArticleId:original.id,sourceUrl:site.origin+sourceRoute}:{}),route,url:site.origin+route,locale:'en',title:data.title,summary:data.summary,date:data.date,bodyMarkdown:data.markdown,translationOf:data.translationOf,contentSha256:sourceContentSha256(data),stale});
+  records.push({id:data.id,...(original?{sourceArticleId:original.id,sourceUrl:site.origin+sourceRoute}:{}),route,url:site.origin+route,locale:'en',title:data.title,summary:data.summary,date:data.date,category:data.category,bodyMarkdown:data.markdown,translationOf:data.translationOf,contentSha256:sourceContentSha256(data),stale});
  }
- const home=await readFile(join(target,'index.html'),'utf8'),brand=englishBrands[site.id]||{name:site.name,slogan:site.slogan||''};
+ const home=await readFile(join(target,custom?'journal/index.html':'index.html'),'utf8'),brand=englishBrands[site.id]||{name:site.name,slogan:site.slogan||''};
  const cards=records.slice().sort((a,b)=>b.date.localeCompare(a.date)||a.id.localeCompare(b.id)).map(r=>`<article class="entry"><div class="entry-meta">${esc(r.date)}</div><h2><a href="${esc(r.route)}">${esc(r.title)}</a></h2><p>${esc(r.summary)}</p><a class="read" href="${esc(r.route)}">Read article ↗</a></article>`).join('');
- const englishHome=EnglishShell(home,{site,title:brand.name,summary:brand.slogan,route:'/en/',sourceRoute:'/',index:true,body:`<section class="hero compact"><h1>${esc(brand.name)}</h1><p>${esc(brand.slogan)}</p></section><section class="entries">${cards}</section>`});
- await write('en/index.html',englishHome);paths.set('/en/',seo.page('/en/',englishHome).lastmod);
- const chineseHome=addLanguageUi(home,{site,zh:'/',en:'/en/',locale:'zh-CN'});await write('index.html',chineseHome);paths.set('/',seo.page('/',chineseHome).lastmod);
+ const englishHome=EnglishShell(home,{site,title:brand.name,summary:brand.slogan,route:directory,sourceRoute:custom?'/journal/':'/',index:true,directory,body:`<section class="hero compact"><h1>${esc(brand.name)}</h1><p>${esc(brand.slogan)}</p></section><section class="entries">${cards||'<p>No English articles have been published yet.</p>'}</section>`});
+ await write(directory.slice(1)+'index.html',englishHome);paths.set(directory,seo.page(directory,englishHome).lastmod);
+ if(nativeEnglishHome){
+  const groups=new Map();for(const record of records){const category=record.category||'Articles';groups.set(category,[...(groups.get(category)||[]),record]);}
+  const archiveBody='<h1>Categories</h1>'+([...groups].map(([category,items])=>`<section class="entries"><h2>${esc(category)}</h2>${items.map(r=>`<article class="entry"><h3><a href="${esc(r.route)}">${esc(r.title)}</a></h3><p>${esc(r.summary)}</p></article>`).join('')}</section>`).join('')||'<p>No English articles have been published yet.</p>');
+  const archive=EnglishShell(home,{site,title:'Categories',summary:brand.slogan,route:'/en/archive/',sourceRoute:'/archive/',index:true,directory,body:archiveBody});
+  await write('en/archive/index.html',archive);paths.set('/en/archive/',seo.page('/en/archive/',archive).lastmod);
+ }
+ if(!custom){const chineseHome=addLanguageUi(home,{site,zh:'/',en:'/en/',locale:'zh-CN'});await write('index.html',chineseHome);paths.set('/',seo.page('/',chineseHome).lastmod);}
  await write('site-language.js',await readFile(new URL('./site-language.js',import.meta.url),'utf8'));
  await write('language-discussion.js',await readFile(new URL('../modules/discussion/discussion-links.v1.js',import.meta.url),'utf8'));
  await write('en/published-content.json',JSON.stringify({version:1,siteId:site.id,locale:'en',records}));

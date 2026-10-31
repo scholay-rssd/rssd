@@ -34,7 +34,7 @@ export async function buildThemeHome(siteId,output=join(root,'.local/theme-build
   // Next pages own their JSON-LD so client navigation updates it with the page.
   if(theme.homepage.builder==='static'&&file.endsWith('index.html'))bytes=Buffer.from(addHomepageStructuredData(fillNavigationSlot(bytes.toString('utf8'),site),{site,route:'/'+file.replace(/index\.html$/,'')}));
   if(file.endsWith('index.html'))bytes=Buffer.from(addSocialMetadata(bytes.toString('utf8'),{site,route:'/'+file.replace(/index\.html$/,'')}));
-  if(file.endsWith('index.html'))bytes=Buffer.from(addLanguageNavigation(bytes.toString('utf8'),{site,route:'/'+file.replace(/index\.html$/,''),englishHome:theme.id==='personal'}));
+  if(file.endsWith('index.html'))bytes=Buffer.from(addLanguageNavigation(bytes.toString('utf8'),{site,route:'/'+file.replace(/index\.html$/,''),englishHome:theme.id==='personal'||site.languages?.includes('en')}));
   hashes[file]=byteHash(bytes);await mkdir(join(target,'public',file,'..'),{recursive:true});await writeFile(join(target,'public',file),bytes);
  }
  hashes['site-language.css']=byteHash(await readFile(new URL('../web/engine/site-language.css',import.meta.url)));await copyFile(new URL('../web/engine/site-language.css',import.meta.url),join(target,'public/site-language.css'));

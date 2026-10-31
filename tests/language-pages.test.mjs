@@ -8,6 +8,16 @@ import {profiles} from '../scripts/site-config.mjs';
 import {editionArticleId,sourceContentSha256} from '../contracts/language-editions.mjs';
 import {digest} from '../admin/model.mjs';
 
+test('a bilingual site keeps an empty English entrance and feed without substituting Chinese articles',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'rssd-empty-english-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const site={...profiles.find(x=>x.id==='pets'),languages:['zh-CN','en']};
+ const snapshot={news:[{id:'chinese-only',title:'中文专属文章',summary:'仅中文摘要',markdown:'# 中文专属文章\n\n仅中文正文',date:'2026-11-01',category:site.columns[0]}],data:{year:[],history:[]},openSource:{items:[]},permalinks:{}};
+ await buildSiteRelease({job:{id:'empty-en',snapshot,snapshot_hash:'fixture'},target:dir,source:resolve('.'),site});
+ const home=await readFile(join(dir,'en/index.html'),'utf8');assert.match(home,/No English articles have been published yet/);assert.doesNotMatch(home,/中文专属文章|仅中文正文/);
+ assert.equal(JSON.parse(await readFile(join(dir,'en/published-content.json'))).records.length,0);
+ assert.doesNotMatch(await readFile(join(dir,'en/content-feed.xml'),'utf8'),/<item>/);assert.match(await readFile(join(dir,'sitemap-en.xml'),'utf8'),/\/en\//);
+});
+
 test('an English-only original gets its own route, RSS and sitemap without a fabricated Chinese version',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'rssd-english-original-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const site={...profiles.find(x=>x.id==='metho'),languages:['zh-CN','en']};
