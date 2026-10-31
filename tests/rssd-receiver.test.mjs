@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {ReceiverStore} from '../receiver/store.mjs';
 import p from '../contracts/rssd-v1.cjs';
 import {publication} from '../contracts/rssd-publication.cjs';
+import {contentKey} from '../contracts/rssd-publication.cjs';
 const site={id:'demo',spaceId:'research',sections:[{id:'methods'}]};
 const packet={version:1,requestId:'request-1',siteId:'demo',workspaceId:'research',sectionId:'methods',workId:'work-1',locale:'en',revision:1,
   contentHash:'a'.repeat(64),route:'/en/news/example/',content:{locale:'en',title:'An original',bodyMarkdown:'Full body',metadata:{author:'Example',privateNotes:'Must never ship'}}};
@@ -35,4 +36,14 @@ test('site isolation, public metadata allowlist and route ownership are enforced
 test('a failed destination revision cannot be retried after a newer revision arrives',async t=>{
   const f=await fixture(t);f.store.accept(packet);f.store.fail(f.store.claim().id,'Bad image');
   f.store.accept({...packet,requestId:'newer',revision:2});assert.throws(()=>f.store.retry(packet.requestId),{code:'stale_revision'});
+});
+
+test('final legacy deltas advance reserved revisions only before the center starts writing',async t=>{
+ const f=await fixture(t),key=contentKey(packet),baseline=revision=>({rssdIdentity:{[key]:{documentId:'original',revision,route:packet.route}}});
+ f.store.seedLegacyHeads(baseline(1));f.store.seedLegacyHeads(baseline(2));
+ assert.throws(()=>f.store.seedLegacyHeads(baseline(1)),{code:'stale_revision'});
+ assert.throws(()=>f.store.accept({...packet,revision:2}),{code:'stale_revision'});
+ f.store.accept({...packet,revision:3});f.store.seedLegacyHeads(baseline(2));
+ assert.throws(()=>f.store.seedLegacyHeads(baseline(4)),{code:'baseline_locked'});
+ assert.equal(f.store.status().requests[0].count,1);
 });

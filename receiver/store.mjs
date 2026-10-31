@@ -17,15 +17,21 @@ export class ReceiverStore {
   }
   close(){this.db.close();}
   seedLegacyHeads(baseline={}){return this.transaction(()=>{
+    const identityHash=p.hash(baseline.rssdIdentity||{}),previous=this.db.prepare("SELECT value FROM state WHERE key='legacyIdentityHash'").get();
+    if(previous&&previous.value!==identityHash&&this.db.prepare('SELECT count(*) AS n FROM requests').get().n)p.fail('Legacy baseline cannot change after center publication has started',409,'baseline_locked');
     for(const [key,item] of Object.entries(baseline.rssdIdentity||{})){
       if(!/^[a-f0-9]{64}$/.test(key)||typeof item.route!=='string'||!Number.isSafeInteger(item.revision))p.fail('Invalid legacy identity map');
       const occupied=this.db.prepare('SELECT work_key FROM heads WHERE route=?').get(item.route);
       if(occupied&&occupied.work_key!==key)p.fail('Legacy route collides with received content',409,'route_conflict');
-      const existing=this.db.prepare('SELECT route FROM heads WHERE work_key=?').get(key);
+      const existing=this.db.prepare('SELECT * FROM heads WHERE work_key=?').get(key);
       if(existing&&existing.route!==item.route)p.fail('Legacy identity has two public routes',409,'route_conflict');
+      if(existing?.request_id.startsWith('legacy:')&&existing.revision>item.revision)p.fail('Legacy baseline revision moved backwards',409,'stale_revision');
       this.db.prepare('INSERT INTO heads VALUES(?,?,?,?) ON CONFLICT(work_key) DO NOTHING').run(key,item.revision,item.route,'legacy:'+item.documentId);
+      if(existing?.request_id.startsWith('legacy:'))this.db.prepare('UPDATE heads SET revision=? WHERE work_key=?').run(item.revision,key);
     }
+    this.db.prepare("INSERT INTO state VALUES('legacyIdentityHash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(identityHash);
   });}
+  status(){return {siteId:this.site.id,workspaceId:this.site.spaceId,requests:this.db.prepare('SELECT state,count(*) AS count FROM requests GROUP BY state').all(),publications:this.db.prepare('SELECT count(*) AS count FROM published').get().count,legacyIdentityHash:this.db.prepare("SELECT value FROM state WHERE key='legacyIdentityHash'").get()?.value||null};}
   transaction(fn){this.db.exec('BEGIN IMMEDIATE');try{const result=fn();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}}
   receipt(id){
     p.id(id);const r=this.db.prepare('SELECT * FROM requests WHERE id=?').get(id);

@@ -18,7 +18,8 @@ export async function createReceiver({config,build=buildAndActivate}) {
     if(!/^[a-f0-9]{64}$/.test(tokenHash)||sites.has(site.id))throw Error('Invalid receiver site credential or duplicate identity');
     site.sections=sectionsForSite(site);const base=resolve(entry.publicRoot);
     if(base===home||base===source)throw Error('Public release root must be separate from private state and source');
-    sites.set(site.id,{site,base,tokenHash,baseline:entry.baseline?JSON.parse(await readFile(entry.baseline,'utf8')):{},store:new ReceiverStore(join(home,site.id,'receiver.sqlite'),site),media:new ReceiverMedia(join(home,site.id,'media'))});
+    const baselineBytes=entry.baseline?await readFile(entry.baseline,'utf8'):null;
+    sites.set(site.id,{site,base,tokenHash,accepting:entry.accepting!==false,baselineSha256:baselineBytes?p.hash(baselineBytes):null,baseline:baselineBytes?JSON.parse(baselineBytes):{},store:new ReceiverStore(join(home,site.id,'receiver.sqlite'),site),media:new ReceiverMedia(join(home,site.id,'media'))});
     const configured=sites.get(site.id);configured.store.seedLegacyHeads(configured.baseline);
   }
   const app=Fastify({logger:false,bodyLimit:8*1024*1024});
@@ -28,7 +29,8 @@ export async function createReceiver({config,build=buildAndActivate}) {
     if(!entry||!timingSafeEqual(Buffer.from(entry.tokenHash),Buffer.from(p.hash(token))))p.fail('Invalid site credential',401,'unauthorized');
     req.rssdSite=entry;
   });
-  app.post('/api/rssd-receiver/v1/sites/:siteId/submissions',async req=>req.rssdSite.store.accept(req.body));
+  app.get('/api/rssd-receiver/v1/sites/:siteId/status',async req=>({...req.rssdSite.store.status(),accepting:req.rssdSite.accepting,baselineSha256:req.rssdSite.baselineSha256}));
+  app.post('/api/rssd-receiver/v1/sites/:siteId/submissions',async req=>{if(!req.rssdSite.accepting)p.fail('Site intake is paused for handoff',409,'site_paused');return req.rssdSite.store.accept(req.body);});
   app.get('/api/rssd-receiver/v1/sites/:siteId/submissions/:id',async req=>req.rssdSite.store.receipt(req.params.id));
   app.post('/api/rssd-receiver/v1/sites/:siteId/submissions/:id/retry',async req=>req.rssdSite.store.retry(req.params.id));
   app.get('/api/rssd-receiver/v1/sites/:siteId/media/:sha256',async req=>req.rssdSite.media.status(req.params.sha256));

@@ -4,14 +4,16 @@ import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import {join,resolve,sep} from 'node:path';
 import {tmpdir} from 'node:os';
-import {createReceiver} from '../receiver/server.mjs';
-import {buildAndActivate} from '../receiver/build.mjs';
-import {verifyLive} from '../admin/release-verification.mjs';
+import {pathToFileURL} from 'node:url';
 import {profiles} from '../scripts/site-config.mjs';
 import {sectionsForSite} from '../contracts/site-sections.mjs';
 import {contentKey} from '../contracts/rssd-publication.cjs';
 import p from '../contracts/rssd-v1.cjs';
 import mediaProtocol from '../contracts/rssd-media.cjs';
+const artifact=resolve(process.env.RSSD_RECEIVER_ARTIFACT_DIR||'.');
+const {createReceiver}=await import(pathToFileURL(join(artifact,'receiver/server.mjs')));
+const {buildAndActivate}=await import(pathToFileURL(join(artifact,'receiver/build.mjs')));
+const {verifyLive}=await import(pathToFileURL(join(artifact,'admin/release-verification.mjs')));
 
 test('HTTP receiver builds real bilingual pages, verifies public files, and retains old release on failure',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'rssd-http-')),base=join(dir,'public'),current=join(base,'current');
@@ -23,7 +25,7 @@ test('HTTP receiver builds real bilingual pages, verifies public files, and reta
   const site={...profiles.find(x=>x.id==='metho'),origin:'http://127.0.0.1:'+server.address().port,languages:['zh-CN','en']};
   const token='fixture-site-credential-not-real-1234567890',sectionId=sectionsForSite(site)[0].id;
   let failVerification=false;
-  const receiver=await createReceiver({config:{home:join(dir,'state'),source:resolve('.'),sites:[{site,publicRoot:base,tokenHash:p.hash(token)}]},
+  const receiver=await createReceiver({config:{home:join(dir,'state'),source:artifact,sites:[{site,publicRoot:base,tokenHash:p.hash(token)}]},
     build:options=>buildAndActivate({...options,verify:manifest=>{if(failVerification)throw Error('Simulated public verification failure');return verifyLive(manifest,site.origin,false);}})});
   t.after(async()=>{await receiver.app.close();await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});});
   const endpoint='/api/rssd-receiver/v1/sites/metho/submissions',headers={authorization:'Bearer '+token};
@@ -50,4 +52,14 @@ test('HTTP receiver builds real bilingual pages, verifies public files, and reta
   assert.equal((await receiver.app.inject({url:endpoint+'/'+chinese.requestId,headers})).json().state,'success');
   assert.match(await (await fetch(site.origin+packet.route)).text(),/hreflang="zh-CN"/);
   assert.match(await (await fetch(site.origin+chinese.route)).text(),/完整的中文正文/);
+});
+
+test('paused site intake exposes authenticated status and refuses new submissions',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'rssd-paused-')),site=profiles.find(s=>s.id==='metho'),token='fixture-only-paused-site-token';
+ const receiver=await createReceiver({config:{home:join(dir,'state'),source:artifact,sites:[{site,publicRoot:join(dir,'public'),tokenHash:p.hash(token),accepting:false}]}});
+ t.after(async()=>{await receiver.app.close();await rm(dir,{recursive:true,force:true});});
+ const base='/api/rssd-receiver/v1/sites/metho',headers={authorization:'Bearer '+token};
+ assert.equal((await receiver.app.inject({url:base+'/status'})).statusCode,401);
+ const status=await receiver.app.inject({url:base+'/status',headers});assert.equal(status.json().accepting,false);assert.equal(status.json().publications,0);
+ const rejected=await receiver.app.inject({method:'POST',url:base+'/submissions',headers,payload:{}});assert.equal(rejected.statusCode,409);assert.equal(rejected.json().code,'site_paused');
 });
