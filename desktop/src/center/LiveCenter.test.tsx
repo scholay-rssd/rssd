@@ -34,4 +34,8 @@ it('reads real data and forwards a retained demand generation rather than changi
  expect(host.textContent).not.toContain('本机 · 模拟认领');
  expect(host.textContent).not.toContain('演示周期');expect(host.textContent).not.toContain('实际服务由中心接入');
  expect(host.textContent).toContain('各目标当前周期汇总');
+ const calendar=Array.from(host.querySelectorAll('button')).find(button=>button.textContent==='发布日历')!;
+ await act(async()=>calendar.click());
+ expect(host.textContent).toContain('本周');expect(host.textContent).toContain('中心真实数据');
+ expect(host.textContent).not.toContain('演示');expect(host.textContent).not.toContain('数据为示例');
 });

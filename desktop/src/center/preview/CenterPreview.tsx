@@ -884,7 +884,7 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
                   ›
                 </button>
                 <button onClick={() => setDate(data.weekStart)}>
-                  {tr("演示周")}
+                  {tr(live ? "本周" : "演示周")}
                 </button>
               </div>
               <div className="cp-view-switch" aria-label={tr("日历视图")}>
@@ -1021,7 +1021,9 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
                 <i className="blocked" />
                 {tr("待处理")}
               </span>
-              <small>{tr("展示时区：Asia/Shanghai · 数据为示例")}</small>
+              <small>{live
+                ? tr("展示时区：{{timezone}} · 中心真实数据", { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
+                : tr("展示时区：Asia/Shanghai · 数据为示例")}</small>
             </div>
           </>
         )}
