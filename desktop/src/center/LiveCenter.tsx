@@ -38,7 +38,7 @@ export default function LiveCenter({onExit}:{onExit:()=>void}){
   await call('edit_demand',{id:task.id,baseGeneration:old.generation,changes,requestId:pending.current.requestId});pending.current=null;await refresh();
  };
  const claim=async(task:PreviewDemand)=>{if(!agent)throw Error('请先在执行设置中选择可用智能体');await call('start',{agentId:agent,workspaceIds:[task.workspaceId],demandId:task.id,once:true});await refresh();};
- const assistant=(workspaceIds:string[])=><LocalCenterAssistant agents={status.agents||[]} workspaceIds={workspaceIds} manage={()=>manage('goals')}/>;
+ const assistant=(workspaceIds:string[])=><LocalCenterAssistant agents={status.agents||[]} workspaceIds={workspaceIds} defaultAgent={agent} onAgentChange={setAgent} manage={()=>manage('goals')} openNative={status.origin?()=>{void openUrl(new URL('/agents',status.origin).href).catch(e=>setError(String(e)));}:undefined}/>;
  return <><CenterPreview onExit={onExit} live={{data,loading,error,refresh:()=>void refresh(),updateDemand,claim,manage,assistant,calendarRange:(from,to)=>setRange(old=>{const next={from:new Date(from+'T00:00:00').toISOString(),to:new Date(to+'T00:00:00').toISOString()};return old.from===next.from&&old.to===next.to?old:next;})}}/>
   {more&&<button disabled={loading} onClick={()=>setLimit(n=>n+200)}>{tr("加载更多需求（已读取 {{count}} 条）",{count:data.demands.length})}</button>}
   {calendarMore&&<p>{tr("当前显示前 200 条发布记录。")}<button onClick={()=>manage('calendar')}>{tr("打开中心分页查看全部")}</button></p>}

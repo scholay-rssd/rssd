@@ -31,3 +31,10 @@ it('requires a real workspace and never sends from an unmapped Postiz-only scope
  await act(async()=>root.render(draw(['__postiz__'])));
  expect(vi.mocked(invoke)).not.toHaveBeenCalled();expect(host.textContent).toContain('未选择工作空间');
 });
+
+it('retains native Postiz assistant access and forwards production agent selection',async()=>{
+ const native=vi.fn(),choose=vi.fn();
+ await act(async()=>root.render(createElement(LocalCenterAssistant,{agents:[...agents,{id:'cursor',name:'Cursor',available:true,enabled:true}],workspaceIds:['space-a'],manage:()=>{},openNative:native,onAgentChange:choose})));
+ await act(async()=>Array.from(host.querySelectorAll('button')).find(b=>b.textContent==='打开 Postiz 原生助手')!.click());expect(native).toHaveBeenCalledOnce();
+ await act(async()=>{const select=host.querySelector('select')!;select.value='cursor';select.dispatchEvent(new Event('change',{bubbles:true}));});expect(choose).toHaveBeenCalledWith('cursor');
+});

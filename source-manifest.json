@@ -2839,17 +2839,17 @@
     },
     {
       "path": "desktop/src/center/LiveCenter.tsx",
-      "sha256": "69e4b51d1ff7bea51e2310b13d113c557b9831d175fcc6da97f23404a552ae31",
+      "sha256": "ad28e1f197b3aab360f898e415277e037be62ebcdaa7b935ce33f99eb5969a41",
       "syntheticContentReplacement": false
     },
     {
       "path": "desktop/src/center/LocalCenterAssistant.test.tsx",
-      "sha256": "bdf24f3cec2025b7d2087ab20a3a7a5cfd5fb1ea2ef0e312e9f9cf44195d43db",
+      "sha256": "cd492fe7d857dd1954adb0c63b263f09201508318f41a78978c68c2f1493df97",
       "syntheticContentReplacement": false
     },
     {
       "path": "desktop/src/center/LocalCenterAssistant.tsx",
-      "sha256": "24d86a2af3a0889f1da183fff3d4c1c8322a4b30f763d0bec832b67008d7e04b",
+      "sha256": "41f361e274fea0fd5f27bb25d2299fd41bb0c3103544cd77ed6323a4abe1046c",
       "syntheticContentReplacement": false
     },
     {

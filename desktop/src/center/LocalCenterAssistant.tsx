@@ -5,9 +5,9 @@ type Agent={id:string;name:string;available:boolean;enabled:boolean};
 type Context={agentId:string;workspaceIds:string[]};
 type Snapshot={state:string;message?:string;history:Array<{role:string;text:string;at:number}>};
 const empty:Snapshot={state:'idle',history:[]};
-export default function LocalCenterAssistant({agents,workspaceIds,manage}:{agents:Agent[];workspaceIds:string[];manage:()=>void}){
+export default function LocalCenterAssistant({agents,workspaceIds,manage,openNative,defaultAgent,onAgentChange}:{agents:Agent[];workspaceIds:string[];manage:()=>void;openNative?:()=>void;defaultAgent?:string;onAgentChange?:(id:string)=>void}){
  const [agentId,setAgent]=useState(''),[text,setText]=useState(''),[snapshot,setSnapshot]=useState<Snapshot>(empty),[error,setError]=useState(''),[pending,setPending]=useState(false),[pinned,setPinned]=useState<Context|null>(null);
- const preferred=agentId||agents.find(a=>['codex','cursor'].includes(a.id)&&a.available&&a.enabled)?.id||'';
+ const preferred=agentId||defaultAgent||agents.find(a=>['codex','cursor'].includes(a.id)&&a.available&&a.enabled)?.id||'';
  const scopeKey=JSON.stringify(workspaceIds.filter(id=>id!=='__postiz__').sort());
  const context=useMemo(()=>pinned||{agentId:preferred,workspaceIds:JSON.parse(scopeKey)},[pinned,preferred,scopeKey]);
  const key=JSON.stringify(context),generation=useRef(0),log=useRef<HTMLDivElement>(null);
@@ -30,9 +30,9 @@ export default function LocalCenterAssistant({agents,workspaceIds,manage}:{agent
   </div>
   <p role="status">{snapshot.message}</p>{error&&<p role="alert">{error}</p>}
   <form className="cp-composer" onSubmit={e=>{e.preventDefault();if(valid&&!busy&&text.trim())void action('assistant_send');}}>
-   <label>{tr('本机智能体')}<select aria-label={tr('本机智能体')} disabled={busy} value={preferred} onChange={e=>setAgent(e.target.value)}><option value="">{tr('选择智能体')}</option>{agents.filter(a=>['codex','cursor'].includes(a.id)).map(a=><option key={a.id} value={a.id} disabled={!a.available||!a.enabled}>{a.name}{!a.available?tr(' · 未安装'):''}</option>)}</select></label>
+   <label>{tr('本机智能体')}<select aria-label={tr('本机智能体')} disabled={busy} value={preferred} onChange={e=>{setAgent(e.target.value);onAgentChange?.(e.target.value);}}><option value="">{tr('选择智能体')}</option>{agents.filter(a=>['codex','cursor'].includes(a.id)).map(a=><option key={a.id} value={a.id} disabled={!a.available||!a.enabled}>{a.name}{!a.available?tr(' · 未安装'):''}</option>)}</select></label>
    <label>{tr('给助手的指令')}<textarea aria-label={tr('给助手的指令')} value={text} onChange={e=>setText(e.target.value)} maxLength={20000} disabled={pending} rows={3}/></label>
    <div className="cp-composer-footer"><span>{tr('本轮范围')}：{context.workspaceIds.join('、')||tr('未选择工作空间')}</span><button className="cp-primary" disabled={!valid||busy||!text.trim()}>{tr('发送指令')}</button><button type="button" disabled={!valid||!busy||pending} onClick={()=>void action('assistant_cancel')}>{tr('停止助手')}</button><button type="button" disabled={!valid||busy} onClick={()=>void action('assistant_reset')}>{tr('新建对话')}</button></div>
   </form>
- </section><aside className="cp-assistant-context"><h3>{tr('当前上下文')}</h3><p>{tr('沿用本机智能体授权。对话和执行记录保留在本机；中断后可继续，或新建对话保留旧记录。')}</p><p>{tr('认领、写作和交稿使用需求池的生产执行器。目标与排期管理使用浏览器账号。')}</p><button onClick={manage}>{tr('管理目标与常驻维护')}</button></aside></div>;
+ </section><aside className="cp-assistant-context"><h3>{tr('当前上下文')}</h3><p>{tr('沿用本机智能体授权。对话和执行记录保留在本机；中断后可继续，或新建对话保留旧记录。')}</p><p>{tr('认领、写作和交稿使用需求池的生产执行器。目标与排期管理使用浏览器账号。')}</p><button onClick={manage}>{tr('管理目标与常驻维护')}</button><button disabled={!openNative} onClick={openNative}>{tr('打开 Postiz 原生助手')}</button></aside></div>;
 }
