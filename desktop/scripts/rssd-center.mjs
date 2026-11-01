@@ -45,10 +45,10 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
     try{const value=await client.registry();await writeCenterJson(join(home,'registry.json'),{origin:client.origin,value});return value;}
     catch(error){const cached=await read(join(home,'registry.json'));if((!error.status||error.status>=500)&&cached?.origin===client.origin)return {...cached.value,offline:true};throw error;}
   }
-  if(method==='demands')return client.demands({workspaceId:params.workspaceId});
-  if(method==='works')return client.works({workspaceId:params.workspaceId,search:params.search});
+  if(method==='demands')return client.demands({workspaceId:params.workspaceId,search:params.search,limit:params.limit,offset:params.offset});
+  if(method==='works')return client.works({workspaceId:params.workspaceId,search:params.search,limit:params.limit,offset:params.offset});
   if(method==='work')return client.work(params.workId);
-  if(method==='publications')return client.publications({workspaceId:params.workspaceId});
+  if(method==='publications')return client.publications({workspaceId:params.workspaceId,limit:params.limit,offset:params.offset});
   if(method==='claim')return client.claim({workspaceIds:[params.workspaceId],sectionIds:params.sectionId?[params.sectionId]:[],demandId:params.demandId});
   if(method==='release')return client.changeDemand(params.demandId,{action:'release',claimToken:params.claimToken});
   if(method==='submit'){const entry=await outbox.enqueue(params.packet);return outbox.flushOne(entry.requestId);}
