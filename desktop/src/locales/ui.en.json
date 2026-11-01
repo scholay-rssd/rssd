@@ -2590,5 +2590,13 @@
   "查找作品或需求": "Find works or tasks",
   "查找": "Find",
   "中心列表分页": "Center list pages",
-  "第 {{page}} 页": "Page {{page}}"
+  "第 {{page}} 页": "Page {{page}}",
+  "内容生产": "Content production",
+  "工作中心": "Work center",
+  "作品标题或正文": "Work title or body",
+  "需求标题或写作要求": "Demand title or writing instructions",
+  "新建作品": "New work",
+  "作品会保留各语言的独立版本。": "Works retain independent versions for each language.",
+  "提交作品后，可在这里查看发布结果。": "Publication results appear here after you submit a work.",
+  "添加选题后，在 PC 或无头版开启工作模式。": "Add a topic, then start work mode on a desktop or headless device."
 }
