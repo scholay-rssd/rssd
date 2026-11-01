@@ -1,0 +1,36 @@
+name: Edge export acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/rssd-edge-acceptance-20261101]
+permissions:
+  contents: read
+jobs:
+  edge:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix desktop/runtime --no-audit --no-fund
+      - name: Verify Microsoft Edge exports
+        shell: pwsh
+        run: |
+          $edgePath = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+          if (-not (Test-Path -LiteralPath $edgePath)) { throw 'Microsoft Edge is not installed' }
+          $env:RSSD_BROWSER_EXECUTABLE = $edgePath
+          $env:RSSD_BROWSER_ARTIFACTS = 'artifacts/browser-export-edge'
+          node --test tests/rssd-browser-export.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rssd-edge-export-evidence
+          path: artifacts/browser-export-edge/
+          retention-days: 7

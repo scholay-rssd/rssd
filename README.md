@@ -31,3 +31,7 @@ part of this repository.
 The new center protocol, durable outbox, worker coordination, bilingual site
 receiver and desktop center panel are implemented. Destination coverage,
 restoration, browser exports and production cutovers are still in progress.
+
+## Center account login
+
+See [desktop and Linux device authorization](docs/center-login.md) for browser login, workspace scopes, recovery and local credential storage.

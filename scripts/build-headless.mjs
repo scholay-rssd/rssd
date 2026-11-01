@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 if(process.platform!=='linux'||process.arch!=='x64')throw Error('Build the Linux x64 runtime on a Linux x64 runner');
-const version=process.env.RSSD_RELEASE_VERSION||JSON.parse(await readFile(join(root,'package.json'),'utf8')).version;
+const version=process.env.RSSD_RELEASE_VERSION||JSON.parse(await readFile(join(root,'desktop/package.json'),'utf8')).version;
 if(!/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(version||''))throw Error('Set RSSD_RELEASE_VERSION to a release version');
 const result=spawnSync(process.execPath,['desktop/scripts/prepare-workbench.mjs'],{cwd:root,stdio:'inherit',env:{...process.env,RSSD_HEADLESS_BUILD:'1'}});
 if(result.status!==0)throw Error('Runtime preparation failed');
