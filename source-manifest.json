@@ -239,7 +239,7 @@
     },
     {
       "path": "desktop/Cargo.lock",
-      "sha256": "ab0942b9549562ec0c468aa8b0504455567e6710f1b7802bf8e62412d2562d8c",
+      "sha256": "9a60c942a119e06234d28b4ba5f81dcd1cef5389a4fe58491472332c0c8f2871",
       "syntheticContentReplacement": false
     },
     {
@@ -559,7 +559,7 @@
     },
     {
       "path": "desktop/package.json",
-      "sha256": "0c5ed0c0ad25dddcad2de9b0b5ffacd7f01e7d2619f49bca8ac9bcf48e909b24",
+      "sha256": "455b1f0e8d8f249b4c8d5013a795d52160242e64264ce9dca87db3a97a0acd0d",
       "syntheticContentReplacement": false
     },
     {
@@ -1289,7 +1289,7 @@
     },
     {
       "path": "desktop/scripts/agent/center-assistant.mjs",
-      "sha256": "85adf3a07908d41a600ed7730f3f42ba2a55ea86ce821ca7fe001a9013d2e996",
+      "sha256": "02431b9db897a633dc03461f364287732f8db1f09d0d3992aa6551839e6c200c",
       "syntheticContentReplacement": false
     },
     {
@@ -1729,7 +1729,7 @@
     },
     {
       "path": "desktop/scripts/prepare-workbench.mjs",
-      "sha256": "df93f8e1e1a46ea5f4a0a57bed8b39721fe4d8286655d876a266d01035660b48",
+      "sha256": "5f2285c52f2e03e952e95cd6a6a807d4996f9b74e0435762213d80c3c15e81f5",
       "syntheticContentReplacement": false
     },
     {
@@ -1814,7 +1814,7 @@
     },
     {
       "path": "desktop/src-tauri/Cargo.toml",
-      "sha256": "274b9b10a8ef26363a2d8994c12d2224afdfa7d93fc1f023080a7c85f7c6b416",
+      "sha256": "7d275fd04cc9fa75f9ae8c32bf9b37f9873b09760001039831a0acf1e1b22deb",
       "syntheticContentReplacement": false
     },
     {
@@ -2429,7 +2429,7 @@
     },
     {
       "path": "desktop/src-tauri/tauri.conf.json",
-      "sha256": "88983b72bd079d94e5ff9599441e5a0d398a9643fb79640032ce29e8dcd75929",
+      "sha256": "c78fc166a83ace3fa56e3d74c524ca773a27b881ab111362450ae9f78a1b918f",
       "syntheticContentReplacement": false
     },
     {
@@ -4929,7 +4929,7 @@
     },
     {
       "path": "docs/desktop-center-integration-handoff.md",
-      "sha256": "d2c8a47052f8fbbe0b446d7a695733e3012b9eaa4a7796edac89e3cbd53f6f6a",
+      "sha256": "c77a8c1b6d4d42ed64fbf5fc028bb10a160d62b9471e7fb9d1d718175a186cea",
       "syntheticContentReplacement": false
     },
     {
@@ -5554,7 +5554,7 @@
     },
     {
       "path": "tests/rssd-center-assistant.test.mjs",
-      "sha256": "b101d3a68b75f1e8d39c8a1074f21d0e5a97bb1c6e7ce9fc733aee4492bff557",
+      "sha256": "04d28409da5f0a6c2f47e1add773b48ffe3997f9a5338da9bf6676c7f8a7a820",
       "syntheticContentReplacement": false
     },
     {

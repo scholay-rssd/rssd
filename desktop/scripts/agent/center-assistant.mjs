@@ -2,7 +2,7 @@
 import {spawn} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {createServer} from 'node:http';
-import {mkdir,readFile,rm} from 'node:fs/promises';
+import {access,mkdir,readFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
@@ -67,7 +67,7 @@ export async function scopedAssistantCall(ctx,name,input,remote){
  }
  throw Error('本地助手不提供此操作，请使用生产执行器或中心管理入口');
 }
-export async function runCenterAssistant(params,home,{registry=new AgentRegistry(),spawnAgent=spawn,fetcher=fetch}={}){
+export async function runCenterAssistant(params,home,{registry=new AgentRegistry(),spawnAgent=spawn,proxyFile=fileURLToPath(new URL('./center-assistant-mcp.mjs',import.meta.url))}={}){
  const ctx=await assistantContext(home,params);
  if(typeof params.text!=='string'||!params.text.trim()||params.text.length>20000)throw Error('请输入不超过 20000 字的指令');
  await mkdir(ctx.directory,{recursive:true,mode:0o700});
@@ -93,6 +93,7 @@ export async function runCenterAssistant(params,home,{registry=new AgentRegistry
   };
   await rm(join(ctx.directory,'stop.json'),{force:true});await save();
   try{
+   try{await access(proxyFile);}catch{throw Error('安装包缺少中心 MCP 代理，请重新安装客户端');}
    await remote('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'rssd-desktop',version:'1.0.0'}});
    const definitions=scopedAssistantTools((await remote('tools/list',{})).tools||[]).filter(t=>!params.readOnly||t.name!=='rssd_edit_demand');
    const bridgeToken=randomUUID()+randomUUID();let toolBusy=false;
@@ -136,7 +137,7 @@ export async function runCenterAssistant(params,home,{registry=new AgentRegistry
    });
    timer=setInterval(()=>{void read(join(ctx.directory,'stop.json')).then(stop=>{if(stop?.runId!==state.runId||cancelled)return;cancelled=true;controller.abort();if(sessionId)send({jsonrpc:'2.0',method:'session/cancel',params:{sessionId}});fail(Error('已停止，已执行操作请核对中心状态'));}).catch(()=>{});},500);
    const init=await rpc('initialize',{protocolVersion:1,clientInfo:{name:'rssd-center-assistant',version:'1.0.0'},clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false}});
-   const mcpServers=[{name:'rssd-center',command:process.execPath,args:[fileURLToPath(new URL('./center-assistant-mcp.mjs',import.meta.url))],env:[{name:'RSSD_ASSISTANT_BRIDGE',value:'http://127.0.0.1:'+server.address().port},{name:'RSSD_ASSISTANT_KEY',value:bridgeToken}]}];
+   const mcpServers=[{name:'rssd-center',command:process.execPath,args:[proxyFile],env:[{name:'RSSD_ASSISTANT_BRIDGE',value:'http://127.0.0.1:'+server.address().port},{name:'RSSD_ASSISTANT_KEY',value:bridgeToken}]}];
    if(saved.sessionId){if(!init.agentCapabilities?.loadSession)throw Error('当前智能体不支持恢复；请新建对话，旧记录保留');sessionId=saved.sessionId;await rpc('session/load',{sessionId,cwd:ctx.directory,mcpServers});}
    else sessionId=(await rpc('session/new',{cwd:ctx.directory,mcpServers})).sessionId;
    if(!sessionId)throw Error('智能体未创建有效会话');state.sessionId=sessionId;state.message='正在处理指令';await save();

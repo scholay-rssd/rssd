@@ -48,4 +48,5 @@ test('ACP and stdio MCP stream real responses, resume, retain write identity, ca
  const ctx=await assistantContext(home,params);assert.ok(!(await readFile(join(ctx.directory,'state.json'),'utf8')).includes(process.env.RSSD_CENTER_TOKEN));
  assert.deepEqual((await assistantLocal('assistant_reset',params,home)).history,[]);
  await writeCenterJson(join(ctx.directory,'state.json'),{state:'running',pid:2147483646,history:[{role:'user',text:'preserved'}]});assert.equal((await assistantLocal('assistant_status',params,home)).state,'interrupted');
+ const missing=await runCenterAssistant(params,home,{registry:{launch:async()=>{throw Error('Must fail before model startup');}},proxyFile:join(home,'missing-proxy.mjs')});assert.equal(missing.state,'failed');assert.match((await assistantLocal('assistant_status',params,home)).message,/缺少中心 MCP/);
 });
