@@ -4,7 +4,6 @@ import {randomUUID} from 'node:crypto';
 import p from '../contracts/rssd-v1.cjs';
 import {contentKey,operation,visible} from '../contracts/rssd-publication.cjs';
 import {buildSiteRelease} from '../web/engine/render-site.mjs';
-import {sourceContentSha256} from '../contracts/language-editions.mjs';
 import {activateRelease} from '../admin/worker.mjs';
 import {verifyLive} from '../admin/release-verification.mjs';
 import {digest} from '../admin/model.mjs';
@@ -51,10 +50,17 @@ export function snapshotForPackets(packets,site,baseline={},previousPackets=[]) 
       if(descriptorIndex>=0)snapshot.editorialRecords[descriptorIndex]=descriptor;else snapshot.editorialRecords.push(descriptor);
       continue;
     }
-    const original=entries.find(x=>x.packet.workId===packet.workId&&x.packet.locale==='zh-CN');
+    // A v1 public packet does not carry a source revision; never infer it
+    // from whichever Chinese revision happens to be present during this build.
     if(packet.locale==='en'){
-      if(original)data.translationOf={articleId:original.packet.content.metadata.record?'record-'+(identity[contentKey(original.packet)]?.documentId||original.packet.workId):original.data.id,locale:'zh-CN',sha256:sourceContentSha256(original.data)};
-      else {const previous=snapshot.news.find(x=>x.id===data.id);if(previous?.translationOf)data.translationOf=previous.translationOf;}
+      data.translationSourceStatus='unknown';
+      // A shared work ID permits navigation, but does not prove a revision.
+      const key=contentKey({workId:packet.workId,locale:'zh-CN'}),mappedSource=identity[key];
+      const chinese=entries.find(entry=>entry.packet.workId===packet.workId&&entry.packet.locale==='zh-CN');
+      if(chinese||mappedSource){
+        const structured=chinese?.packet.content.metadata.record||(mappedSource?.kind&&mappedSource.kind!=='news');
+        data.translationCandidateArticleId=structured?'record-'+(mappedSource?.documentId||packet.workId):(chinese?.data.id||mappedSource.id);
+      }
     }
     // Migration uses a stable identity map; titles are never matching keys.
     const existing=snapshot.news.findIndex(x=>x.id===data.id);if(existing>=0)snapshot.news[existing]=data;else snapshot.news.push(data);
@@ -62,7 +68,7 @@ export function snapshotForPackets(packets,site,baseline={},previousPackets=[]) 
   }
   return snapshot;
 }
-export async function buildAndActivate({job,site,source,base,baseline,media,verify=manifest=>verifyLive(manifest,site.origin,false)}) {
+export async function buildAndActivate({job,site,source,base,baseline,media,bindingStore,verify=manifest=>verifyLive(manifest,site.origin,false)}) {
   const current=join(base,'current'),key=contentKey(job.packet),publicPath='rssd-content/'+key+'.json';
   const verifyRelease=async manifest=>{
     await verify(manifest);
@@ -78,7 +84,7 @@ export async function buildAndActivate({job,site,source,base,baseline,media,veri
     try{
       const active=JSON.parse(await readFile(join(current,'release.json'),'utf8'));
       const published=JSON.parse(await readFile(join(current,publicPath),'utf8'));
-      if(active.rssd?.requestId===job.id&&p.hash(published)===p.hash(job.packet)){
+      if(active.rssd?.requestId===job.id&&p.hash(published)===p.hash(job.packet)&&(!(job.packets||[]).some(x=>x.locale==='en'&&visible(x))||active.rssd.translationBindingPolicy===1)&&(!job.bindingRefresh||active.rssd.bindingRefresh===job.bindingRefresh)){
         try{await verifyRelease(active);return makeReceipt(job,active.release,site,publicPath);}
         catch(error){
           if(/^admin-[a-zA-Z0-9-]+$/.test(active.previousRelease||'')){
@@ -97,7 +103,9 @@ export async function buildAndActivate({job,site,source,base,baseline,media,veri
     if(!media)throw Error('Publication media store is unavailable');const bytes=await media.bytes(asset),path=asset.path.slice(1);
     await mkdir(dirname(join(stage,path)),{recursive:true});await writeFile(join(stage,path),bytes);mediaHashes[path]=digest(bytes);mediaByteHashes[path]=byteHash(bytes);
   }
-  const snapshot=snapshotForPackets(job.packets,site,baseline,job.previousPackets),snapshotHash=p.hash(snapshot);
+  const snapshot=snapshotForPackets(job.packets,site,baseline,job.previousPackets);
+  for(const packet of job.packets.filter(x=>x.locale==='en'&&visible(x))){const id=baseline?.rssdIdentity?.[contentKey(packet)]?.id||'rssd-'+contentKey(packet).slice(0,32),view=snapshot.news.find(x=>x.id===id&&x.locale==='en');if(!view)throw Error('English view missing');delete view.translationOf;const binding=bindingStore?bindingStore.lookup(packet):{state:'unknown'};view.translationSourceStatus=binding.state;if(binding.state==='verified'){view.translationSourceHashVersion=binding.binding.sourceHashVersion;view.translationOf={articleId:binding.binding.sourceArticleId,revision:binding.binding.sourceRevision,sha256:binding.binding.sourceRenderHash};}}
+  const snapshotHash=p.hash(snapshot);
   const manifest=await buildSiteRelease({job:{id:buildId,snapshot,snapshot_hash:snapshotHash},target:stage,source,previousRoot:current,site});
   Object.assign(manifest.hashes,mediaHashes);manifest.byteHashes={...manifest.byteHashes,...mediaByteHashes};
   for(const packet of job.packets){
@@ -106,7 +114,7 @@ export async function buildAndActivate({job,site,source,base,baseline,media,veri
   // Fail before activation when the renderer omitted the requested edition.
   if(visible(job.packet))await access(join(stage,job.packet.route.slice(1),'index.html'));
   else {try{await access(join(stage,job.packet.route.slice(1),'index.html'));throw Error('Renderer retained a removed edition');}catch(error){if(error.code!=='ENOENT')throw error;}}
-  manifest.rssd={requestId:job.id,packetHash:p.hash(job.packet),operation:operation(job.packet),operationSequence:job.operationSequence};
+  manifest.rssd={requestId:job.id,packetHash:p.hash(job.packet),operation:operation(job.packet),operationSequence:job.operationSequence,translationBindingPolicy:1,...(job.bindingRefresh?{bindingRefresh:job.bindingRefresh}:{})};
   try{manifest.previousRelease=(await readlink(current)).split(/[\\/]/).at(-1);}catch(error){if(error.code!=='ENOENT')throw error;}
   await writeFile(join(stage,'release.json'),JSON.stringify(manifest));await rename(stage,target);
   await activateRelease({base,release:target,verify:()=>verifyRelease(manifest)});

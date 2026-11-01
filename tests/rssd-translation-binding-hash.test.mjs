@@ -1,0 +1,25 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import {join} from 'node:path';
+import {snapshotForPackets} from '../receiver/build.mjs';import {renderLanguagePages} from '../web/engine/language-pages.mjs';import {sourceHasher,sourceHashV1,SOURCE_HASH_VERSION} from '../web/engine/source-hash-v1.mjs';import {sourceContentSha256} from '../contracts/language-editions.mjs';import {profiles} from '../scripts/site-config.mjs';import {sectionsForSite} from '../contracts/site-sections.mjs';import p from '../contracts/rssd-v1.cjs';import pub from '../contracts/rssd-publication.cjs';
+const site={...profiles.find(x=>x.id==='scholay-today')};site.sections=sectionsForSite(site);const sectionId=site.sections[0].id;
+const edition=(locale,text,translationOf=null)=>p.edition({locale,title:locale==='en'?'English':'中文',bodyMarkdown:text,summary:'summary',sources:[],metadata:{date:'2026-11-01'},translationOf});
+const packet=(locale,rev,e)=>pub.publication({version:1,requestId:`request-${locale}-${rev}`,siteId:site.id,workspaceId:site.spaceId,sectionId,workId:'sample-work',locale,revision:rev,contentHash:p.hash(e),route:locale==='en'?'/en/news/example/':'/news/example/',content:e});
+const c1=packet('zh-CN',1,edition('zh-CN','Original Chinese')),c2=packet('zh-CN',2,edition('zh-CN','Revised Chinese')),en=packet('en',1,edition('en','English translation',{workId:'sample-work',locale:'zh-CN',revision:1}));
+
+test('snapshot uses a work identity only for candidate navigation; v1 never invents a source revision',()=>{
+ const legacy={id:'legacy-en',locale:'en',title:'Original legacy',summary:'S',markdown:'Legacy',date:'2026-11-01',author:'A',category:'B',assets:[],translationOf:{articleId:'old-source',revision:7,sha256:'f'.repeat(64)}},baseline={news:[legacy]};
+ for(const source of [c1,c2]){const snapshot=snapshotForPackets([source,en],site,baseline),received=snapshot.news.find(x=>x.id!=='legacy-en'&&x.locale==='en'),chinese=snapshot.news.find(x=>x.locale==='zh-CN');assert.equal(received.translationOf,undefined);assert.equal(received.translationSourceStatus,'unknown');assert.equal(received.translationCandidateArticleId,chinese.id);assert.deepEqual(snapshot.news.find(x=>x.id==='legacy-en'),legacy);}
+ const withoutSource=snapshotForPackets([en],site,baseline).news.find(x=>x.id!=='legacy-en'&&x.locale==='en');assert.equal(withoutSource.translationCandidateArticleId,undefined);assert.equal(withoutSource.translationOf,undefined);
+});
+
+test('known source hash versions stay frozen while legacy uses its original hash function',()=>{
+ const fixture={id:'source-123',title:'Title',summary:'Summary',markdown:'Hello ![图](/article-media/abc.png)',date:'2026-11-01',category:'Category',author:'A',sectionId:'news',assets:[{path:'/article-media/def.png'}]},future=()=> 'e'.repeat(64);
+ assert.equal(sourceHasher(SOURCE_HASH_VERSION,future,{requiresVersion:true})(fixture),'895497249f6b07abed3d0424d4def882f1a6cd46020171e87e1e6241d1f845c8');assert.equal(sourceHashV1(fixture),sourceContentSha256(fixture));assert.equal(sourceHasher(undefined,future)(fixture),future());
+ for(const value of ['unknown','',null,undefined])assert.throws(()=>sourceHasher(value,future,{requiresVersion:true}),/Unsupported/);assert.throws(()=>sourceHasher('',future),/Unsupported/);assert.equal(sourceHasher(null,future)(fixture),future());
+});
+
+test('renderer rejects verified bindings with missing or unsupported hash versions before rendering an English page',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'rssd-binding-hash-'));
+ try{const html='<!doctype html><html lang="zh-CN"><head><title>Example</title><meta name="description" content="Example"><meta name="robots" content="index,follow"><link rel="canonical" href="https://today.scholay.com/"></head><body><header><a href="/">Site</a></header><main><article>Chinese</article></main><footer>Site</footer></body></html>';await mkdir(join(root,'news/example'),{recursive:true});await writeFile(join(root,'index.html'),html);await writeFile(join(root,'news/example/index.html'),html);await writeFile(join(root,'sitemap.xml'),'<sitemapindex></sitemapindex>');await writeFile(join(root,'seo-manifest.json'),JSON.stringify({pages:{}}));
+  for(const version of ['future-unknown','',null,undefined]){const snapshot=snapshotForPackets([c1,en],site),english=snapshot.news.find(x=>x.locale==='en'),chinese=snapshot.news.find(x=>x.locale==='zh-CN');english.translationSourceStatus='verified';english.translationSourceHashVersion=version;english.translationOf={articleId:chinese.id,revision:1,sha256:sourceHashV1(chinese)};await assert.rejects(renderLanguagePages({job:{snapshot},target:root,site:{...site,languages:['zh-CN','en']},now:new Date('2026-11-01T00:00:00Z'),manifest:{hashes:{},byteHashes:{}}}),/Unsupported translation source hash version/);}
+ }finally{await rm(root,{recursive:true,force:true});}
+});
