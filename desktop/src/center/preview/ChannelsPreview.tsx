@@ -1,5 +1,7 @@
 import { tr } from "../../uiText";
 import { useState } from "react";
+import { DestinationIcon } from "./PreviewIcons";
+import AppIcon from "../../components/Icon";
 import type {
   PreviewDestination,
   PreviewPublication,
@@ -47,6 +49,12 @@ export default function ChannelsPreview({
               aria-pressed={kind === id}
               onClick={() => setKind(id)}
             >
+              <AppIcon
+                name={
+                  id === "owned" ? "home" : id === "external" ? "globe" : "grid"
+                }
+                size={15}
+              />
               {tr(label)}
               <span>
                 {scoped.filter((d) => id === "all" || d.kind === id).length}
@@ -74,8 +82,19 @@ export default function ChannelsPreview({
             {visible.map((d) => (
               <tr key={d.name}>
                 <td>
-                  <strong>{d.name}</strong>
-                  <small>{d.account}</small>
+                  <div className="cp-channel-identity">
+                    <DestinationIcon
+                      name={d.platform}
+                      workspaceId={
+                        d.kind === "owned" ? d.workspaceIds[0] : undefined
+                      }
+                      size={36}
+                    />
+                    <div>
+                      <strong>{d.name}</strong>
+                      <small>{d.account}</small>
+                    </div>
+                  </div>
                 </td>
                 <td>
                   <span
@@ -118,12 +137,14 @@ export default function ChannelsPreview({
                     className="cp-text-button"
                     onClick={() => onCalendar(d.name)}
                   >
+                    <AppIcon name="clock" size={14} />
                     {tr("查看排期")}
                   </button>
                   <button
                     className="cp-text-button"
                     onClick={() => onManage(d)}
                   >
+                    <AppIcon name="settings" size={14} />
                     {tr("管理入口 ↗")}
                   </button>
                 </td>

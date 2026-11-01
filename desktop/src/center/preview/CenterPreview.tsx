@@ -15,6 +15,7 @@ import {
   type PreviewDestination,
 } from "./model";
 import ChannelsPreview from "./ChannelsPreview";
+import { DestinationIcon, NavigationIcon, WorkspaceIcon } from "./PreviewIcons";
 import "./preview.css";
 
 const tabs: Array<[PreviewTab, string]> = [
@@ -478,13 +479,14 @@ export default function CenterPreview({ onExit }: { onExit?: () => void }) {
                       )
                     }
                   />
+                  <WorkspaceIcon workspaceId={s.id} size={22} />
                   {s.name}
                 </label>
               ))}
             </div>
           </details>
           <button className="cp-primary" onClick={() => changeTab("assistant")}>
-            <Icon kind="plus" />
+            <NavigationIcon tab="assistant" />
             {tr("向助手下指令")}
           </button>
         </div>
@@ -496,6 +498,7 @@ export default function CenterPreview({ onExit }: { onExit?: () => void }) {
             aria-current={tab === id ? "page" : undefined}
             onClick={() => changeTab(id)}
           >
+            <NavigationIcon tab={id} />
             {tr(label)}
             {id === "demands" && (
               <span>{demands.filter((d) => d.state === "queued").length}</span>
@@ -589,7 +592,7 @@ export default function CenterPreview({ onExit }: { onExit?: () => void }) {
                                 taskView("all");
                               }}
                             >
-                              <span className="cp-monogram">{s.initial}</span>
+                              <WorkspaceIcon workspaceId={s.id} />
                               <span>
                                 {s.name}
                                 <small>{s.sections.join(" · ")}</small>
@@ -892,7 +895,12 @@ export default function CenterPreview({ onExit }: { onExit?: () => void }) {
                     </time>
                     <span>
                       <strong>{p.title}</strong>
-                      <small>
+                      <small className="cp-destination-label">
+                        <DestinationIcon
+                          name={p.destination}
+                          workspaceId={p.workspaceId}
+                          size={20}
+                        />
                         {p.destination} · {p.locale}
                       </small>
                     </span>
@@ -955,7 +963,14 @@ export default function CenterPreview({ onExit }: { onExit?: () => void }) {
                                 <small>{tr(publicationLabels[p.state])}</small>
                               </span>
                               <strong>{p.title}</strong>
-                              <small>{p.destination}</small>
+                              <small className="cp-destination-label">
+                                <DestinationIcon
+                                  name={p.destination}
+                                  workspaceId={p.workspaceId}
+                                  size={20}
+                                />
+                                {p.destination}
+                              </small>
                               <em>{p.locale}</em>
                             </button>
                           ))}
@@ -1012,7 +1027,9 @@ export default function CenterPreview({ onExit }: { onExit?: () => void }) {
               <div ref={messagesRef} className="cp-messages" aria-live="polite">
                 {conversation.length === 0 ? (
                   <div className="cp-assistant-welcome">
-                    <div className="cp-assistant-mark">R</div>
+                    <div className="cp-assistant-mark">
+                      <NavigationIcon tab="assistant" />
+                    </div>
                     <h3>{tr("从目标开始安排生产")}</h3>
                     <p>
                       {tr("可以查看各站进度、调整选题方向，或检查下一次发布。")}
