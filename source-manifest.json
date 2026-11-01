@@ -5379,7 +5379,7 @@
     },
     {
       "path": "tests/rssd-browser-export.test.mjs",
-      "sha256": "4c11608c9ebf572e2f48278b720961f527a0cf6f5c459eec8fb1495dea9c8e4f",
+      "sha256": "57c438536aecfcefb7afdffec118b808a82b325c09af92596a9653e4a9283786",
       "syntheticContentReplacement": false
     },
     {
@@ -5434,7 +5434,7 @@
     },
     {
       "path": "web/engine/browser-export/portable.mjs",
-      "sha256": "be9fc8e48dc0de465c23da3ae540a41f0a1f8d03d0fd893b6a47ec7d43bb4327",
+      "sha256": "d831d63adb37270d8c76fd0cd85483239cac16c3f14699aae64af8c9a47ec980",
       "syntheticContentReplacement": false
     },
     {

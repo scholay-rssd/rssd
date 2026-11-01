@@ -76,7 +76,7 @@ test('article sharing is lazy, preserves complete content and exports standalone
  const [htmlDownload]=await Promise.all([page.waitForEvent('download'),page.locator('[data-action=download-article]').click()]);
  const htmlPath=join(artifacts,'article.html');await htmlDownload.saveAs(htmlPath);const html=await readFile(htmlPath,'utf8');
  assert.match(html,/THE FINAL SENTENCE/);assert.match(html,/src="data:image\//);assert.doesNotMatch(html,/<script|<link[^>]+stylesheet|data-original-src/);
- const offline=await context.newPage();await offline.route('**/*',r=>r.abort());await offline.setContent(html);assert.equal(await offline.locator('img').evaluateAll(imgs=>imgs.every(x=>x.complete&&x.naturalWidth>0)),true);await offline.setViewportSize({width:390,height:844});assert.ok(await offline.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await offline.close();
+ const offline=await context.newPage();await offline.route('**/*',r=>r.abort());await offline.setContent(html);assert.equal(await offline.locator('img').evaluateAll(imgs=>imgs.every(x=>x.complete&&x.naturalWidth>0)),true);assert.equal(await offline.locator('article').evaluate(x=>getComputedStyle(x).backgroundColor),lightPaper);await offline.setViewportSize({width:390,height:844});assert.ok(await offline.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await offline.close();
  await page.waitForFunction(()=>!document.querySelector('[data-action=download-pages]').disabled);
  // Cancel before rendering starts; a retry must remain usable.
  await page.locator('[data-action=download-pages]').click();await page.locator('[data-action=cancel]').click();await page.waitForFunction(()=>document.querySelector('.rssd-share-status').textContent.includes('已取消'));

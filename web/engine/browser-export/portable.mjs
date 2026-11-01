@@ -15,7 +15,7 @@ export async function portableArticle(model,{embed=false,signal}={}){
   if(embed)await embedImages(article,{signal});
   await doc.fonts.ready;signal?.throwIfAborted();
   const plain=article.innerText,html=clipboardHtml(article,{originalImages:!embed});
-  return {plain,html,document:`<!doctype html><html lang="${esc(model.locale)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${esc(model.title)}</title><style>body{margin:0;padding:24px 18px;background:#fff}body>article{margin:0 auto!important;max-width:680px!important}img{max-width:100%;height:auto}a{overflow-wrap:anywhere}</style></head><body>${html}</body></html>`};
+  return {plain,html,document:`<!doctype html><html lang="${esc(model.locale)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${esc(model.title)}</title><style>html{color-scheme:light}body{margin:0;padding:24px 18px;background:${esc(model.templates.wechat.paper)}}body>article{margin:0 auto!important;max-width:680px!important}img{max-width:100%;height:auto}a{overflow-wrap:anywhere}</style></head><body>${html}</body></html>`};
  }finally{frame.remove();}
 }
 
