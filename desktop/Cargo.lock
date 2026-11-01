@@ -3473,7 +3473,7 @@ dependencies = [
 
 [[package]]
 name = "papr"
-version = "0.16.7"
+version = "0.16.9"
 dependencies = [
  "ammonia",
  "anyhow",

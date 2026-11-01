@@ -60,7 +60,7 @@ pub async fn rssd_center_call(webview:tauri::Webview,method:String,params:Option
         let result=bridge("disconnect",json!({}),None).await?;
         save_credential(None).await?;return Ok(result);
     }
-    if !["status","connect","registry","demands","works","work","publications","labels","claim","release","submit","recover","start","stop","save_local","local_draft","delete_local","prepare_update","cancel_update"].contains(&method.as_str()){return Err("未知中心操作".into());}
+    if !["status","connect","overview","calendar","channels","goals","edit_demand","registry","demands","works","work","publications","labels","claim","release","submit","recover","start","stop","save_local","local_draft","delete_local","prepare_update","cancel_update"].contains(&method.as_str()){return Err("未知中心操作".into());}
     let _change=CHANGES.lock().await;
     if method=="cancel_update"{UPDATING.store(false,Ordering::SeqCst);return Ok(json!({"cancelled":true}));}
     if method=="prepare_update"&&WORKER_ACTIVE.load(Ordering::SeqCst){return Err("中心生产任务仍在运行，请先停止领取并等待本单完成后安装更新".into());}

@@ -1,12 +1,13 @@
 {
   "name": "rssd",
   "private": true,
-  "version": "0.16.7",
+  "version": "0.16.9",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "preview:center": "node scripts/preview-center.mjs",
     "tauri": "tauri",
     "prepare:mcp": "node scripts/prepare-mcp.mjs",
     "build:desktop": "node scripts/build-desktop.mjs",
