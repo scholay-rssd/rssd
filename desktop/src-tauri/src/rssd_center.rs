@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool,Ordering};
 const SERVICE:&str="com.thomas.papr.rssd-center.v1";
 static CHANGES:tokio::sync::Mutex<()>=tokio::sync::Mutex::const_new(());
 static UPDATING:AtomicBool=AtomicBool::new(false);
+static ASSISTANT_ACTIVE:AtomicBool=AtomicBool::new(false);
 static WORKER_ACTIVE:AtomicBool=AtomicBool::new(false);
 
 fn credential_service()->Result<String,String>{
@@ -29,7 +30,7 @@ async fn bridge(method:&str,params:Value,secret:Option<&str>)->Result<Value,Stri
     }
 }
 pub(crate) async fn ensure_connection_idle()->Result<(),String>{
-    if WORKER_ACTIVE.load(Ordering::SeqCst){return Err("请先停止领取并等待本单完成，再更换连接".into());}
+    if WORKER_ACTIVE.load(Ordering::SeqCst)||ASSISTANT_ACTIVE.load(Ordering::SeqCst){return Err("请先停止领取并等待本单完成，再更换连接".into());}
     bridge("prepare_update",json!({}),None).await?;Ok(())
 }
 async fn connect_locked(origin:String,token:String)->Result<Value,String>{
@@ -60,11 +61,12 @@ pub async fn rssd_center_call(webview:tauri::Webview,method:String,params:Option
         let result=bridge("disconnect",json!({}),None).await?;
         save_credential(None).await?;return Ok(result);
     }
-    if !["status","connect","overview","calendar","channels","goals","edit_demand","registry","demands","works","work","publications","labels","claim","release","submit","recover","start","stop","save_local","local_draft","delete_local","prepare_update","cancel_update"].contains(&method.as_str()){return Err("未知中心操作".into());}
+    if !["status","connect","overview","calendar","channels","goals","edit_demand","registry","demands","works","work","publications","labels","claim","release","submit","recover","start","stop","save_local","local_draft","delete_local","prepare_update","cancel_update","assistant_send","assistant_status","assistant_cancel","assistant_reset"].contains(&method.as_str()){return Err("未知中心操作".into());}
     let _change=CHANGES.lock().await;
     if method=="cancel_update"{UPDATING.store(false,Ordering::SeqCst);return Ok(json!({"cancelled":true}));}
-    if method=="prepare_update"&&WORKER_ACTIVE.load(Ordering::SeqCst){return Err("中心生产任务仍在运行，请先停止领取并等待本单完成后安装更新".into());}
+    if method=="prepare_update"&&(WORKER_ACTIVE.load(Ordering::SeqCst)||ASSISTANT_ACTIVE.load(Ordering::SeqCst)){return Err("中心生产任务仍在运行，请先停止领取并等待本单完成后安装更新".into());}
     if method=="start"&&(UPDATING.load(Ordering::SeqCst)||WORKER_ACTIVE.load(Ordering::SeqCst)){return Err("正在准备更新或已有生产实例运行，暂不能启动新实例".into());}
+    if method=="assistant_send"&&(UPDATING.load(Ordering::SeqCst)||ASSISTANT_ACTIVE.load(Ordering::SeqCst)){return Err("请等待本轮助手结束或停止后再发送".into());}
     let params=params.unwrap_or_else(||json!({}));
     if method=="connect"{return connect_locked(params["origin"].as_str().ok_or("请输入中心网址")?.to_owned(),token.ok_or("请输入中心设备凭据")?).await;}
     let local=["status","stop","save_local","local_draft","delete_local","prepare_update"].contains(&method.as_str());
@@ -76,13 +78,14 @@ pub async fn rssd_center_call(webview:tauri::Webview,method:String,params:Option
     if let Some(ref value)=secret{command.env("RSSD_CENTER_TOKEN",value);}else{command.env_remove("RSSD_CENTER_TOKEN");}
     let mut input=serde_json::to_vec(&json!({"method":method,"params":params})).map_err(|_|"中心请求无效")?;
     if input.len()>24*1024*1024{return Err("中心请求过大".into());}input.push(b'\n');
-    if method=="start"{
+    if method=="start"||method=="assistant_send"{
         let (_,data)=crate::workbench_runtime::paths()?;let home=data.join("center");std::fs::create_dir_all(&home).map_err(|_|"无法创建中心运行目录")?;
         let log=std::fs::OpenOptions::new().create(true).append(true).open(home.join("worker.log")).map_err(|_|"无法记录工作状态")?;
-        let mut child=command.arg("--worker").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::from(log)).spawn().map_err(|_|"无法启动中心工作实例")?;
+        let mut child=command.arg(if method=="assistant_send"{"--assistant"}else{"--worker"}).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::from(log)).spawn().map_err(|_|"无法启动中心工作实例")?;
         let pid=child.id();let mut stdin=child.stdin.take().ok_or("无法连接工作实例")?;
-        WORKER_ACTIVE.store(true,Ordering::SeqCst);
-        tokio::spawn(async move{let _=child.wait().await;WORKER_ACTIVE.store(false,Ordering::SeqCst);});
+        let assistant=method=="assistant_send";
+        if assistant{ASSISTANT_ACTIVE.store(true,Ordering::SeqCst);}else{WORKER_ACTIVE.store(true,Ordering::SeqCst);}
+        tokio::spawn(async move{let _=child.wait().await;if assistant{ASSISTANT_ACTIVE.store(false,Ordering::SeqCst);}else{WORKER_ACTIVE.store(false,Ordering::SeqCst);}});
         stdin.write_all(&input).await.map_err(|_|"工作实例启动中断")?;stdin.shutdown().await.map_err(|_|"工作实例启动中断")?;drop(stdin);
         return Ok(json!({"state":"starting","pid":pid}));
     }

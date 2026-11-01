@@ -8,11 +8,13 @@ import {runProductionTurn} from '../../scripts/rssd-production-worker.mjs';
 import {CenterOutbox,createCenterClient,saveCenterConnection,loadCenterConnection,writeCenterJson} from '../../scripts/rssd-center-client.mjs';
 import {withFileLock,lockOwnerAlive} from '../../scripts/editorial-lock.mjs';
 import protocol from '../../contracts/rssd-v1.cjs';
+import {assistantLocal,runCenterAssistant} from './agent/center-assistant.mjs';
 import {readConfiguredLabels} from './runtime/labels-source.mjs';
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw e;}};
 
 export async function centerDesktopCall(method,params={},home=centerHome()){
   const stateFile=join(home,'worker.json');
+  if(['assistant_status','assistant_cancel','assistant_reset'].includes(method))return assistantLocal(method,params,home);
   if(method==='validate_connect'){
     await centerDesktopCall('prepare_update',{},home);
     const identity=await createCenterClient({origin:params.origin,token:process.env.RSSD_CENTER_TOKEN}).identity();
@@ -26,7 +28,7 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
     const connection=await read(join(home,'connection.json'));if(connection){delete connection.token;await writeCenterJson(join(home,'connection.json'),{...connection,disconnected:true});}return {disconnected:true};
   }
   if(method==='prepare_update'){
-    for(const name of ['daemon.lock','worker.lock']){const owner=await read(join(home,name));if(owner&&await lockOwnerAlive(owner))throw Error('中心生产任务仍在运行，请先停止领取并等待本单完成后安装更新');}
+    for(const name of ['daemon.lock','worker.lock','assistant.lock']){const owner=await read(join(home,name));if(owner&&await lockOwnerAlive(owner))throw Error('中心生产任务仍在运行，请先停止领取并等待本单完成后安装更新');}
     return {ready:true};
   }
   const draftPath=(id,locale)=>join(home,'drafts',protocol.hash([protocol.id(id),protocol.locale(locale)])+'.json');
@@ -108,6 +110,6 @@ export async function runDesktopWorker(params,{home=centerHome(),producer=produc
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   let input='';for await(const chunk of process.stdin){input+=chunk;if(input.length>24*1024*1024)throw Error('Center request is too large');}
-  try{const request=JSON.parse(input);const result=process.argv.includes('--worker')?await runDesktopWorker(request.params):await centerDesktopCall(request.method,request.params);if(result!==undefined)console.log(JSON.stringify(result));}
+  try{const request=JSON.parse(input);const result=process.argv.includes('--assistant')?await runCenterAssistant(request.params,centerHome()):process.argv.includes('--worker')?await runDesktopWorker(request.params):await centerDesktopCall(request.method,request.params);if(result!==undefined)console.log(JSON.stringify(result));}
   catch(error){console.error(error.message);process.exitCode=1;}
 }

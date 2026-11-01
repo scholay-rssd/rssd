@@ -2845,5 +2845,17 @@
   "尚未开启本机工作模式": "Local work mode is not active",
   "各目标当前周期汇总；周期与时区以中心配置为准。": "Current-period totals across goals; periods and time zones follow the center configuration.",
   "本周": "This week",
-  "展示时区：{{timezone}} · 中心真实数据": "Time zone: {{timezone}} · Live center data"
+  "展示时区：{{timezone}} · 中心真实数据": "Time zone: {{timezone}} · Live center data",
+  "正在启动本机助手": "Starting local assistant",
+  "本地中心助手": "Local center assistant",
+  "通过 MCP 连接中心": "Connected to the center through MCP",
+  "助手对话记录": "Assistant conversation",
+  "查看目标、检索已有作品、检查需求缺口，或调整尚未认领的需求。": "Review goals, search existing works, check demand gaps, or edit unclaimed demands.",
+  "中心工具": "Center tool",
+  "给助手的指令": "Instruction for the assistant",
+  "本轮范围": "Scope of this turn",
+  "发送指令": "Send instruction",
+  "停止助手": "Stop assistant",
+  "沿用本机智能体授权。对话和执行记录保留在本机；中断后可继续，或新建对话保留旧记录。": "Uses your local agent login. Conversations and execution records stay on this device. Continue after an interruption or start a new conversation while retaining previous records.",
+  "认领、写作和交稿使用需求池的生产执行器。目标与排期管理使用浏览器账号。": "Claiming, writing and submission use the demand pool worker. Manage goals and schedules with your browser account."
 }

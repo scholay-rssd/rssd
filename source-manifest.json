@@ -239,7 +239,7 @@
     },
     {
       "path": "desktop/Cargo.lock",
-      "sha256": "f030aa8dea987a54357b1552db3660e7fd5dd759d7c2a3507362b65fdb4e1d17",
+      "sha256": "ab0942b9549562ec0c468aa8b0504455567e6710f1b7802bf8e62412d2562d8c",
       "syntheticContentReplacement": false
     },
     {
@@ -559,7 +559,7 @@
     },
     {
       "path": "desktop/package.json",
-      "sha256": "2426ad714b29a9db6a1e99025ac090114bd8144f13110185343d016326f18add",
+      "sha256": "0c5ed0c0ad25dddcad2de9b0b5ffacd7f01e7d2619f49bca8ac9bcf48e909b24",
       "syntheticContentReplacement": false
     },
     {
@@ -665,6 +665,16 @@
     {
       "path": "desktop/qa/branding.html",
       "sha256": "7fa829a3fc8713bdad73848587497f2ff9c1ca9174df3bb2f6b61768ca5212db",
+      "syntheticContentReplacement": false
+    },
+    {
+      "path": "desktop/qa/center-assistant.html",
+      "sha256": "b4fac253f800bd879fcb034690656765847abc57f6dc7e624d021ce1349f2111",
+      "syntheticContentReplacement": false
+    },
+    {
+      "path": "desktop/qa/center-assistant.tsx",
+      "sha256": "644a3a49197bd1c675e86a9dbe7253ffb3c6c0ee7a3799a7324743eb2f3f6bc5",
       "syntheticContentReplacement": false
     },
     {
@@ -934,7 +944,7 @@
     },
     {
       "path": "desktop/qa/vite.center-preview.config.ts",
-      "sha256": "7ca8ab479cb8d6385d302f87e7eddbfb3ea832e625ed9794ffed05060824c05a",
+      "sha256": "48e1d565aedbddc8b54d424ac60607d8a27429c72c100a2103b403c197de4e98",
       "syntheticContentReplacement": false
     },
     {
@@ -1270,6 +1280,16 @@
     {
       "path": "desktop/scripts/agent/bridge.mjs",
       "sha256": "5c33129fc0f652458cefab5a85cef09f95f530f7852555a70776942ed31ef1e2",
+      "syntheticContentReplacement": false
+    },
+    {
+      "path": "desktop/scripts/agent/center-assistant-mcp.mjs",
+      "sha256": "066f6c78011dc87a9252e8dc3a3d4df7f30543ee26ea3bd12b2b6ef7c0753cfb",
+      "syntheticContentReplacement": false
+    },
+    {
+      "path": "desktop/scripts/agent/center-assistant.mjs",
+      "sha256": "85adf3a07908d41a600ed7730f3f42ba2a55ea86ce821ca7fe001a9013d2e996",
       "syntheticContentReplacement": false
     },
     {
@@ -1724,7 +1744,7 @@
     },
     {
       "path": "desktop/scripts/rssd-center.mjs",
-      "sha256": "3cf70294750355456cbe1acd96be35084243d0ff36e16993beb7b4be3fed1ffb",
+      "sha256": "cd891d2b47d1f446c6dd49d66cf4586e201101e502373bf6929f456c8dafa9bc",
       "syntheticContentReplacement": false
     },
     {
@@ -1794,7 +1814,7 @@
     },
     {
       "path": "desktop/src-tauri/Cargo.toml",
-      "sha256": "ef5ab723ba9520f37510f514edcd962e0c99205be06d4e0f71ed6b82a34b6e14",
+      "sha256": "274b9b10a8ef26363a2d8994c12d2224afdfa7d93fc1f023080a7c85f7c6b416",
       "syntheticContentReplacement": false
     },
     {
@@ -2329,7 +2349,7 @@
     },
     {
       "path": "desktop/src-tauri/src/rssd_center.rs",
-      "sha256": "750778b6799c4bb07dc33fe8439089a3101405f3b216d6ced222f10e8706ce8f",
+      "sha256": "d60b9b12a1bd8053fa3bf877a4a068ffce5c67652813a8d9f3675b40d0d33203",
       "syntheticContentReplacement": false
     },
     {
@@ -2409,7 +2429,7 @@
     },
     {
       "path": "desktop/src-tauri/tauri.conf.json",
-      "sha256": "0c10453f1ce41fd00900af77f7935924f04735cae7bae8081da14347f92f6399",
+      "sha256": "88983b72bd079d94e5ff9599441e5a0d398a9643fb79640032ce29e8dcd75929",
       "syntheticContentReplacement": false
     },
     {
@@ -2819,7 +2839,17 @@
     },
     {
       "path": "desktop/src/center/LiveCenter.tsx",
-      "sha256": "c8dd5b384b396f3778d9f6112e1d2913b697e2ce0bab0a269218c72991c1b7f9",
+      "sha256": "69e4b51d1ff7bea51e2310b13d113c557b9831d175fcc6da97f23404a552ae31",
+      "syntheticContentReplacement": false
+    },
+    {
+      "path": "desktop/src/center/LocalCenterAssistant.test.tsx",
+      "sha256": "bdf24f3cec2025b7d2087ab20a3a7a5cfd5fb1ea2ef0e312e9f9cf44195d43db",
+      "syntheticContentReplacement": false
+    },
+    {
+      "path": "desktop/src/center/LocalCenterAssistant.tsx",
+      "sha256": "24d86a2af3a0889f1da183fff3d4c1c8322a4b30f763d0bec832b67008d7e04b",
       "syntheticContentReplacement": false
     },
     {
@@ -2834,7 +2864,7 @@
     },
     {
       "path": "desktop/src/center/preview/CenterPreview.tsx",
-      "sha256": "fe31d75c762ca8f58d1592a38a18af20c85584b1c8219d5f294a58e31d122994",
+      "sha256": "b0f3c3ab3615b1fd7277542e9d362bdc7397acb12533c1928af0dacf9c98797c",
       "syntheticContentReplacement": false
     },
     {
@@ -2884,7 +2914,7 @@
     },
     {
       "path": "desktop/src/center/preview/preview.css",
-      "sha256": "4e07e3418a858b2c27735b78deded196954e2544665e8b5f25436fececbb268f",
+      "sha256": "e397d927bbbe087af8453d1cf28969fd42622bcc25be21e72e6ef5e18886c97d",
       "syntheticContentReplacement": false
     },
     {
@@ -4749,12 +4779,12 @@
     },
     {
       "path": "desktop/src/locales/ui.en.json",
-      "sha256": "2a72bfe542f2f1621a1564bb93863371507b94820e1ff1a6c621be6ebc3322d1",
+      "sha256": "60fb64914cb725fae5e1f90dbfabd0800c49437f4765570260990a03953df86d",
       "syntheticContentReplacement": false
     },
     {
       "path": "desktop/src/locales/ui.ja.json",
-      "sha256": "6b959a725990f471aa83b13d1f29ebe5ca722792cbc8bb1e136bbf43d9578ce5",
+      "sha256": "4ae31b20310abd7869aedc9dec45d4c27b674e05ab600bed9b036a569a0ea69a",
       "syntheticContentReplacement": false
     },
     {
@@ -4899,7 +4929,7 @@
     },
     {
       "path": "docs/desktop-center-integration-handoff.md",
-      "sha256": "4ac9580d08e12d4830dd17ad5be052cb9e346231c598a92a67f1fdea0f2fd6d1",
+      "sha256": "d2c8a47052f8fbbe0b446d7a695733e3012b9eaa4a7796edac89e3cbd53f6f6a",
       "syntheticContentReplacement": false
     },
     {
@@ -5503,6 +5533,11 @@
       "syntheticContentReplacement": false
     },
     {
+      "path": "tests/fixtures/rssd-assistant-agent.mjs",
+      "sha256": "822750ca0e07d4475f473981f18c5c48a2502a7d2ed2066077005574d9fb6f8b",
+      "syntheticContentReplacement": false
+    },
+    {
       "path": "tests/language-pages.test.mjs",
       "sha256": "810d858258007123c2dc1781f553b71fae9b45ff2b9f2c67ca838c279b657fcb",
       "syntheticContentReplacement": false
@@ -5515,6 +5550,11 @@
     {
       "path": "tests/rssd-browser-export.test.mjs",
       "sha256": "57c438536aecfcefb7afdffec118b808a82b325c09af92596a9653e4a9283786",
+      "syntheticContentReplacement": false
+    },
+    {
+      "path": "tests/rssd-center-assistant.test.mjs",
+      "sha256": "b101d3a68b75f1e8d39c8a1074f21d0e5a97bb1c6e7ce9fc733aee4492bff557",
       "syntheticContentReplacement": false
     },
     {
