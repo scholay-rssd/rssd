@@ -4779,7 +4779,7 @@
     },
     {
       "path": "docs/article-sharing.md",
-      "sha256": "828abff674c58b1e4565168aa8a5e0e3913deab024ce1564d8f3b3a731aa9a9e",
+      "sha256": "7507b2dfb9801e9b699fd5aa1656961fae43a7039f2431b629d3878dabc1afe2",
       "syntheticContentReplacement": false
     },
     {
@@ -5419,7 +5419,7 @@
     },
     {
       "path": "web/engine/browser-export/article-style.mjs",
-      "sha256": "5a47397d57b70d44f6bc229208947980b3266c6d139794d315d7de12fa164aa1",
+      "sha256": "1a3becc050365448b812ee24c937bbd52100872c7ff19a80ae291cf41537c6bb",
       "syntheticContentReplacement": false
     },
     {
@@ -5449,7 +5449,7 @@
     },
     {
       "path": "web/engine/browser-export/share.css",
-      "sha256": "80cce204b03668134f89bface41f1af459cbdc36acd3366176e77123a376adb5",
+      "sha256": "6d964af310cb1edddd22ed9ebdcd213ddf4fa6a3ad0710ff24d8e9b9297cbb29",
       "syntheticContentReplacement": false
     },
     {
@@ -5459,7 +5459,7 @@
     },
     {
       "path": "web/engine/browser-export/styles.mjs",
-      "sha256": "143832bd0f6c24a49591c49ebce630e4b63564c85e844aa382c9bc764367f26a",
+      "sha256": "983f5d808699bb7bb858104e5894294b1f67bd336505046d257f78d196b95af4",
       "syntheticContentReplacement": false
     },
     {
