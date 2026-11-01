@@ -2819,7 +2819,7 @@
     },
     {
       "path": "desktop/src/center/LiveCenter.tsx",
-      "sha256": "746735710b02cecf15e14b5dd8f21defce2ecc9a683cc7810de3ac5c43feb4ba",
+      "sha256": "c8dd5b384b396f3778d9f6112e1d2913b697e2ce0bab0a269218c72991c1b7f9",
       "syntheticContentReplacement": false
     },
     {
@@ -4899,7 +4899,7 @@
     },
     {
       "path": "docs/desktop-center-integration-handoff.md",
-      "sha256": "9508c5f4514f139984bbf4bdcbcd8a0c9065bbc84f05f1c3ce1c1de46c7ba759",
+      "sha256": "9ff426e015b6599e94a55063e6b4d1b47014eaef0d64db46a57e9deca3c01e28",
       "syntheticContentReplacement": false
     },
     {
