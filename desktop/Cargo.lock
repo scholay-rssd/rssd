@@ -3473,10 +3473,11 @@ dependencies = [
 
 [[package]]
 name = "papr"
-version = "0.16.5"
+version = "0.16.7"
 dependencies = [
  "ammonia",
  "anyhow",
+ "base64 0.22.1",
  "block2",
  "chrono",
  "dom_smoothie",

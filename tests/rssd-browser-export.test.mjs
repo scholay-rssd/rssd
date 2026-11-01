@@ -68,6 +68,15 @@ test('real browser preserves long mixed content, renders PNG pages, downloads ZI
  assert.ok(details.pages>10);assert.equal(details.overflows,0);assert.match(details.text,/THE FINAL SENTENCE/);for(let i=1;i<=30;i++)assert.equal((details.text.match(new RegExp('row-'+i+'(?![0-9])','g'))||[]).length,1);for(let i=1;i<=75;i++)assert.match(details.text,new RegExp('line_'+i+' ='));
  const artifacts=resolve(process.env.RSSD_BROWSER_ARTIFACTS||'.local/browser-export-qa');await mkdir(artifacts,{recursive:true});await page.screenshot({path:join(artifacts,'pages.png'),fullPage:true});
  const image=await page.locator('#proof img').evaluate(async img=>{const response=await fetch(img.src);return [...new Uint8Array(await response.arrayBuffer())];});assert.deepEqual(image.slice(0,8),[137,80,78,71,13,10,26,10]);
+ // A valid PNG can still silently omit its embedded images in WebKit.
+ const sample=await measure.evaluate(()=>{
+  const paper=document.querySelector('.rssd-page'),img=paper.querySelector('img'),box=img.getBoundingClientRect(),origin=paper.getBoundingClientRect();
+  const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;
+  const context=canvas.getContext('2d');context.drawImage(img,0,0);
+  return {x:box.left-origin.left+box.width/2,y:box.top-origin.top+box.height/2,rgba:[...context.getImageData(Math.floor(img.naturalWidth/2),Math.floor(img.naturalHeight/2),1,1).data]};
+ });
+ const painted=await page.locator('#proof img').evaluate((img,sample)=>{const canvas=document.createElement('canvas');canvas.width=img.naturalWidth;canvas.height=img.naturalHeight;const context=canvas.getContext('2d');context.drawImage(img,0,0);return [...context.getImageData(Math.floor(sample.x),Math.floor(sample.y),1,1).data];},sample);
+ assert.equal(sample.rgba[3],255);assert.ok(sample.rgba.every((value,index)=>Math.abs(value-painted[index])<=5),'Export must paint the source image pixels, not an empty image box');
  const [download]=await Promise.all([page.waitForEvent('download'),page.locator('#download').click()]);const path=join(artifacts,'complete.zip');await download.saveAs(path);const zipped=await readFile(path);assert.equal(zipped.readUInt16LE(zipped.length-12),details.pages);
  await page.locator('[data-mode="wechat"]').click();await page.waitForFunction(()=>!document.querySelector('#download').disabled);await page.locator('#download').click();await page.waitForFunction(()=>!document.querySelector('#download').disabled&&document.querySelector('#status').textContent.includes('已复制'));
  const clipboard=await page.evaluate(async()=>{const item=(await navigator.clipboard.read())[0];return (await item.getType('text/html')).text();});assert.match(clipboard,/THE FINAL SENTENCE/);assert.match(clipboard,/style=/);assert.match(clipboard,/<img/);

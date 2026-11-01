@@ -5,7 +5,7 @@ import {centerHome} from './agent/headless/center.mjs';
 import {AgentRegistry} from './agent/agent-registry.mjs';
 import {produceCenterEdition} from './agent/center-producer.mjs';
 import {runProductionTurn} from '../../scripts/rssd-production-worker.mjs';
-import {CenterOutbox,saveCenterConnection,loadCenterConnection,writeCenterJson} from '../../scripts/rssd-center-client.mjs';
+import {CenterOutbox,createCenterClient,saveCenterConnection,loadCenterConnection,writeCenterJson} from '../../scripts/rssd-center-client.mjs';
 import {withFileLock,lockOwnerAlive} from '../../scripts/editorial-lock.mjs';
 import protocol from '../../contracts/rssd-v1.cjs';
 import {readConfiguredLabels} from './runtime/labels-source.mjs';
@@ -13,6 +13,18 @@ const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catc
 
 export async function centerDesktopCall(method,params={},home=centerHome()){
   const stateFile=join(home,'worker.json');
+  if(method==='validate_connect'){
+    await centerDesktopCall('prepare_update',{},home);
+    const identity=await createCenterClient({origin:params.origin,token:process.env.RSSD_CENTER_TOKEN}).identity();
+    const previous=await read(join(home,'connection.json')),active=await read(join(home,'active-claim.json'));
+    if(active?.claim&&previous?.identity?.workerId!==identity.workerId)throw Error('请先恢复或释放当前认领，再更换连接');
+    return {identity};
+  }
+  if(method==='disconnect'){
+    await centerDesktopCall('prepare_update',{},home);
+    const active=await read(join(home,'active-claim.json'));if(active?.claim)throw Error('请先恢复或释放当前认领，再退出连接');
+    const connection=await read(join(home,'connection.json'));if(connection){delete connection.token;await writeCenterJson(join(home,'connection.json'),{...connection,disconnected:true});}return {disconnected:true};
+  }
   if(method==='prepare_update'){
     for(const name of ['daemon.lock','worker.lock']){const owner=await read(join(home,name));if(owner&&await lockOwnerAlive(owner))throw Error('中心生产任务仍在运行，请先停止领取并等待本单完成后安装更新');}
     return {ready:true};
@@ -35,9 +47,10 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
     const entries=connection?await new CenterOutbox({directory:join(home,'outbox'),client:{origin:connection.origin}}).list():[];
     let draftFiles=[];try{draftFiles=await readdir(join(home,'drafts'));}catch(e){if(e.code!=='ENOENT')throw e;}
     const drafts=[];for(const file of draftFiles.filter(f=>/^[a-f0-9]{64}\.json$/.test(f))){const d=await read(join(home,'drafts',file));if(d&&d.origin===connection?.origin&&d.orgId===connection?.identity.orgId)drafts.push({workId:d.work.id,workspaceId:d.work.workspaceId,title:d.title,locale:d.locale,updatedAt:d.updatedAt});}
-    return {configured:Boolean(connection),origin:connection?.origin,identity:connection?.identity,worker,drafts,outbox:entries.map(e=>({requestId:e.requestId,workId:e.packet.workId,state:e.state,error:e.error,receipt:e.receipt})),agents:await new AgentRegistry().list()};
+    const activeClaim=(await read(join(home,'active-claim.json')))?.claim;
+    return {configured:Boolean(connection&&!connection.disconnected),origin:connection?.origin,identity:connection?.identity,worker,activeClaim:activeClaim?{id:activeClaim.id,title:activeClaim.title}:null,drafts,outbox:entries.map(e=>({requestId:e.requestId,workId:e.packet.workId,state:e.state,error:e.error,receipt:e.receipt})),agents:await new AgentRegistry().list()};
   }
-  if(method==='connect')return saveCenterConnection(home,{origin:params.origin,token:process.env.RSSD_CENTER_TOKEN,persistToken:false});
+  if(method==='connect')return saveCenterConnection(home,{origin:params.origin,token:process.env.RSSD_CENTER_TOKEN,persistToken:false,credentialService:params.credentialService});
   if(method==='labels')return (await readConfiguredLabels({home})).feed;
   if(method==='stop'){await writeCenterJson(join(home,'stop.json'),{requestedAt:new Date().toISOString()});return {state:'stopping',message:'当前需求完成后停止领取'};}
   const {client}=await loadCenterConnection(home),outbox=new CenterOutbox({directory:join(home,'outbox'),client});
@@ -50,7 +63,14 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
   if(method==='work')return client.work(params.workId);
   if(method==='publications')return client.publications({workspaceId:params.workspaceId,limit:params.limit,offset:params.offset});
   if(method==='claim')return client.claim({workspaceIds:[params.workspaceId],sectionIds:params.sectionId?[params.sectionId]:[],demandId:params.demandId});
-  if(method==='release')return client.changeDemand(params.demandId,{action:'release',claimToken:params.claimToken});
+  if(method==='release'){
+    await centerDesktopCall('prepare_update',{},home);const active=await read(join(home,'active-claim.json'));
+    if(!active?.claim)throw Error('本机没有待释放的认领');
+    const current=await client.activeClaim();
+    if(current&&current.id!==active.claim.id)throw Error('中心认领与本机记录不同，请先核对任务');
+    if(current)await client.changeDemand(current.id,{action:'release',claimToken:current.claimToken});
+    await writeCenterJson(join(home,'active-claim.json'),{origin:client.origin,claim:null});return {released:true};
+  }
   if(method==='submit'){const entry=await outbox.enqueue(params.packet);return outbox.flushOne(entry.requestId);}
   if(method==='recover')return params.requestId?outbox.flushOne(params.requestId,{retry:true}):outbox.flush();
   throw Error('Unknown center operation');
