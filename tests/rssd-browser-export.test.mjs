@@ -12,12 +12,21 @@ import {makeZip,crc32} from '../web/engine/browser-export/zip.mjs';
 import {buildDemoVariant} from '../scripts/build-demo.mjs';
 import {DEMO_VARIANTS} from '../web/demo/variants.mjs';
 
-test('each configured site section owns distinct page and WeChat template identities',()=>{
- const ids=new Set();for(const site of profiles)for(const section of sectionsForSite(site)){
+test('each configured and migrated site section owns explicitly registered page and WeChat templates',()=>{
+ const migratedSites=new Set(['piggytuck','lingxi','personal','pets']),migratedSections=['archive','calendar','history','open-source'];
+ const ids=new Set(),catalog=new Set();for(const site of profiles){
+  const sections=new Map(sectionsForSite(site).map(section=>[section.id,section]));
+  if(migratedSites.has(site.id))for(const id of migratedSections)if(!sections.has(id))sections.set(id,{id,name:id});
+  for(const section of sections.values()){
   assert.ok(exportDesigns[site.id]?.sections[section.id],site.id+':'+section.id);
+  catalog.add(site.id+':'+section.id);
   for(const format of ['pages','wechat']){const t=exportTemplate({siteId:site.id,workspaceId:site.spaceId,sectionId:section.id,sectionName:section.name,format});assert.ok(!ids.has(t.id));ids.add(t.id);}
+  }
  }
- assert.equal(ids.size,88);assert.equal(exportTemplate({siteId:'scholay-today',workspaceId:'academic',sectionId:'briefings',format:'pages'}).layout,'dispatch');
+ const registered=Object.entries(exportDesigns).flatMap(([siteId,design])=>Object.keys(design.sections).map(sectionId=>siteId+':'+sectionId));
+ assert.deepEqual(new Set(registered),catalog);assert.equal(catalog.size,60);assert.equal(ids.size,120);
+ for(const siteId of migratedSites)assert.equal(new Set(migratedSections.map(id=>exportDesigns[siteId].sections[id][0])).size,4);
+ assert.equal(exportTemplate({siteId:'scholay-today',workspaceId:'academic',sectionId:'briefings',format:'pages'}).layout,'dispatch');
 });
 test('browser ZIP preserves numbered files, exact PNG bytes and standard CRC values',async()=>{
  assert.equal(crc32(new TextEncoder().encode('123456789')),0xcbf43926);
