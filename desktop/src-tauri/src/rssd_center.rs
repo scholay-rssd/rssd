@@ -8,7 +8,8 @@ static CHANGES:tokio::sync::Mutex<()>=tokio::sync::Mutex::const_new(());
 static UPDATING:AtomicBool=AtomicBool::new(false);
 static WORKER_ACTIVE:AtomicBool=AtomicBool::new(false);
 
-async fn credential()->Result<Option<String>,String>{tokio::task::spawn_blocking(||crate::workbench_connection::read_for(SERVICE)).await.map_err(|_|"无法读取中心凭据")?}
+pub(crate) async fn credential()->Result<Option<String>,String>{tokio::task::spawn_blocking(||crate::workbench_connection::read_for(SERVICE)).await.map_err(|_|"无法读取中心凭据")?}
+pub(crate) async fn background_credential()->Result<Option<String>,String>{crate::workbench_connection::read_for_background_bounded(SERVICE).await}
 async fn save_credential(token:Option<String>)->Result<(),String>{tokio::task::spawn_blocking(move||match token{Some(value)=>crate::workbench_connection::save_for(SERVICE,&value),None=>crate::workbench_connection::forget_for(SERVICE)}).await.map_err(|_|"无法保存中心凭据")?}
 
 pub(crate) fn configured()->Result<bool,String>{let (_,data)=crate::workbench_runtime::paths()?;Ok(data.join("center/connection.json").try_exists().map_err(|_|"无法读取中心连接配置")?)}

@@ -15,6 +15,7 @@ import {fileURLToPath} from 'node:url';
 import {audit,openStore,readDocument,createDocument,saveDocument,setReview,enqueue,enqueueBatch,enqueueSiteBuild,claim,finish} from './store.mjs';
 import {digest,fail,plain,sourceKey,kinds,yearCategories,sourceCategories} from './model.mjs';
 import {localizeMessage} from './messages.mjs';
+import {createContentWriteFence,contentMutation} from './content-write-fence.mjs';
 
 export const passwordOptions={algorithm:argon2.Algorithm.Argon2id,memoryCost:19456,timeCost:2,parallelism:1};
 export const secret=()=>randomBytes(32).toString('base64url');
@@ -27,7 +28,8 @@ const secureEqual=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLe
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const maxAge=12*60*60*1000,idle=30*60*1000;
 
-export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,'.admin-local/admin.sqlite'),labelsDbPath=process.env.SCHOLAY_LABELS_DB||join(dirname(dbPath),'labels.sqlite'),origin=process.env.SCHOLAY_ADMIN_ORIGIN||'http://127.0.0.1:4180',logger=false,guestbookEnabled=process.env.TODAY_GUESTBOOK_ENABLED!==undefined?process.env.TODAY_GUESTBOOK_ENABLED==='1':SITE.services?.guestbook.enabled===true,guestbookDbPath=process.env.TODAY_GUESTBOOK_DB||join(dirname(dbPath),'guestbook.sqlite')}={}) {
+export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,'.admin-local/admin.sqlite'),labelsDbPath=process.env.SCHOLAY_LABELS_DB||join(dirname(dbPath),'labels.sqlite'),origin=process.env.SCHOLAY_ADMIN_ORIGIN||'http://127.0.0.1:4180',logger=false,guestbookEnabled=process.env.TODAY_GUESTBOOK_ENABLED!==undefined?process.env.TODAY_GUESTBOOK_ENABLED==='1':SITE.services?.guestbook.enabled===true,guestbookDbPath=process.env.TODAY_GUESTBOOK_DB||join(dirname(dbPath),'guestbook.sqlite'),contentFencePath}={}) {
+  const contentFence=createContentWriteFence({dbPath,siteId:SITE.id,path:contentFencePath});
   const db=openStore(dbPath),secure=origin.startsWith('https:'),cookieName=secure?'__Secure-scholay-session':'scholay-session';
   let labelsDb=null;
   try{
@@ -35,6 +37,15 @@ export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,
     labelsDb=openLabelsStore(labelsDbPath);
   }catch{console.error('Cloud labels state is unavailable; administration remains available.');}
   const app=Fastify({logger,bodyLimit:256*1024,trustProxy:['127.0.0.1','::1'],requestTimeout:15000});
+  const contentRequests=new Set();
+  app.addHook('onRequest',async(request,reply)=>{
+    if(!contentMutation(request.method,request.routeOptions.url||request.url.split('?')[0]))return;
+    await contentFence.requireWritable();contentRequests.add(request);
+    const done=()=>contentRequests.delete(request);request.raw.once('aborted',done);reply.raw.once('close',done);
+  });
+  app.addHook('preHandler',async request=>{if(contentRequests.has(request))await contentFence.requireWritable();});
+  app.addHook('onResponse',async request=>{contentRequests.delete(request);});
+  app.addHook('onError',async request=>{contentRequests.delete(request);});
   await app.register(cookie);
   await registerCommunityLinks(app);
   app.decorate('db',db);app.decorate('labelsDb',labelsDb);app.addHook('onClose',()=>{db.close();labelsDb?.close();});
@@ -87,7 +98,7 @@ export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,
     const status=conflict?409:error.statusCode||500;
     if(status===429)reply.header('Retry-After','60');
     if(status>=500)console.error('Admin request failed:',error.code||error.name);
-    reply.code(status).send({error:localizeMessage(conflict?'内容与已有记录冲突（链接或路径重复）':status>=500?'服务暂时不可用，请稍后重试':error.message,request.headers['x-scholay-language']),...(error.code==='duplicate_source'?{code:error.code,existing:error.existing}:{})});
+    reply.code(status).send({error:localizeMessage(conflict?'内容与已有记录冲突（链接或路径重复）':status>=500?'服务暂时不可用，请稍后重试':error.message,request.headers['x-scholay-language']),...(error.code==='duplicate_source'?{code:error.code,existing:error.existing}:error.code==='legacy_content_read_only'?{code:error.code}:{})});
   });
   app.get('/manage',async(request,reply)=>reply.redirect('/manage/'));
   for(const [path,name,type] of [['/manage/','index.html','text/html; charset=utf-8'],['/manage/admin-i18n.js','admin-i18n.js','text/javascript; charset=utf-8'],['/manage/admin.js','admin.js','text/javascript; charset=utf-8'],['/manage/admin.css','admin.css','text/css; charset=utf-8']]) {
@@ -104,6 +115,7 @@ export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,
   registerNewsApi(app,{db,bearer,session,body,limit});
   registerLabelsApi(app,{labelsDb,bearer,session,limit});
   app.get('/manage/health',async()=>({ok:true}));
+  app.get('/manage/api/content-write-status',async()=>({...await contentFence.status(),inFlight:contentRequests.size}));
   app.get('/manage/api/session',async(request)=>{
     try {const s=session(request);return {user:{username:s.username},csrf:s.csrf};}
     catch{return {user:null,initialized:!!db.prepare('SELECT 1 FROM users LIMIT 1').get()};}

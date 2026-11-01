@@ -35,3 +35,37 @@ For updates, pause new intake, let accepted builds finish, verify status, and st
 the receiver gracefully before switching its code symlink. Keep its SQLite files
 and media. Restart, verify status and restore intake. Retain the current release
 and two verified rollback releases; archive older directories before removal.
+
+## Publication actions
+
+The existing authenticated `submissions` endpoint also accepts `withdraw`,
+`delete`, and `restore` operations. Read
+`GET /api/rssd-receiver/v1/sites/SITE/heads/WORK/LOCALE` first. It returns the
+accepted content `revision`, `operationSequence`, `operation`, route, content hash,
+request identity and state. A missing identity returns 404. Wait for a pending
+publication to settle before freezing an action.
+
+Keep `workId`, locale, site, workspace and public route unchanged. An action
+contains the normal envelope plus `operation`, `expectedRevision`,
+`expectedOperationSequence` and `operationSequence` (the previous sequence plus
+one). Withdrawal and deletion retain the current revision and content hash;
+their public tombstone contains no article body or media. Restore supplies the
+complete public content and media manifests and may retain the current revision
+or explicitly advance it. A same-revision restore cannot change known content.
+Normal uploads cannot revive a withdrawn/deleted identity; use explicit restore.
+
+The action sequence is separate from the article revision. Receipts include
+both, and replaying a request returns its original receipt without another build.
+The SQLite upgrade is additive and retains existing packet hashes. A failed
+build or public verification leaves the previous release active. Successful
+removal requires the original article URL to return 404/410 and leaves a minimal
+`rssd-content/KEY.json` tombstone for verifiable recovery. Keep the tombstone:
+later builds must continue masking the original baseline article.
+
+Before upgrading a receiver from the pre-action schema, take an online SQLite
+backup and retain its exact binary release reference. The schema change adds
+columns, but an old binary uses positional inserts and cannot safely write the
+upgraded database. A content-service rollback can restore the previous static
+release while preserving the new database and keeping old writers stopped.
+Running the old receiver requires its matched pre-upgrade database and a reviewed
+handoff of any newer accepted requests; never point the old binary at the new DB.

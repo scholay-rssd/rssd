@@ -34,6 +34,7 @@ export async function createReceiver({config,build=buildAndActivate}) {
     req.rssdSite=entry;
   });
   app.get('/api/rssd-receiver/v1/sites/:siteId/status',async req=>({...req.rssdSite.store.status(),accepting:req.rssdSite.accepting,baselineSha256:req.rssdSite.baselineSha256}));
+  app.get('/api/rssd-receiver/v1/sites/:siteId/heads/:workId/:locale',async req=>req.rssdSite.store.head(req.params.workId,req.params.locale));
   app.post('/api/rssd-receiver/v1/sites/:siteId/submissions',async req=>{if(!req.rssdSite.accepting)p.fail('Site intake is paused for handoff',409,'site_paused');return req.rssdSite.store.accept(req.body);});
   app.get('/api/rssd-receiver/v1/sites/:siteId/submissions/:id',async req=>req.rssdSite.store.receipt(req.params.id));
   app.post('/api/rssd-receiver/v1/sites/:siteId/submissions/:id/retry',async req=>req.rssdSite.store.retry(req.params.id));

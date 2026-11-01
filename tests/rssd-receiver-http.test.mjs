@@ -15,7 +15,7 @@ const {createReceiver}=await import(pathToFileURL(join(artifact,'receiver/server
 const {buildAndActivate}=await import(pathToFileURL(join(artifact,'receiver/build.mjs')));
 const {verifyLive}=await import(pathToFileURL(join(artifact,'admin/release-verification.mjs')));
 
-test('HTTP receiver builds real bilingual pages, verifies public files, and retains old release on failure',async t=>{
+test('HTTP receiver builds bilingual pages and applies recoverable withdraw/delete/restore without stale revival',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'rssd-http-')),base=join(dir,'public'),current=join(base,'current');
   const server=createServer(async(req,res)=>{try{
     const pathname=new URL(req.url,'http://localhost').pathname,path=resolve(current,'.'+pathname+(pathname.endsWith('/')?'index.html':''));
@@ -52,6 +52,43 @@ test('HTTP receiver builds real bilingual pages, verifies public files, and reta
   assert.equal((await receiver.app.inject({url:endpoint+'/'+chinese.requestId,headers})).json().state,'success');
   assert.match(await (await fetch(site.origin+packet.route)).text(),/hreflang="zh-CN"/);
   assert.match(await (await fetch(site.origin+chinese.route)).text(),/完整的中文正文/);
+  const headUrl='/api/rssd-receiver/v1/sites/metho/heads/'+packet.workId+'/en';
+  assert.equal((await receiver.app.inject({url:headUrl})).statusCode,401);
+  assert.equal((await receiver.app.inject({url:headUrl.replace('/metho/','/other/'),headers})).statusCode,401);
+  assert.equal((await receiver.app.inject({url:headUrl.replace('/example/','/unknown/'),headers})).statusCode,404);
+  const head=(await receiver.app.inject({url:headUrl,headers})).json();assert.equal(head.revision,2);assert.equal(head.operationSequence,2);
+  const withdraw={...update,requestId:'withdraw-en',operation:'withdraw',operationSequence:3,expectedOperationSequence:2,expectedRevision:2};
+  assert.equal((await receiver.app.inject({method:'POST',url:endpoint,headers,payload:withdraw})).statusCode,200);await receiver.tick();
+  let actionReceipt=(await receiver.app.inject({url:endpoint+'/'+withdraw.requestId,headers})).json();
+  assert.equal(actionReceipt.state,'success',actionReceipt.error);assert.equal(actionReceipt.operation,'withdraw');assert.equal(actionReceipt.operationSequence,3);
+  assert.equal((await fetch(site.origin+packet.route)).status,404);
+  assert.equal((await receiver.app.inject({method:'POST',url:endpoint,headers,payload:{...update,requestId:'unintentional-revival',revision:3}})).json().code,'edition_hidden');
+  const tombstone=await(await fetch(site.origin+'/rssd-content/'+contentKey(packet)+'.json')).json();assert.equal(tombstone.operation,'withdraw');assert.equal(tombstone.content,undefined);
+  // Another language's build must keep the English tombstone masking baseline.
+  await receiver.app.inject({method:'POST',url:endpoint,headers,payload:{...chinese,requestId:'zh-update',revision:2}});await receiver.tick();
+  assert.equal((await fetch(site.origin+packet.route)).status,404);
+  const restore={...update,requestId:'restore-en',operation:'restore',operationSequence:4,expectedOperationSequence:3,expectedRevision:2};
+  assert.equal((await receiver.app.inject({method:'POST',url:endpoint,headers,payload:restore})).statusCode,200);await receiver.tick();
+  actionReceipt=(await receiver.app.inject({url:endpoint+'/'+restore.requestId,headers})).json();assert.equal(actionReceipt.state,'success',actionReceipt.error);assert.equal(actionReceipt.revision,2);
+  assert.match(await(await fetch(site.origin+packet.route)).text(),/Complete English body/);
+  const beforeDelete=JSON.parse(await readFile(join(current,'release.json'),'utf8'));
+  const deletion={...update,requestId:'delete-en',operation:'delete',operationSequence:5,expectedOperationSequence:4,expectedRevision:2};
+  await receiver.app.inject({method:'POST',url:endpoint,headers,payload:deletion});failVerification=true;await receiver.tick();
+  assert.equal((await receiver.app.inject({url:endpoint+'/'+deletion.requestId,headers})).json().state,'failed');
+  assert.equal(JSON.parse(await readFile(join(current,'release.json'),'utf8')).release,beforeDelete.release);assert.equal((await fetch(site.origin+packet.route)).status,200);
+  failVerification=false;await receiver.app.inject({method:'POST',url:endpoint+'/'+deletion.requestId+'/retry',headers,payload:{}});await receiver.tick();
+  actionReceipt=(await receiver.app.inject({url:endpoint+'/'+deletion.requestId,headers})).json();assert.equal(actionReceipt.state,'success',actionReceipt.error);assert.equal(actionReceipt.operation,'delete');assert.equal((await fetch(site.origin+packet.route)).status,404);
+  // Replaying the original publication only returns its receipt; it is not queued.
+  await receiver.app.inject({method:'POST',url:endpoint,headers,payload:packet});await receiver.tick();assert.equal((await fetch(site.origin+packet.route)).status,404);
+  // Activation can finish before its SQLite acknowledgement. The resumed
+  // restore must recover that exact artifact instead of creating a new one.
+  const restoredAgain={...restore,requestId:'restore-after-lost-ack',operationSequence:6,expectedOperationSequence:5};
+  await receiver.app.inject({method:'POST',url:endpoint,headers,payload:restoredAgain});
+  const entry=receiver.sites.get(site.id),interrupted=entry.store.claim();
+  const activated=await buildAndActivate({job:interrupted,site:entry.site,source:artifact,base,baseline:entry.baseline,media:entry.media});
+  assert.equal(entry.store.receipt(interrupted.id).state,'building');await receiver.tick();
+  const recovered=(await receiver.app.inject({url:endpoint+'/'+interrupted.id,headers})).json();
+  assert.equal(recovered.state,'success',recovered.error);assert.equal(recovered.release,activated.release);assert.equal(recovered.operationSequence,6);
 });
 
 test('paused site intake exposes authenticated status and refuses new submissions',async t=>{

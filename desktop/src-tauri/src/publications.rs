@@ -39,19 +39,25 @@ pub(crate) async fn run(script_name: &str, method: &str, params: Value) -> Resul
     let cancellation = if cancellable_read(script_name, method) {
         Some(crate::spaces::refresh_cancellation())
     } else { None };
+    let recovery_read=script_name=="website-publisher.mjs" && method=="local_action" && params.get("action").and_then(Value::as_str)==Some("recover_deleted");
     let mut input = serde_json::to_vec(&json!({"method":method,"params":params})).map_err(|e|e.to_string())?;
     let limit=if script_name=="space-authorization.mjs"{96*1024}else{20_000};
     if input.len() > limit { return Err("请求过大".into()); }
     input.push(b'\n');
     let mut command = crate::workbench_runtime::command(&format!("desktop/scripts/{}",script_name))?;
-    let needs_credential = needs_website_credential(script_name, method);
-    let token = if needs_credential {
+    let needs_credential = needs_website_credential(script_name, method) || recovery_read;
+    let center_enabled = center_script(script_name) && crate::rssd_center::configured()?;
+    let token = if center_enabled && needs_credential {
+        crate::rssd_center::credential().await?
+    } else if center_enabled && method == "reconcile" {
+        crate::rssd_center::background_credential().await?
+    } else if needs_credential {
         tokio::task::spawn_blocking(crate::workbench_connection::read_token).await
             .map_err(|_| "无法读取官网凭证")??
     } else if script_name == "website-publisher.mjs" && method == "reconcile" {
         crate::workbench_connection::cached_token()?
     } else { None };
-    if let Some(token) = token { command.env("SCHOLAY_TODAY_TOKEN", token); }
+    if let Some(token) = token { command.env(if center_enabled {"RSSD_CENTER_TOKEN"} else {"SCHOLAY_TODAY_TOKEN"}, token); }
     let limit=if script_name=="workspace-location.mjs" && method=="info" {10}else{180};
     let output = crate::workbench_process::output_cancellable(&mut command, &input, std::time::Duration::from_secs(limit), cancellation).await
         .map_err(|error| if error.kind()==std::io::ErrorKind::TimedOut {"操作超时。如已推送，请先查询原任务，勿重新生成预览。".into()} else {error.to_string()})?;
@@ -75,7 +81,7 @@ async fn queue_recovery_command(method:&str,params:Value,token:Option<&str>)->Re
             .env("SCHOLAY_SITE_ID",params["site"]["id"].as_str().ok_or("后台站点身份无效")?)
             .env_remove("SCHOLAY_SITE_CONFIG");
     }
-    if let Some(token)=token {command.env("SCHOLAY_TODAY_TOKEN",token);}
+    if let Some(token)=token {command.env(if crate::rssd_center::configured()? {"RSSD_CENTER_TOKEN"}else{"SCHOLAY_TODAY_TOKEN"},token);}
     let mut input=serde_json::to_vec(&json!({"method":method,"params":params})).map_err(|_|"后台恢复请求无效")?;input.push(b'\n');
     let output=crate::workbench_process::output(&mut command,&input,std::time::Duration::from_secs(10)).await.map_err(|_|"后台任务恢复暂时不可用")?;
     if !output.status.success(){return Err("后台任务恢复暂时不可用，原任务已保留".into());}
@@ -90,6 +96,8 @@ async fn resume_pending_queue()->Result<Value,String>{
         *last=Some(std::time::Instant::now());
     }
     let result=queue_recovery_command("candidates",json!({}),None).await?;
+    let center_enabled=crate::rssd_center::configured()?;
+    let center_token=if center_enabled{crate::rssd_center::background_credential().await?}else{None};
     let mut credentials:std::collections::HashMap<String,Option<String>>=std::collections::HashMap::new();
     let(mut resumed,mut attention)=(0usize,0usize);
     for candidate in result["candidates"].as_array().into_iter().flatten(){
@@ -98,11 +106,11 @@ async fn resume_pending_queue()->Result<Value,String>{
         let legacy=site["legacy"].as_bool().unwrap_or(false);
         if site_id.len()>50||site_id.is_empty()||!site_id.bytes().all(|b|b.is_ascii_lowercase()||b.is_ascii_digit()||b==b'-')||legacy&&site_id!="scholay-today" {attention+=1;continue;}
         let service=crate::workbench_connection::site_service(site_id,legacy);
-        if !credentials.contains_key(&service){
+        if !center_enabled && !credentials.contains_key(&service){
             let token=crate::workbench_connection::read_for_background_bounded(&service).await?;
             credentials.insert(service.clone(),token);
         }
-        let Some(token)=credentials.get(&service).and_then(Option::as_deref) else{attention+=1;continue;};
+        let Some(token)=(if center_enabled {center_token.as_deref()}else{credentials.get(&service).and_then(Option::as_deref)}) else{attention+=1;continue;};
         let params=json!({"id":candidate["id"],"root":candidate["root"],"site":site});
         if queue_recovery_command("resume",params,Some(token)).await.is_ok(){resumed+=1;}else{attention+=1;}
     }
@@ -111,6 +119,7 @@ async fn resume_pending_queue()->Result<Value,String>{
 
 // Opening local work must not prompt for website credentials. Recovery may reuse
 // this site's credential only after an explicit cloud operation in this session.
+fn center_script(script:&str)->bool {matches!(script,"publication-center.mjs"|"website-publisher.mjs")}
 fn needs_website_credential(script: &str, method: &str) -> bool {
     (script == "publication-center.mjs" && method == "refresh_website") ||
     (script == "website-publisher.mjs" && ["prepare", "publish", "save_cloud", "status", "refresh", "pull", "accept_merge", "published", "cloud", "private_notes", "cloud_export", "cloud_action", "cloud_action_status"].contains(&method)) ||
@@ -145,5 +154,8 @@ mod tests {
         assert!(needs_website_credential("publication-center.mjs", "refresh_website"));
         assert!(needs_website_credential("labels-cloud.mjs", "read"));
         assert!(!needs_website_credential("labels-cloud.mjs", "collect"));
+        assert!(super::center_script("website-publisher.mjs"));
+        assert!(super::center_script("publication-center.mjs"));
+        assert!(!super::center_script("space-authorization.mjs"));
     }
 }
