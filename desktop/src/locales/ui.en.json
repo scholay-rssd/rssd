@@ -2598,5 +2598,17 @@
   "新建作品": "New work",
   "作品会保留各语言的独立版本。": "Works retain independent versions for each language.",
   "提交作品后，可在这里查看发布结果。": "Publication results appear here after you submit a work.",
-  "添加选题后，在 PC 或无头版开启工作模式。": "Add a topic, then start work mode on a desktop or headless device."
+  "添加选题后，在 PC 或无头版开启工作模式。": "Add a topic, then start work mode on a desktop or headless device.",
+  "中心账号连接": "Center account connection",
+  "设备名称": "Device name",
+  "重新授权设备": "Authorize device again",
+  "登录 RSSD 中心": "Sign in to RSSD center",
+  "退出中心连接": "Disconnect from center",
+  "取消授权": "Cancel authorization",
+  "恢复已确认的授权": "Resume approved authorization",
+  "浏览器已授权但连接尚未保存时，可在这里继续。": "Continue here if browser authorization succeeded but the connection was not saved.",
+  "继续保存连接": "Continue saving connection",
+  "本机仍保留未完成的认领。": "This device retains an unfinished claim.",
+  "释放认领后其他设备可以接续，本机稿件和原请求仍保留。确定释放？": "Release this claim for another device? Local manuscripts and original requests will be retained.",
+  "释放当前认领": "Release current claim"
 }

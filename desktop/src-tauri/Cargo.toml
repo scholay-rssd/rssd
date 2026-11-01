@@ -1,6 +1,6 @@
 [package]
 name = "papr"
-version = "0.16.6"
+version = "0.16.7"
 description = "RSSD — a local-first RSS and trends reader"
 authors = ["you"]
 edition = "2021"
@@ -109,6 +109,7 @@ thiserror = "2"
 log = "0.4"
 zip = { version = "=4.6.1", default-features = false }
 sha2 = "0.10"
+base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-dialog = "2"
 

@@ -48,6 +48,9 @@ for space in spaces:
         if path.exists(): shutil.copy2(path,target/name)
 state=source/'.window-state.json'
 if state.exists(): shutil.copy2(state,backup/state.name)
+# Center drafts, outbox and archived organization contexts are independent of SQLite.
+center=source/'center'
+if center.is_dir(): shutil.copytree(center,backup/'center',symlinks=True)
 PY
 # Local task state is independent of the RSS SQLite databases. Preserve it too.
 SCHOLAY_BACKUP_DIR="$backup" node --input-type=module - <<'JS'

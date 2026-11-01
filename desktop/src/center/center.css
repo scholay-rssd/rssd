@@ -47,9 +47,11 @@
 .rssd-center-editor>div>span{flex:1;color:var(--muted);font-size:12px}
 .rssd-center-editor>label>input{border:0;border-bottom:1px solid var(--hair);border-radius:0;font-size:26px;font-weight:600;padding:16px 0}
 .rssd-center-editor textarea{resize:vertical;line-height:1.8;min-width:0}
-.rssd-center-pages{display:flex;gap:14px;align-items:center;margin-top:20px}
+.rssd-center-pages{display:flex;justify-content:flex-end;gap:14px;align-items:center;margin-top:20px}
 .rssd-center-pages span{color:var(--muted)}
 .rssd-center-outbox{margin-top:24px}.rssd-center-outbox h2{font-size:18px}
 .rssd-desktop-center :focus-visible{outline:2px solid var(--rssd-accent);outline-offset:3px}
 @media(prefers-reduced-motion:reduce){.rssd-desktop-center button{transition:none}}
 @media(max-width:760px){.rssd-desktop-center{padding:18px 14px 48px}.rssd-desktop-center header{align-items:flex-start;flex-wrap:wrap}.rssd-center-header-actions{flex-wrap:wrap}.rssd-center-tabs{gap:18px}.rssd-center-search label{flex-direction:column;align-items:flex-start}.rssd-center-search input{width:200px;max-width:100%}.rssd-center-controls>label{flex:1;min-width:130px}.rssd-center-controls select{max-width:100%}.rssd-center-list article{gap:10px;flex-wrap:wrap}.rssd-center-list article>div{flex-basis:65%}.rssd-center-editor>div>span{flex-basis:100%}}
+
+.rssd-desktop-center select{appearance:none;min-height:38px;padding-right:30px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%23888' stroke-width='1.4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}

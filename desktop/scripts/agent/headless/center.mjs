@@ -4,6 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {saveCenterConnection,loadCenterConnection,CenterOutbox} from '../../../../scripts/rssd-center-client.mjs';
 import {runProductionTurn} from '../../../../scripts/rssd-production-worker.mjs';
 import {produceCenterEdition} from '../center-producer.mjs';
+import {deviceLogin} from '../../../../scripts/rssd-device-login.mjs';
 
 import {centerHome} from '../../runtime/center-home.mjs';
 export {centerHome};
@@ -11,12 +12,18 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
   const [command,...args]=argv,home=centerHome();
   const flag=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};
   const values=name=>args.flatMap((value,i)=>value===name?[args[i+1]]:[]).filter(Boolean);
+  if(command==='login'){
+    if(!args[0])throw Error('Usage: center login <https://center> [--name device-name]');
+    const controller=new AbortController(),stop=()=>controller.abort();process.once('SIGINT',stop);process.once('SIGTERM',stop);
+    try{const granted=await deviceLogin({origin:args[0],name:flag('--name')||'RSSD Linux',emit,signal:controller.signal});const result=await saveCenterConnection(home,{origin:args[0],token:granted.token});emit({state:'connected',...result});return result;}
+    finally{process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);}
+  }
   if(command==='connect'){
     const tokenFile=flag('--token-file');if(!args[0]||!tokenFile)throw Error('Usage: center connect <https://center> --token-file <private-file>');
     const result=await saveCenterConnection(home,{origin:args[0],token:(await readFile(tokenFile,'utf8')).trim()});emit(result);return result;
   }
   if(!command||command==='help'||command==='--help'){
-    emit({commands:['connect <origin> --token-file <file>','status','registry','demands [--workspace id]','claim --workspace id [--section id] [--id demandId]','submit <packet.json>','recover [requestId] [--retry]','work --agent id --workspace id [--section id] [--once] [--resume]']});return;
+    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id]','claim --workspace id [--section id] [--id demandId]','submit <packet.json>','recover [requestId] [--retry]','work --agent id --workspace id [--section id] [--once] [--resume]']});return;
   }
   const {client,identity}=await loadCenterConnection(home),outbox=new CenterOutbox({directory:join(home,'outbox'),client});
   if(command==='status'){const entries=await outbox.list();const result={origin:client.origin,identity,outbox:entries.map(e=>({requestId:e.requestId,workId:e.packet.workId,state:e.state,error:e.error,receipt:e.receipt}))};emit(result);return result;}
