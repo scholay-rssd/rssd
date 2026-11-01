@@ -35,3 +35,9 @@ restoration, browser exports and production cutovers are still in progress.
 ## Center account login
 
 See [desktop and Linux device authorization](docs/center-login.md) for browser login, workspace scopes, recovery and local credential storage.
+
+## 友链
+
+- [<img src=".github/readme/friends/linux-do.png" width="20" height="20" alt="" align="absmiddle"> Linux.do](https://linux.do/)
+- [<img src=".github/readme/friends/enterscholar.svg" width="20" height="20" alt="" align="absmiddle"> 恩特学术](https://enterscholar.com/)
+- [<img src=".github/readme/friends/scholay.svg" width="20" height="20" alt="" align="absmiddle"> Scholay 学术](https://www.scholay.com/)
