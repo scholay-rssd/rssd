@@ -100,3 +100,18 @@ test('paused site intake exposes authenticated status and refuses new submission
  const status=await receiver.app.inject({url:base+'/status',headers});assert.equal(status.json().accepting,false);assert.equal(status.json().publications,0);
  const rejected=await receiver.app.inject({method:'POST',url:base+'/submissions',headers,payload:{}});assert.equal(rejected.statusCode,409);assert.equal(rejected.json().code,'site_paused');
 });
+
+test('academic intake rejects incomplete new news without reserving its request or work',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'rssd-academic-intake-')),site=profiles.find(s=>s.id==='scholay-today'),token='fixture-only-academic-token';
+ const receiver=await createReceiver({config:{home:join(dir,'state'),source:artifact,sites:[{site,publicRoot:join(dir,'public'),tokenHash:p.hash(token)}]}});
+ t.after(async()=>{await receiver.app.close();await rm(dir,{recursive:true,force:true});});
+ const base='/api/rssd-receiver/v1/sites/scholay-today',headers={authorization:'Bearer '+token},sectionId=sectionsForSite(site)[0].id;
+ const packet={version:1,requestId:'academic-request',siteId:site.id,workspaceId:site.spaceId,sectionId,workId:'academic-work',locale:'zh-CN',revision:1,contentHash:'a'.repeat(64),route:'/news/academic-work/',content:{locale:'zh-CN',title:'测试文章',summary:'',bodyMarkdown:'正文',metadata:{date:'2026-11-01'}}};
+ const invalid=await receiver.app.inject({method:'POST',url:base+'/submissions',headers,payload:packet});
+ assert.equal(invalid.statusCode,400);assert.equal(invalid.json().code,'invalid_academic_news');
+ assert.equal((await receiver.app.inject({url:base+'/submissions/'+packet.requestId,headers})).statusCode,404);
+ assert.equal(receiver.sites.get(site.id).store.db.prepare('SELECT count(*) AS n FROM heads').get().n,0);
+ const valid={...packet,content:{...packet.content,summary:'完整摘要'}};
+ assert.equal((await receiver.app.inject({method:'POST',url:base+'/submissions',headers,payload:valid})).json().state,'queued');
+ assert.equal((await receiver.app.inject({method:'POST',url:base+'/submissions',headers,payload:valid})).json().state,'queued');
+});

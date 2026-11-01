@@ -5544,7 +5544,7 @@
     },
     {
       "path": "tests/rssd-receiver-http.test.mjs",
-      "sha256": "a27f0a66c2f700696cd1bac899b09a438337a7cd1558037896709af5e33175d3",
+      "sha256": "b0269fd763d1bfadacd293fee3088b6c97943f7ba1f0686c5fb4f3483fa52233",
       "syntheticContentReplacement": false
     },
     {
