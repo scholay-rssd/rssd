@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="540" viewBox="0 0 1440 540" role="img" aria-labelledby="title desc">
+  <title id="title">资料汇集、智能体辅助创作、作品管理与多站输出</title>
+  <desc id="desc">无文字图示。网页、订阅和书籍汇入写作电脑，经内容中心保存为作品，再输出为多个网站和移动端内容。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M2 2L8 5L2 8" fill="none" stroke="#9a9285" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    <g id="image"><rect width="78" height="53" rx="6" fill="#e8eee5"/><circle cx="59" cy="15" r="6" fill="#b87553" stroke="none"/><path d="M8 44L28 24L43 37L53 28L71 45" fill="none" stroke="#70816b" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></g>
+  </defs>
+  <rect width="1440" height="540" rx="24" fill="#f6f3ec"/>
+  <g stroke="#3d3a33" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(66 134)">
+      <rect x="9" y="1" width="159" height="111" rx="10" fill="#fffdfa"/>
+      <path d="M10 25H167" stroke="#d8d1c5" stroke-width="3"/>
+      <circle cx="25" cy="14" r="2" fill="#9a9285" stroke="none"/><circle cx="35" cy="14" r="2" fill="#9a9285" stroke="none"/>
+      <circle cx="61" cy="67" r="27" fill="#e8eee5" stroke="#70816b" stroke-width="3"/>
+      <path d="M34 67H88M61 40C46 55 46 79 61 94M61 40C76 55 76 79 61 94" fill="none" stroke="#70816b" stroke-width="2.5"/>
+      <path d="M108 52H146M108 67H137M108 82H146" stroke="#c8c0b3" stroke-width="5"/>
+      <rect x="94" y="88" width="117" height="119" rx="11" fill="#fffdfa"/>
+      <circle cx="117" cy="184" r="4" fill="#b87553" stroke="none"/>
+      <path d="M117 160A24 24 0 0 1 141 184M117 138A46 46 0 0 1 163 184" fill="none" stroke="#b87553" stroke-width="6"/>
+      <path d="M-9 198Q27 180 62 196Q98 180 133 198V271Q98 253 62 269Q27 253-9 271Z" fill="#fffdfa"/>
+      <path d="M62 197V268" stroke="#b87553"/>
+      <path d="M8 213Q28 206 44 212M8 231Q28 224 44 230M80 212Q101 206 117 213M80 230Q101 224 117 231" fill="none" stroke="#c8c0b3" stroke-width="4"/>
+    </g>
+
+    <g transform="translate(398 152)">
+      <rect x="8" y="0" width="226" height="165" rx="12" fill="#fffdfa"/>
+      <path d="M69 12V153" stroke="#ded8ce" stroke-width="2.5"/>
+      <rect x="23" y="20" width="31" height="25" rx="5" fill="#e8eee5" stroke="none"/>
+      <rect x="23" y="55" width="31" height="25" rx="5" fill="#ece7de" stroke="none"/>
+      <rect x="23" y="90" width="31" height="25" rx="5" fill="#ece7de" stroke="none"/>
+      <path d="M88 26H192M88 39H162" stroke="#b87553" stroke-width="5"/>
+      <use href="#image" x="88" y="57"/>
+      <path d="M88 126H208M88 139H187" stroke="#bcb3a5" stroke-width="4"/>
+      <path d="M8 165L-13 188Q-16 195-5 197H246Q256 195 253 188L234 165Z" fill="#ece7dd"/>
+      <path d="M95 166L92 179H150L147 166" fill="#d8d0c3" stroke="none"/>
+      <g transform="translate(83 218)">
+        <circle cx="0" cy="0" r="14" fill="#e3bda5" stroke="none"/>
+        <path d="M-24 39V28C-24 6 24 6 24 28V39" fill="#fffdfa"/>
+        <path d="M50 4L72-18L82-8L60 14L46 18Z" fill="#fffdfa" stroke="#b87553" stroke-width="3"/>
+      </g>
+      <path d="M220-56L227-33L250-26L227-19L220 4L213-19L190-26L213-33Z" fill="#b87553" stroke="none"/>
+      <path d="M258-56L262-45L273-41L262-37L258-26L254-37L243-41L254-45Z" fill="#d6b89b" stroke="none"/>
+    </g>
+
+    <g transform="translate(773 144)">
+      <path d="M10 81C-16 79-20 37 10 31C5-9 58-19 77 12C101-2 130 11 132 38C169 40 172 80 141 82Z" fill="#e8eee5" stroke="#70816b"/>
+      <path d="M35 116V96M65 116V96M95 116V96" stroke="#b7c2b0" stroke-width="3"/>
+      <rect x="-11" y="121" width="187" height="123" rx="10" fill="#fffdfa"/>
+      <path d="M-10 166H175M-10 207H175" stroke="#ded8ce" stroke-width="2.5"/>
+      <circle cx="147" cy="145" r="4" fill="#70816b" stroke="none"/><circle cx="147" cy="186" r="4" fill="#70816b" stroke="none"/><circle cx="147" cy="225" r="4" fill="#70816b" stroke="none"/>
+      <path d="M9 141H87M9 182H87M9 221H68" stroke="#c8c0b3" stroke-width="5"/>
+      <rect x="32" y="72" width="83" height="102" rx="6" fill="#f0dccc" stroke="#b87553" stroke-width="3"/>
+      <rect x="21" y="83" width="83" height="102" rx="6" fill="#fffdfa" stroke="#b87553" stroke-width="3"/>
+      <path d="M39 104H86M39 121H86M39 138H68" stroke="#c8c0b3" stroke-width="4"/>
+      <circle cx="102" cy="180" r="20" fill="#e8eee5" stroke="#70816b" stroke-width="3"/>
+      <path d="M93 180L100 187L112 173" fill="none" stroke="#70816b" stroke-width="3.5"/>
+    </g>
+
+    <g transform="translate(1111 133)">
+      <rect width="203" height="143" rx="11" fill="#fffdfa"/>
+      <path d="M0 26H203" stroke="#ded8ce" stroke-width="2.5"/>
+      <circle cx="16" cy="14" r="2" fill="#9a9285" stroke="none"/>
+      <path d="M19 44H128" stroke="#b87553" stroke-width="5"/>
+      <use href="#image" x="18" y="61"/>
+      <path d="M112 66H179M112 83H169M112 100H179M18 127H173" stroke="#c8c0b3" stroke-width="4"/>
+      <rect x="-35" y="169" width="163" height="112" rx="10" fill="#fffdfa"/>
+      <path d="M-35 191H128" stroke="#ded8ce" stroke-width="2.5"/>
+      <rect x="-20" y="205" width="37" height="28" rx="4" fill="#e8eee5" stroke="none"/><rect x="25" y="205" width="37" height="28" rx="4" fill="#f0dccc" stroke="none"/><rect x="70" y="205" width="37" height="28" rx="4" fill="#e8eee5" stroke="none"/>
+      <path d="M-20 248H93M-20 262H61" stroke="#c8c0b3" stroke-width="4"/>
+      <rect x="150" y="109" width="86" height="172" rx="15" fill="#fffdfa"/>
+      <path d="M179 120H206" stroke="#c8c0b3" stroke-width="3"/>
+      <rect x="162" y="142" width="62" height="49" rx="5" fill="#e8eee5" stroke="none"/>
+      <path d="M171 180L185 164L196 173L207 161L218 180" fill="none" stroke="#70816b" stroke-width="2.5"/>
+      <path d="M164 208H221M164 224H213M164 240H221" stroke="#c8c0b3" stroke-width="3.5"/>
+      <circle cx="193" cy="265" r="3" fill="#b87553" stroke="none"/>
+    </g>
+  </g>
+  <g fill="none" stroke="#9a9285" stroke-width="2.7" stroke-linecap="round" marker-end="url(#arrow)"><path d="M294 266H372"/><path d="M674 266H744"/><path d="M972 266H1045"/></g>
+</svg>
