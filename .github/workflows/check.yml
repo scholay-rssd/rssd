@@ -11,4 +11,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
+      - run: npm ci --no-audit --no-fund
       - run: node --test tests/rssd-protocol.test.mjs tests/rssd-center-client.test.mjs tests/rssd-production-worker.test.mjs
