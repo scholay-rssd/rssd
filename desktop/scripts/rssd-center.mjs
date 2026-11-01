@@ -58,6 +58,11 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
     try{const value=await client.registry();await writeCenterJson(join(home,'registry.json'),{origin:client.origin,value});return value;}
     catch(error){const cached=await read(join(home,'registry.json'));if((!error.status||error.status>=500)&&cached?.origin===client.origin)return {...cached.value,offline:true};throw error;}
   }
+  if(['overview','calendar','channels','goals'].includes(method)){
+    const query=new URLSearchParams(Object.entries(params).filter(([k,v])=>['workspaceIds','workspaceId','from','to','limit','offset'].includes(k)&&v!==undefined));
+    return client.request((method==='goals'?'/goals':'/coordination/'+method)+'?'+query);
+  }
+  if(method==='edit_demand')return client.request('/demands/'+encodeURIComponent(protocol.id(params.id))+'/definition',{method:'PATCH',body:{requestId:params.requestId,baseGeneration:params.baseGeneration,changes:params.changes}});
   if(method==='demands')return client.demands({workspaceId:params.workspaceId,search:params.search,limit:params.limit,offset:params.offset});
   if(method==='works')return client.works({workspaceId:params.workspaceId,search:params.search,limit:params.limit,offset:params.offset});
   if(method==='work')return client.work(params.workId);
