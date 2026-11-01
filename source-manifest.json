@@ -4778,6 +4778,11 @@
       "syntheticContentReplacement": false
     },
     {
+      "path": "docs/article-sharing.md",
+      "sha256": "828abff674c58b1e4565168aa8a5e0e3913deab024ce1564d8f3b3a731aa9a9e",
+      "syntheticContentReplacement": false
+    },
+    {
       "path": "package-lock.json",
       "sha256": "3f32c4a90f7ffa8c0695ba45d893d0bb85668297d88bec54885dd2a056e01cac",
       "syntheticContentReplacement": false
@@ -5368,6 +5373,16 @@
       "syntheticContentReplacement": false
     },
     {
+      "path": "tests/rssd-article-design.test.mjs",
+      "sha256": "42a929f6f93b0a14543e98ca7a4dc98c2cd377f7677ef46f4ed9775958d56f8d",
+      "syntheticContentReplacement": false
+    },
+    {
+      "path": "tests/rssd-browser-export.test.mjs",
+      "sha256": "4c11608c9ebf572e2f48278b720961f527a0cf6f5c459eec8fb1495dea9c8e4f",
+      "syntheticContentReplacement": false
+    },
+    {
       "path": "tests/rssd-center-client.test.mjs",
       "sha256": "48a8c17800aea493f674c36261ce0f1f92a4e6cef6087d0b05b475c30584ac75",
       "syntheticContentReplacement": false
@@ -5399,58 +5414,58 @@
     },
     {
       "path": "web/engine/browser-export/UI.md",
-      "syntheticContentReplacement": false,
-      "sha256": "3d7d7623923839efa568b3b77df479a47e805c65e52d17e16f0d69fe2b9c3a5a"
+      "sha256": "e40e4ab619729ed63a8e887064e45962a2b8b51a39a893b8ee9d6965c771f28d",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/browser-export/article-style.mjs",
-      "syntheticContentReplacement": false,
-      "sha256": "2f5f0982e6727b19ae61be607ce69745cb4b2f6dbf4c60825d7abe4e4becbe6b"
+      "sha256": "5a47397d57b70d44f6bc229208947980b3266c6d139794d315d7de12fa164aa1",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/browser-export/build.mjs",
-      "syntheticContentReplacement": false,
-      "sha256": "df3580aee39f498d284f28ae0898222b72e46dc59eaca33d13c8579de76e01a3"
+      "sha256": "517c7adb7aaaf127b16d95c065a3d2e48e3e8db2ee94209d2dafdc788783fcfa",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/browser-export/pagination.mjs",
-      "syntheticContentReplacement": false,
-      "sha256": "fd9f719d8029192355d4885f8cd75851fc890419d6da99092d8352c785fa04bc"
+      "sha256": "d33ed5814881f7435853b48d538b33f67450441da59d994d5683bd0f68fdea0c",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/browser-export/portable.mjs",
-      "syntheticContentReplacement": false,
-      "sha256": "be9fc8e48dc0de465c23da3ae540a41f0a1f8d03d0fd893b6a47ec7d43bb4327"
+      "sha256": "be9fc8e48dc0de465c23da3ae540a41f0a1f8d03d0fd893b6a47ec7d43bb4327",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/browser-export/raster.mjs",
-      "syntheticContentReplacement": false,
-      "sha256": "41f9576cf430ea7420a7aaa9d9941b9e0c70bf016fa939d1b22a7deaca2a288f"
+      "sha256": "245ffc34fe39e0b737a2fd4c39ddfce2f397144397cab6e22bc22a0efd147361",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/browser-export/share-shell.mjs",
-      "syntheticContentReplacement": false,
-      "sha256": "c3c2a6511ee56c84c7e3c9e360e80adf889f5cba99a59547c610472322b12cfe"
+      "sha256": "085ed4ba2c1e13367af9c987bc1ecf077ad050d88f0cc07e3019243a0ca5f006",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/browser-export/share.css",
-      "syntheticContentReplacement": false,
-      "sha256": "bd84adf4ddcc8d48aa1c880a0e7ed4b6a61d1ae9fc35f2e72a9b77f7a913f74c"
+      "sha256": "80cce204b03668134f89bface41f1af459cbdc36acd3366176e77123a376adb5",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/browser-export/share.mjs",
-      "syntheticContentReplacement": false,
-      "sha256": "a0e69bebe1a3acfa4012f4a60a37abcb75aa80143352cee76c7dfd6cdc734c0b"
+      "sha256": "a0e69bebe1a3acfa4012f4a60a37abcb75aa80143352cee76c7dfd6cdc734c0b",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/browser-export/styles.mjs",
-      "syntheticContentReplacement": false,
-      "sha256": "a25ee5084681e51d402c57d8966f194e6f047e12ca08c588e36cfe0118dee298"
+      "sha256": "143832bd0f6c24a49591c49ebce630e4b63564c85e844aa382c9bc764367f26a",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/browser-export/zip.mjs",
-      "syntheticContentReplacement": false,
-      "sha256": "35e95b95b6eb98e8dc5dc1a02ac283cb38f127577c16e5bf743442ec79c45a41"
+      "sha256": "35e95b95b6eb98e8dc5dc1a02ac283cb38f127577c16e5bf743442ec79c45a41",
+      "syntheticContentReplacement": false
     },
     {
       "path": "web/engine/content-feed-client.js",

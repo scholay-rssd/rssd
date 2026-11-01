@@ -61,17 +61,22 @@ test('article sharing is lazy, preserves complete content and exports standalone
  await context.route('**/*',r=>new URL(r.request().url()).origin===origin?r.continue():r.abort());
  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+route);
  assert.equal(await page.locator('.rssd-article').count(),1);
+ assert.equal(await page.locator('.rssd-article .back').count(),0);assert.equal(await page.locator('.rssd-reading-nav .back').count(),1);
+ const lightPaper=await page.locator('.rssd-article').evaluate(x=>getComputedStyle(x).backgroundColor);
+ await page.emulateMedia({colorScheme:'dark'});
+ assert.notEqual(await page.locator('.rssd-article').evaluate(x=>getComputedStyle(x).backgroundColor),lightPaper);
  assert.equal(await page.locator('iframe').count(),0);assert.ok(!requests.some(x=>x.endsWith('content.json')));
  await page.locator('.rssd-share-toggle').click();assert.equal(await page.locator('[data-action=download-pages]').count(),1);assert.equal(await page.locator('#proof').count(),0);
  await page.locator('[data-action=copy-article]').click();await page.waitForFunction(()=>document.querySelector('.rssd-share-status').textContent.includes('已复制'));
  const clipboard=await page.evaluate(async()=>{const item=(await navigator.clipboard.read())[0];return(await item.getType('text/html')).text();});
+ assert.doesNotMatch(clipboard,/color\(srgb|light-dark\(|color-mix\(/);
  assert.match(clipboard,/THE FINAL SENTENCE/);assert.match(clipboard,/style=/);assert.match(clipboard,/<img/);assert.match(clipboard,/line_75/);
  const artifacts=resolve(process.env.RSSD_BROWSER_ARTIFACTS||'.local/article-sharing-20261101/browser');await mkdir(artifacts,{recursive:true});
  await page.screenshot({path:join(artifacts,'share-desktop.png')});
  const [htmlDownload]=await Promise.all([page.waitForEvent('download'),page.locator('[data-action=download-article]').click()]);
  const htmlPath=join(artifacts,'article.html');await htmlDownload.saveAs(htmlPath);const html=await readFile(htmlPath,'utf8');
  assert.match(html,/THE FINAL SENTENCE/);assert.match(html,/src="data:image\//);assert.doesNotMatch(html,/<script|<link[^>]+stylesheet|data-original-src/);
- const offline=await context.newPage();await offline.route('**/*',r=>r.abort());await offline.setContent(html);assert.equal(await offline.locator('img').evaluateAll(imgs=>imgs.every(x=>x.complete&&x.naturalWidth>0)),true);await offline.close();
+ const offline=await context.newPage();await offline.route('**/*',r=>r.abort());await offline.setContent(html);assert.equal(await offline.locator('img').evaluateAll(imgs=>imgs.every(x=>x.complete&&x.naturalWidth>0)),true);await offline.setViewportSize({width:390,height:844});assert.ok(await offline.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await offline.close();
  await page.waitForFunction(()=>!document.querySelector('[data-action=download-pages]').disabled);
  // Cancel before rendering starts; a retry must remain usable.
  await page.locator('[data-action=download-pages]').click();await page.locator('[data-action=cancel]').click();await page.waitForFunction(()=>document.querySelector('.rssd-share-status').textContent.includes('已取消'));

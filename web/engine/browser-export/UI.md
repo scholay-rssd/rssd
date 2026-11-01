@@ -15,7 +15,10 @@ load helpers, but image generation starts only on an explicit download action.
 Long exports report progress, support cancellation and leave a retry available.
 Old export bookmarks redirect to their canonical article's sharing panel.
 
-Article templates use a white reading surface; site navigation retains its own
-light/dark theme. The same article style is measured for rich clipboard HTML and
-single-file download. No manuscript, private note, device token or author-only
+Each category explicitly owns a light and a dark palette. The live article and
+share panel follow the site color mode. Portable HTML and rich clipboard output
+use the authored light paper with resolved legacy RGB colors; neither carries
+page navigation. The back link belongs to the separate page navigation row.
+The same article typography is measured for rich clipboard HTML and single-file
+download, with flexible block widths for narrow reading windows. No manuscript, private note, device token or author-only
 archive enters these public outputs.

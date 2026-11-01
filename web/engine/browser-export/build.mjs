@@ -7,7 +7,7 @@ import {renderArticleParts} from '../article-math.mjs';
 import {exportTemplate} from '../../themes/export/registry.mjs';
 import {headingAnchors} from '../../themes/structures.mjs';
 import {courseLabels} from '../../themes/academic/archive-pages.mjs';
-import {articleStyles} from './article-style.mjs';
+import {articleStyles,articleHeading} from './article-style.mjs';
 import {shareShell} from './share-shell.mjs';
 import {sectionsForSite} from '../../../contracts/site-sections.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -27,7 +27,10 @@ export async function attachBrowserExports({target,site,manifest,snapshot}){
   const locale=record.locale||'zh-CN',en=locale==='en';
   const selected=Object.fromEntries(['pages','wechat'].map(format=>[format,exportTemplate({siteId:site.id,workspaceId:site.spaceId,sectionId,sectionName,format})]));
   Object.values(selected).forEach(t=>templates.add(t.id));
-  let markdown=record.bodyMarkdown||'';const heading=markdown.match(/^# ([^\n]+)\n+/);if(heading?.[1].trim()===record.title.trim())markdown=markdown.slice(heading[0].length);
+  let markdown=record.bodyMarkdown||'';
+  // Some imported records repeat their title twice. Suppress only consecutive
+  // exact title headings in presentation; preserve the canonical source record.
+  for(;;){const heading=markdown.match(/^# ([^\n]+)\n+/);if(!heading||heading[1].trim()!==record.title.trim())break;markdown=markdown.slice(heading[0].length);}
   const rendered=renderArticleParts(markdown,{site});
   if(site.id!=='scholay-today')rendered.body=headingAnchors(rendered.body).body;
   const sources=(record.sources||[]).filter(s=>!markdown.includes(s.url));
@@ -44,17 +47,19 @@ export async function attachBrowserExports({target,site,manifest,snapshot}){
   // Keep existing export bookmarks usable, but reading and sharing live on the
   // canonical article. No separate public preview or eager pagination.
   await write(path+'index.html',`<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="robots" content="noindex,follow"><meta http-equiv="refresh" content="0;url=${esc(route)}#share"><title>${esc(record.title)}</title></head><body><a href="${esc(route)}#share">${en?'Read article':'阅读文章'}</a></body></html>`);
-  await write(path+'article.css',articleStyles(selected.wechat,'body article.rssd-article.rssd-article')+'\n.reading-layout:has(.rssd-article){display:block!important;max-width:100%;margin:0 auto}');
+  await write(path+'article.css',articleStyles(selected.wechat,'body article.rssd-article.rssd-article',{live:true}));
+  const priorBack=article.match(/<nav class="rssd-reading-nav"[^>]*>[\s\S]*?<\/nav>/)?.[0].match(/<a class="back"[^>]*>[\s\S]*?<\/a>/)?.[0];
+  article=article.replace(/<nav class="rssd-reading-nav"[^>]*>[\s\S]*?<\/nav>/g,'').replace(/<aside class="rssd-share"[\s\S]*?<\/aside>/g,'').replace(/<link rel="stylesheet" href="\/(?:export\/[^"]+\/article.css|assets\/rssd-export\/v1\/share.css)">/g,'').replace(/<script type="module" src="\/assets\/rssd-export\/v1\/share.mjs"><\/script>/g,'');
   article=article.replace(/<aside class="rssd-export-link">[\s\S]*?<\/aside>/g,'');
   if(!/<article\b/.test(article))throw Error('Article layout missing: '+route);
   article=article.replace(/<article\b[^>]*>[\s\S]*?<\/article>/,old=>{
    // Preserve useful related-project links and calendar navigation, not the
    // previous theme's duplicated fact boxes, title seals and floating TOC.
    const extras=[...old.matchAll(/<aside class="sources">[\s\S]*?<\/aside>|<p class="interaction-link">[\s\S]*?<\/p>/g)].map(x=>x[0]).filter(x=>/关联|interaction-link/.test(x)).join('');
-   const oldBack=old.match(/<a class="back"[^>]*>[\s\S]*?<\/a>/)?.[0];
+   const oldBack=priorBack||old.match(/<a class="back"[^>]*>[\s\S]*?<\/a>/)?.[0];
    const stale=old.match(/<p class="muted">This English edition[\s\S]*?<\/p>/)?.[0]||'';
    const sourceRoute=old.match(/data-community-source-route="([^"]*)"/)?.[1];
-   return `<article class="rssd-article" data-article-template="${esc(selected.wechat.id)}"${sourceRoute?` data-community-source-route="${sourceRoute}"`:''}>${oldBack||`<a class="back" href="${en?'/en/':'/archive/'}">← ${en?'All articles':'全部文章'}</a>`}<h1>${esc(model.title)}</h1><p class="rssd-byline">${[model.site.name,model.sectionName,model.author,model.date].filter(Boolean).map(esc).join(' · ')}</p>${course}${stale}${facts}<div class="article-body">${rendered.body}</div>${sourcePanel}${endnotes}${extras}</article>`;
+   return `<nav class="rssd-reading-nav" aria-label="${en?'Article navigation':'文章导航'}">${oldBack||`<a class="back" href="${en?'/en/':'/archive/'}">← ${en?'All articles':'全部文章'}</a>`}</nav><article class="rssd-article" data-article-template="${esc(selected.wechat.id)}"${sourceRoute?` data-community-source-route="${sourceRoute}"`:''}>${articleHeading(model)}${course}${stale}${facts}<div class="article-body">${rendered.body}</div>${sourcePanel}${endnotes}${extras}</article>`;
   }).replace(/<aside class="reading-aside">[\s\S]*?<\/aside>/g,'').replace('</head>',`<link rel="stylesheet" href="/${path}article.css"><link rel="stylesheet" href="${base}share.css"></head>`)
     .replace('</body>',shareShell(model,'/'+path+'content.json')+`<script type="module" src="${base}share.mjs"></script></body>`);
   await write(articlePath,article);count++;
