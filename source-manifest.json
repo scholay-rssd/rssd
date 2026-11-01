@@ -4923,6 +4923,11 @@
       "syntheticContentReplacement": false
     },
     {
+      "path": "receiver/academic-preflight.mjs",
+      "sha256": "c9e8a87ea1d8c8f550bc58c3e98be7acb3216961e498b6a2495cbb7635d87966",
+      "syntheticContentReplacement": false
+    },
+    {
       "path": "receiver/build.mjs",
       "sha256": "af352636427f736efc3b11b749ef80097ec20f3492b7124b36bb9ab576341c62",
       "syntheticContentReplacement": false
@@ -4934,7 +4939,7 @@
     },
     {
       "path": "receiver/store.mjs",
-      "sha256": "9472a6af02845b5b9777bc3063a01e161af81c257d5b4e06aab7461edb88c64a",
+      "sha256": "cf54b855cc2fa8ed647a84e3dd1f469d987ffa03412e66753fb0512f397d5f6f",
       "syntheticContentReplacement": false
     },
     {
@@ -5508,6 +5513,11 @@
       "syntheticContentReplacement": false
     },
     {
+      "path": "tests/rssd-academic-preflight.test.mjs",
+      "sha256": "3c2939da8ae589346b4aba53ab4d6935548f953a556004492181c34e0a124802",
+      "syntheticContentReplacement": false
+    },
+    {
       "path": "tests/rssd-article-design.test.mjs",
       "sha256": "42a929f6f93b0a14543e98ca7a4dc98c2cd377f7677ef46f4ed9775958d56f8d",
       "syntheticContentReplacement": false
@@ -5534,7 +5544,7 @@
     },
     {
       "path": "tests/rssd-receiver-http.test.mjs",
-      "sha256": "a27f0a66c2f700696cd1bac899b09a438337a7cd1558037896709af5e33175d3",
+      "sha256": "b0269fd763d1bfadacd293fee3088b6c97943f7ba1f0686c5fb4f3483fa52233",
       "syntheticContentReplacement": false
     },
     {
