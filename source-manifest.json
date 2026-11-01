@@ -2814,7 +2814,7 @@
     },
     {
       "path": "desktop/src/center/LiveCenter.test.tsx",
-      "sha256": "ef645ad6a10c3534aacd0e04d15b55035b1ce31f8f89280ef02ad3d83980eec4",
+      "sha256": "2616cdbd5f6716c353c06c49a56ddfbfa1b4ee7e1162fc2cb7de917766f561ed",
       "syntheticContentReplacement": false
     },
     {
@@ -2834,7 +2834,7 @@
     },
     {
       "path": "desktop/src/center/preview/CenterPreview.tsx",
-      "sha256": "84376a66fa7269d91f8084915d34be273731ebc0129c48c4b66e76a2da3c0330",
+      "sha256": "3503e951f20516a81d7646ff1dd9960634036d2c3ed7f7b428a0c9e1dab71c87",
       "syntheticContentReplacement": false
     },
     {
@@ -4749,12 +4749,12 @@
     },
     {
       "path": "desktop/src/locales/ui.en.json",
-      "sha256": "a39c66cdab45af6149b32e9a2382f08bab374fcd3479ddf610c64b9e6a27d0db",
+      "sha256": "87fbd6f884d1942c6cc34694bfdc0cda4d21c18cca2cd66fd2ce6d9b40470eae",
       "syntheticContentReplacement": false
     },
     {
       "path": "desktop/src/locales/ui.ja.json",
-      "sha256": "130d746791131946502c56a80b52b4623e17f7fff923311f03d23b01fecb3dd9",
+      "sha256": "0b29b28e48d9427e519c0971c80cfbe098613624aea23f9633fed179502934aa",
       "syntheticContentReplacement": false
     },
     {
@@ -4899,7 +4899,7 @@
     },
     {
       "path": "docs/desktop-center-integration-handoff.md",
-      "sha256": "9ff426e015b6599e94a55063e6b4d1b47014eaef0d64db46a57e9deca3c01e28",
+      "sha256": "a7c1a268aca32d1d78bd9d8523fbc9e93df4f2d6e9679a727b3bc897f5dd8ea8",
       "syntheticContentReplacement": false
     },
     {

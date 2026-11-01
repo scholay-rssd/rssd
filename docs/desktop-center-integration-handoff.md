@@ -2,6 +2,8 @@
 
 交接日期：2026-11-01。本文是下一轮实施入口。先读本文，再读 [界面说明](desktop-center-preview.md)。后续完成一项就更新本文的验收状态和对应提交，不将模拟交互记为生产能力。
 
+更新说明：前半部分保留 Windows 0.16.8 的原始交接快照；当前实施与上线状态以文末“Mac mini 接入进展”为准。
+
 ## 固定代码与交付状态
 
 - 仓库：`scholay-rssd/rssd`；分支：`codex/desktop-center-preview-0168`。
@@ -93,9 +95,11 @@ Mac 需要校验和处理 `tab`、`workspaceId`；无效值有明确回退，不
 
 ## Mac mini 接入进展（2026-11-01）
 
-中心 [PR #4](https://github.com/scholay-rssd/rssd-center/pull/4) 已合并；实现固定提交 `ff8cbbdc4fb44e33ef7ab6a0513e310e7bc2aa0c`，合并提交 `3015801ac49f7dd383ece3f1a507e050f814ebf8`。增加总览、渠道、统一日历、目标与维护、需求修改、排期和 RSSD MCP。契约见中心仓 `rssd/COORDINATION.md`。旧 v1 和 Postiz 原有入口保留。生产镜像切换及回读仍按部署记录验收，不由合并状态代替。
+中心 [PR #4](https://github.com/scholay-rssd/rssd-center/pull/4) 已合并；实现固定提交 `ff8cbbdc4fb44e33ef7ab6a0513e310e7bc2aa0c`，合并提交 `3015801ac49f7dd383ece3f1a507e050f814ebf8`。增加总览、渠道、统一日历、目标与维护、需求修改、排期和 RSSD MCP。契约见中心仓 `rssd/COORDINATION.md`。旧 v1 和 Postiz 原有入口保留。
 
-客户端 [PR #5](https://github.com/scholay-rssd/rssd/pull/5) 已合并至公开 `main`，合并提交 `da7582b15a35ff3deacdcb09071f110ff81adddc`。该版本包含交接的 Windows 0.16.8 界面及 Mac 的真实数据适配，版本为 **0.16.9**。Mac 已完成 Developer ID 签名安装；152 个测试文件、1,318 项测试通过。12 个本地数据库的结构与记录完整保留，已有设备连接凭据不变。公开产品、浏览器导出、Linux 制品及协议检查通过。CI 的 macOS 包属于未公证的开发制品，不能等同本机已签名安装结果。
+该提交镜像已部署生产，固定摘要 `sha256:d550dd8e433c39a25da7d38b1097c75522f9f29e88fec478b7766c2a24da12a3`。生产健康、原浏览器登录会话及现有十工作空间设备凭据回读通过；22 张既有数据表的记录核对一致，包括 17 个渠道、71 条 Postiz 帖子、2 条媒体、3,085 件 RSSD 作品及 4,982 个语言版本。RSSD MCP 官方协议连接与设备权限范围通过。原生日历、完整编辑器和媒体入口保留，没有向真实平台发送测试帖子。只有已启用的目标会定期维护需求池；当前尚无生产目标，登录不会自动启动生产。站点迁移状态不因本次上线改变。
+
+客户端 [PR #5](https://github.com/scholay-rssd/rssd/pull/5) 已合并至公开 `main`，合并提交 `da7582b15a35ff3deacdcb09071f110ff81adddc`。该版本包含交接的 Windows 0.16.8 界面及 Mac 的真实数据适配，版本为 **0.16.9**。Mac 已完成 Developer ID 签名安装；152 个测试文件、1,318 项测试通过。12 个本地数据库结构及文章、稿件等记录完整保留；启动后的 RSS 抓取仅刷新部分订阅的时间、ETag 与 Last-Modified 元数据。已有设备连接凭据不变。公开产品、浏览器导出、Linux 制品及协议检查通过。CI 的 macOS 包属于未公证的开发制品，不能等同本机已签名安装结果。
 
 Windows 后续应从公开 `main` 接续，先核对 `desktop/src/center/LiveCenter.tsx`、预览组件、`desktop/scripts/rssd-center.mjs` 和原生调用白名单的差异。不要再将预览分支整体覆盖到真实界面上。隔离 QA 页面仍可使用合成数据，安装后的新调度界面不以样例作为加载失败回退。
 

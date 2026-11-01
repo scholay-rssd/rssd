@@ -32,4 +32,6 @@ it('reads real data and forwards a retained demand generation rather than changi
  await act(async()=>root.render(createElement(LiveCenter,{onExit:()=>{}})));
  expect(host.textContent).toContain('真实数据');expect(host.textContent).toContain('351');expect(host.textContent).toContain('实际工作空间');
  expect(host.textContent).not.toContain('本机 · 模拟认领');
+ expect(host.textContent).not.toContain('演示周期');expect(host.textContent).not.toContain('实际服务由中心接入');
+ expect(host.textContent).toContain('各目标当前周期汇总');
 });
