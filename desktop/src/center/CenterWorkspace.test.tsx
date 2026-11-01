@@ -4,7 +4,9 @@ import {createRoot,type Root} from 'react-dom/client';
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 import CenterWorkspace from './CenterWorkspace';
 import {invoke} from '../lib/nativeCore';
+import {openUrl} from '@tauri-apps/plugin-opener';
 vi.mock('../lib/nativeCore',()=>({invoke:vi.fn()}));
+vi.mock('@tauri-apps/plugin-opener',()=>({openUrl:vi.fn(async()=>{})}));
 vi.mock('../uiText',()=>({tr:(s:string)=>s}));
 let host:HTMLDivElement,root:Root;
 const edition={locale:'zh-CN',revision:2,payload:{locale:'zh-CN',title:'原稿',bodyMarkdown:'原正文'}};
@@ -15,6 +17,7 @@ const click=async(text:string)=>{await act(async()=>button(text).click());};
 const mount=async()=>{await act(async()=>root.render(createElement(CenterWorkspace,{active:true})));};
 const calls=(method:string)=>vi.mocked(invoke).mock.calls.filter(([,args])=>(args as any)?.method===method);
 beforeEach(()=>{
+ vi.mocked(openUrl).mockClear();
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);
  vi.mocked(invoke).mockReset().mockImplementation(async(_command,args:any)=>{
   switch(args.method){
@@ -28,6 +31,31 @@ beforeEach(()=>{
   }
  });
  host=document.createElement('div');document.body.append(host);root=createRoot(host);
+});
+
+it('opens scoped management in the browser without using worker credentials for management',async()=>{
+ await mount();await click('作品库');await click('原稿');
+ const textarea=host.querySelector<HTMLTextAreaElement>('textarea')!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textarea,'待保存的修改');textarea.dispatchEvent(new Event('input',{bubbles:true}));});
+ const management=[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.startsWith('发布渠道'))!;
+ await act(async()=>management.click());
+ expect(openUrl).toHaveBeenCalledWith('https://center.example.org/rssd?tab=destinations&workspaceId=first');
+ expect((calls('save_local').at(-1)?.[1] as any).params.body).toBe('待保存的修改');
+ expect(calls('destinations')).toHaveLength(0);expect(calls('start')).toHaveLength(0);
+ expect(host.querySelector('textarea')?.value).toBe('待保存的修改');
+});
+
+it('enters the isolated preview only after saving the current local draft',async()=>{
+ await mount();await click('作品库');await click('原稿');
+ const saved=deferred(),fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation((command,args:any)=>args.method==='save_local'?saved.promise:fallback(command,args));
+ await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.startsWith('预览新版调度界面'))!.click());
+ expect(host.querySelector('.center-preview')).toBeNull();
+ await act(async()=>saved.resolve({}));
+ expect(host.querySelector('.center-preview')).not.toBeNull();
+ expect(calls('submit')).toHaveLength(0);expect(calls('start')).toHaveLength(0);
+ await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.startsWith('返回当前中心'))!.click());
+ expect(host.querySelector('textarea')?.value).toBe('原正文');
 });
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.unstubAllGlobals();});
 
@@ -49,13 +77,13 @@ it('hides the previous workspace while the new workspace list is loading',async(
  const select=host.querySelector<HTMLSelectElement>('select')!;
  await act(async()=>{select.value='second';select.dispatchEvent(new Event('change',{bubbles:true}));});
  expect(host.textContent).not.toContain('旧需求');expect(host.textContent).toContain('正在读取');
- await act(async()=>second.resolve([]));expect(host.textContent).toContain('此工作空间暂时没有记录');
+ await act(async()=>second.resolve([]));expect(host.textContent).toContain('需求池里还没有任务');
 });
 
 it('holds editor context during submission and persists the accepted base without a second network read',async()=>{
  const submission=deferred(),fallback=vi.mocked(invoke).getMockImplementation()!;
  vi.mocked(invoke).mockImplementation((command,args:any)=>args.method==='submit'?submission.promise:fallback(command,args));
- await mount();await click('作品库');await click('打开');await click('提交中心');
+ await mount();await click('作品库');await click('原稿');await click('提交中心');
  expect(button('返回作品库').disabled).toBe(true);expect(button('需求池').disabled).toBe(true);
  expect(host.querySelector<HTMLSelectElement>('.rssd-center-editor select')!.disabled).toBe(true);
  expect(host.querySelector<HTMLInputElement>('.rssd-center-editor input')!.disabled).toBe(true);
@@ -108,7 +136,7 @@ it('keeps staged workspaces read-only at center while retaining local edits',asy
  });
  await mount();expect(host.textContent).toContain('此工作空间正在迁移');
  expect(button('开启工作模式').disabled).toBe(true);expect(button('处理这条').disabled).toBe(true);
- await click('作品库');await click('打开');expect(button('提交中心').disabled).toBe(true);
+ await click('作品库');await click('原稿');expect(button('提交中心').disabled).toBe(true);
  const textarea=host.querySelector<HTMLTextAreaElement>('textarea')!;expect(textarea.disabled).toBe(false);
  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textarea,'本机继续编辑');textarea.dispatchEvent(new Event('input',{bubbles:true}));});
  await click('返回作品库');

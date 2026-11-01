@@ -17,5 +17,8 @@ export function CenterConnection({status,disabled,onChanged,beforeChange}:{statu
   </form>
   {auth.message&&<p role="status">{auth.message}</p>}{error&&<p role="alert" className="rssd-center-error">{error}</p>}
   <details><summary>{tr('恢复已确认的授权')}</summary><p>{tr('浏览器已授权但连接尚未保存时，可在这里继续。')}</p><button disabled={busy||disabled} onClick={()=>void action('retry_login')}>{tr('继续保存连接')}</button></details>
+  <details><summary>{tr('高级连接：设备凭据')}</summary><form onSubmit={e=>{e.preventDefault();const form=e.currentTarget;const values=new FormData(form);setBusy(true);setError('');void (async()=>{try{await beforeChange();await invoke('rssd_center_call',{method:'connect',params:{origin},token:String(values.get('token'))});form.reset();await changed.current();}catch(error){setError(String(error));}finally{setBusy(false);}})();}}>
+   <label>{tr('设备连接凭据')}<input name="token" type="password" required autoComplete="new-password" disabled={busy||disabled}/></label><button disabled={busy||disabled||!origin}>{tr('验证并连接')}</button>
+  </form></details>
  </details>;
 }
