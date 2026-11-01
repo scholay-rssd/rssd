@@ -43,8 +43,8 @@ body:has(.rssd-article) .site-footer a{color:${accent}}
 body:has(.rssd-article) .reading-layout{display:block!important;max-width:100%;margin:0 auto}
 body:has(.rssd-article) .breadcrumbs{display:none}
 ` : ''}
-${s}{${variables}box-sizing:border-box;display:block;width:100%;max-width:${t.width||760}px;margin:20px auto 80px;padding:${t.padding||48}px;background:${paper};color:${ink};font:${t.bodySize||17}px/${t.lineHeight||1.95} ${fonts[t.family]||fonts.sans};text-align:left;overflow-wrap:anywhere;word-break:normal;border:0;border-radius:0;box-shadow:none;letter-spacing:.015em;${live?'':'color-scheme:light;'}}
-${s} *{box-sizing:border-box} ${s} .prose,${s} .article-body,${s} .rssd-body{display:block;width:100%;max-width:none;height:auto;margin:0;padding:0;font:inherit;color:inherit;columns:auto;background:transparent}
+${s}{${variables}box-sizing:border-box;display:block;width:100%;max-width:${t.width||760}px;margin:20px auto 80px;padding:${t.padding||48}px;background:${paper};color:${ink};font:${t.bodySize||17}px/${t.lineHeight||1.95} ${fonts[t.family]||fonts.sans};text-align:left;white-space:normal;overflow-wrap:anywhere;word-break:normal;border:0;border-radius:0;box-shadow:none;letter-spacing:.015em;${live?'':'color-scheme:light;'}}
+${s} *{box-sizing:border-box} ${s} .prose,${s} .article-body,${s} .rssd-body{display:block;width:100%;max-width:none;height:auto;margin:0;padding:0;font:inherit;color:inherit;columns:auto;background:transparent;white-space:normal}
 ${s} .rssd-article-heading{display:block;position:static;width:auto;min-height:0;margin:0 0 ${t.headerGap||34}px;background:transparent;color:${ink};text-align:left;${header}}
 ${s} .rssd-kicker{display:block;font:650 11px/1.8 ${fonts.sans};letter-spacing:.13em;color:${accent};margin:0 0 18px;text-transform:uppercase}
 ${s} h1{max-width:none;font-family:${fonts[t.titleFamily||t.family]||fonts.sans};font-size:${t.titleSize||38}px;line-height:1.45;letter-spacing:-.025em;font-weight:700;color:${ink};margin:0 0 20px;padding:0;border:0;text-wrap:pretty}
