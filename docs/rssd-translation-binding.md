@@ -29,9 +29,12 @@ envelopes. New records expose `sourceVersionState`: `unknown`,
 `stale` field is `null` when the relationship cannot be compared or the
 edition is independently authored; consumers must inspect the state rather
 than treating a falsy value as proof that a translation is current. Existing
-legacy records retain their previous stale calculation. Verified bindings use
-the frozen `rssd-source-view-sha256-v1` algorithm; unknown algorithms fail
-closed rather than silently falling back to a newer implementation.
+legacy records retain their previous stale calculation. New verified bindings
+use `rssd-source-view-sha256-v2`, which includes ordered public source links.
+The older v1 projection omitted those links, so it cannot establish that a
+binding is current and is rejected for new proofs. A stored older proof is
+reported as unknown; unknown algorithms fail closed. The v2 hash identifies
+remote image URLs, but does not assert that bytes at such URLs are immutable.
 
 Receiver support alone does not enable a production migration. Center-side
 historical proof generation, secure key provisioning, recovery, media and

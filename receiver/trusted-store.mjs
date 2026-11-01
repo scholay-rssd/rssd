@@ -2,7 +2,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {createHmac,timingSafeEqual} from 'node:crypto';
 import p from '../contracts/rssd-v1.cjs';
 import pub from '../contracts/rssd-publication.cjs';
-import {SOURCE_HASH_VERSION} from '../web/engine/source-hash-v1.mjs';
+import {SOURCE_HASH_VERSION_V2} from '../web/engine/source-hash-v1.mjs';
 const domain='rssd-translation-binding-v1\0';
 const names=['version','siteId','workspaceId','receiverRequestId','receiverPacketHash','englishWorkId','englishRevision','englishContentHash','sourceWorkId','sourceLocale','sourceRevision','sourceArticleId','sourceEditionHash','sourceRenderHash','sourceHashVersion','orgId','destinationId'];
 const independentNames=['version','sourceKind','siteId','workspaceId','receiverRequestId','receiverPacketHash','englishWorkId','englishRevision','englishContentHash','orgId','destinationId'];
@@ -11,7 +11,7 @@ function identity(value){
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('invalid binding fields');
  const independent=value.version===2&&value.sourceKind==='independent',required=independent?independentNames:names;
  if(Object.keys(value).some(k=>!required.includes(k))||required.some(k=>!Object.hasOwn(value,k)))throw Error('invalid binding fields');
- if(!independent&&(value.version!==3||value.sourceHashVersion!==SOURCE_HASH_VERSION))throw Error('unsupported binding or source hash version');
+ if(!independent&&(value.version!==3||value.sourceHashVersion!==SOURCE_HASH_VERSION_V2))throw Error('unsupported binding or source hash version');
  for(const n of ['siteId','workspaceId','receiverRequestId','englishWorkId','orgId','destinationId',...(independent?[]:['sourceWorkId'])])p.id(value[n],n);
  for(const n of ['receiverPacketHash','englishContentHash',...(independent?[]:['sourceEditionHash','sourceRenderHash'])])if(!sha(value[n]))throw Error('invalid binding hash');
  for(const n of ['englishRevision',...(independent?[]:['sourceRevision'])])p.integer(value[n],n,1);
@@ -49,5 +49,5 @@ export class BindingStore{
    return {state:binding.version===2?'independent':'verified',binding,replayed:false};
   }catch(error){this.db.exec('ROLLBACK');throw error;}
  }
- lookup(packet){const hash=p.hash(pub.publication(packet)),row=this.db.prepare('SELECT binding_json FROM bindings WHERE request_id=? AND packet_hash=?').get(packet.requestId,hash);if(!row)return {state:'unknown'};const binding=JSON.parse(row.binding_json);return {state:binding.version===2?'independent':'verified',binding};}
+ lookup(packet){const hash=p.hash(pub.publication(packet)),row=this.db.prepare('SELECT binding_json FROM bindings WHERE request_id=? AND packet_hash=?').get(packet.requestId,hash);if(!row)return {state:'unknown'};const binding=JSON.parse(row.binding_json);if(binding.version!==2&&binding.sourceHashVersion!==SOURCE_HASH_VERSION_V2)return {state:'unknown'};return {state:binding.version===2?'independent':'verified',binding};}
 }
