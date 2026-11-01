@@ -24,13 +24,13 @@ export async function rasterPage(page,css,{scale=1.5,signal}={}){
  canvas.width=1;canvas.height=1;return blob;
 }
 const properties=['color','background-color','font-family','font-size','font-weight','font-style','line-height','letter-spacing','text-align','text-decoration','white-space','word-break','overflow-wrap','display','margin-top','margin-bottom','margin-left','margin-right','padding-top','padding-bottom','padding-left','padding-right','border-top','border-right','border-bottom','border-left','border-collapse','list-style-type','list-style-position','vertical-align','max-width','width','height','max-height'];
-export function clipboardHtml(element){
+export function clipboardHtml(element,{originalImages=true}={}){
  const clone=element.cloneNode(true),sources=[element,...element.querySelectorAll('*')],copies=[clone,...clone.querySelectorAll('*')];
  sources.forEach((source,index)=>{
   const target=copies[index],computed=source.ownerDocument.defaultView.getComputedStyle(source);
   for(const property of properties)target.style.setProperty(property,computed.getPropertyValue(property));
   target.removeAttribute('class');target.removeAttribute('id');
-  if(target.nodeName==='IMG'){if(target.dataset.originalSrc)target.src=target.dataset.originalSrc;target.style.maxWidth='100%';target.style.height='auto';target.removeAttribute('width');target.removeAttribute('height');}
+  if(target.nodeName==='IMG'){if(originalImages&&target.dataset.originalSrc)target.src=target.dataset.originalSrc;target.style.maxWidth='100%';target.style.height='auto';target.removeAttribute('width');target.removeAttribute('height');}
   for(const attr of [...target.attributes])if(attr.name.startsWith('data-'))target.removeAttribute(attr.name);
  });
  clone.style.width='100%';clone.style.maxWidth='100%';clone.style.padding='0';return clone.outerHTML;
