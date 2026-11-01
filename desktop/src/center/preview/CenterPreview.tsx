@@ -545,7 +545,7 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
             <div className="cp-section-heading">
               <div>
                 <h2>{tr("生产概览")}</h2>
-                <p>{tr("演示周期 · 2026 年 11 月 2 日—8 日")}</p>
+                <p>{live ? tr("各目标当前周期汇总；周期与时区以中心配置为准。") : tr("演示周期 · 2026 年 11 月 2 日—8 日")}</p>
               </div>
               <button onClick={() => changeTab("calendar")}>
                 {tr("查看发布日历")}
@@ -713,9 +713,9 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
                   <span>{tr("线上管理助手")}</span>
                   <strong>{tr("按目标维护需求池")}</strong>
                   <p>
-                    {tr(
-                      "这里预留最近巡检、调整理由与运行状态。实际服务由中心接入。",
-                    )}
+                    {live
+                      ? tr("在中心管理生产目标，选择本机智能体执行任务。退出桌面后，已启用的目标仍会继续维护。")
+                      : tr("这里预留最近巡检、调整理由与运行状态。实际服务由中心接入。")}
                   </p>
                   <button onClick={() => changeTab("assistant")}>
                     {tr("查看助手界面")}
@@ -884,7 +884,7 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
                   ›
                 </button>
                 <button onClick={() => setDate(data.weekStart)}>
-                  {tr("演示周")}
+                  {tr(live ? "本周" : "演示周")}
                 </button>
               </div>
               <div className="cp-view-switch" aria-label={tr("日历视图")}>
@@ -1021,7 +1021,9 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
                 <i className="blocked" />
                 {tr("待处理")}
               </span>
-              <small>{tr("展示时区：Asia/Shanghai · 数据为示例")}</small>
+              <small>{live
+                ? tr("展示时区：{{timezone}} · 中心真实数据", { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
+                : tr("展示时区：Asia/Shanghai · 数据为示例")}</small>
             </div>
           </>
         )}

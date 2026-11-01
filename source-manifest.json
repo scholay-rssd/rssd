@@ -2814,12 +2814,12 @@
     },
     {
       "path": "desktop/src/center/LiveCenter.test.tsx",
-      "sha256": "ef645ad6a10c3534aacd0e04d15b55035b1ce31f8f89280ef02ad3d83980eec4",
+      "sha256": "aae4300c2c3e90047ac9ccebbea6d285ce7d28fd8da1f0de67d39f95d8ddb83b",
       "syntheticContentReplacement": false
     },
     {
       "path": "desktop/src/center/LiveCenter.tsx",
-      "sha256": "746735710b02cecf15e14b5dd8f21defce2ecc9a683cc7810de3ac5c43feb4ba",
+      "sha256": "c8dd5b384b396f3778d9f6112e1d2913b697e2ce0bab0a269218c72991c1b7f9",
       "syntheticContentReplacement": false
     },
     {
@@ -2834,7 +2834,7 @@
     },
     {
       "path": "desktop/src/center/preview/CenterPreview.tsx",
-      "sha256": "84376a66fa7269d91f8084915d34be273731ebc0129c48c4b66e76a2da3c0330",
+      "sha256": "fe31d75c762ca8f58d1592a38a18af20c85584b1c8219d5f294a58e31d122994",
       "syntheticContentReplacement": false
     },
     {
@@ -4749,12 +4749,12 @@
     },
     {
       "path": "desktop/src/locales/ui.en.json",
-      "sha256": "a39c66cdab45af6149b32e9a2382f08bab374fcd3479ddf610c64b9e6a27d0db",
+      "sha256": "2a72bfe542f2f1621a1564bb93863371507b94820e1ff1a6c621be6ebc3322d1",
       "syntheticContentReplacement": false
     },
     {
       "path": "desktop/src/locales/ui.ja.json",
-      "sha256": "130d746791131946502c56a80b52b4623e17f7fff923311f03d23b01fecb3dd9",
+      "sha256": "6b959a725990f471aa83b13d1f29ebe5ca722792cbc8bb1e136bbf43d9578ce5",
       "syntheticContentReplacement": false
     },
     {
@@ -4899,7 +4899,7 @@
     },
     {
       "path": "docs/desktop-center-integration-handoff.md",
-      "sha256": "9508c5f4514f139984bbf4bdcbcd8a0c9065bbc84f05f1c3ce1c1de46c7ba759",
+      "sha256": "4ac9580d08e12d4830dd17ad5be052cb9e346231c598a92a67f1fdea0f2fd6d1",
       "syntheticContentReplacement": false
     },
     {

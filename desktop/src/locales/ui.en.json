@@ -2842,5 +2842,8 @@
   "加载更多需求（已读取 {{count}} 条）": "Load more requests ({{count}} loaded)",
   "当前显示前 200 条发布记录。": "Showing the first 200 publication records.",
   "打开中心分页查看全部": "Open center to browse all records",
-  "尚未开启本机工作模式": "Local work mode is not active"
+  "尚未开启本机工作模式": "Local work mode is not active",
+  "各目标当前周期汇总；周期与时区以中心配置为准。": "Current-period totals across goals; periods and time zones follow the center configuration.",
+  "本周": "This week",
+  "展示时区：{{timezone}} · 中心真实数据": "Time zone: {{timezone}} · Live center data"
 }
