@@ -16,6 +16,7 @@ jobs:
           node-version: '24'
       - run: npm ci --no-audit --no-fund
       - run: python3 -m unittest discover -s tests -p test_receiver_installer.py
+      - run: node --test tests/rssd-translation-binding*.test.mjs
       - run: node scripts/package-receiver.mjs
       - name: Build and verify bilingual pages using only the installed artifact
         run: |
