@@ -321,7 +321,7 @@ export interface LiveCenterActions {
   updateDemand: (task: PreviewDemand) => Promise<void>;
   claim: (task: PreviewDemand) => Promise<void>;
   manage: (tab: string, workspaceId?: string) => void;
-  assistant: ReactNode;
+  assistant: (workspaceIds:string[])=>ReactNode;
   calendarRange: (from:string,to:string)=>void;
 }
 export default function CenterPreview({ onExit, live }: { onExit?: () => void; live?: LiveCenterActions }) {
@@ -1041,7 +1041,7 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
             }}
           />
         )}
-        {tab === "assistant" && live?.assistant}
+        {tab === "assistant" && live?.assistant(scope)}
         {tab === "assistant" && !live && (
           <div className="cp-assistant">
             <section className="cp-conversation">

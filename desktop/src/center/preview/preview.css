@@ -1433,3 +1433,12 @@
   width: 22px;
   height: 22px;
 }
+
+/* Local assistant keeps its input and immutable running scope readable. */
+.cp-local-assistant .cp-conversation { height: max(560px, calc(100dvh - 300px)); }
+.cp-local-assistant .cp-composer > label { flex-direction: column; align-items: flex-start; margin-top: 10px; }
+.cp-local-assistant .cp-composer > label:first-child { margin-top: 0; }
+.cp-local-assistant .cp-composer-footer { flex-wrap: wrap; }
+.cp-local-assistant .cp-composer-footer > span { display: block; width: 100%; overflow-wrap: anywhere; }
+.cp-local-assistant .cp-composer-footer button { margin-left: 0; }
+.cp-local-assistant .cp-agent-message { padding-bottom: 20px; }
