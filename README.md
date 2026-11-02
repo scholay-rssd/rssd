@@ -162,3 +162,10 @@ npm run desktop:build:web
 - [<img src=".github/readme/friends/linux-do.png" width="20" height="20" alt="" align="absmiddle"> Linux.do](https://linux.do/)
 - [<img src=".github/readme/friends/enterscholar.svg" width="20" height="20" alt="" align="absmiddle"> 恩特学术](https://enterscholar.com/)
 - [<img src=".github/readme/friends/scholay.svg" width="20" height="20" alt="" align="absmiddle"> Scholay 学术](https://www.scholay.com/)
+
+<p align="center">
+  <strong>欢迎各位站长交流学习</strong>
+</p>
+<p align="center">
+  <img src="docs/images/readme/webmasters-wechat-qr.jpg" width="360" alt="站长交流学习二维码">
+</p>
