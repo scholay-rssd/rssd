@@ -1,4 +1,4 @@
-import {readFile,writeFile,mkdir,rename,readlink,access} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,rename,readlink,access,readdir,lstat,chmod} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import p from '../contracts/rssd-v1.cjs';
@@ -68,7 +68,7 @@ export function snapshotForPackets(packets,site,baseline={},previousPackets=[]) 
   }
   return snapshot;
 }
-export async function buildAndActivate({job,site,source,base,baseline,media,bindingStore,verify=manifest=>verifyLive(manifest,site.origin,false)}) {
+export async function buildAndActivate({job,site,source,base,baseline,media,bindingStore,makePublic=publicModes,verify=manifest=>verifyLive(manifest,site.origin,false)}) {
   const current=join(base,'current'),key=contentKey(job.packet),publicPath='rssd-content/'+key+'.json';
   const verifyRelease=async manifest=>{
     await verify(manifest);
@@ -96,6 +96,7 @@ export async function buildAndActivate({job,site,source,base,baseline,media,bind
       }
     }catch(error){if(error.code!=='ENOENT')throw error;}
   }
+  await preparePublicParents(base);
   const buildId=randomUUID(),release='admin-'+buildId,stage=join(base,'releases','.building-'+buildId),target=join(base,'releases',release);
   await mkdir(stage,{recursive:true});
   const mediaHashes={},mediaByteHashes={};
@@ -116,8 +117,26 @@ export async function buildAndActivate({job,site,source,base,baseline,media,bind
   else {try{await access(join(stage,job.packet.route.slice(1),'index.html'));throw Error('Renderer retained a removed edition');}catch(error){if(error.code!=='ENOENT')throw error;}}
   manifest.rssd={requestId:job.id,packetHash:p.hash(job.packet),operation:operation(job.packet),operationSequence:job.operationSequence,translationBindingPolicy:1,...(job.bindingRefresh?{bindingRefresh:job.bindingRefresh}:{})};
   try{manifest.previousRelease=(await readlink(current)).split(/[\\/]/).at(-1);}catch(error){if(error.code!=='ENOENT')throw error;}
-  await writeFile(join(stage,'release.json'),JSON.stringify(manifest));await rename(stage,target);
+  await writeFile(join(stage,'release.json'),JSON.stringify(manifest));await makePublic(stage);await rename(stage,target);
   await activateRelease({base,release:target,verify:()=>verifyRelease(manifest)});
   return makeReceipt(job,release,site,publicPath);
+}
+// These are public-only directories; state and media remain under the service umask.
+export async function preparePublicParents(base){
+  for(const path of [base,join(base,'releases')]){
+    await mkdir(path,{recursive:true,mode:0o755});
+    const info=await lstat(path);
+    if(!info.isDirectory())throw Error('Invalid public release directory: '+path);
+    await chmod(path,0o755);
+  }
+}
+// The service keeps a private umask for its state; the web server reads releases as another user.
+export async function publicModes(path){
+  const info=await lstat(path);
+  // A release contains independent public regular files only. Refuse links
+  // and special files before chmod so permissions outside the build cannot change.
+  if(info.isFile()&&info.nlink===1)return chmod(path,0o644);
+  if(!info.isDirectory())throw Error('Unexpected file type in public release: '+path);
+  await chmod(path,0o755);for(const name of await readdir(path))await publicModes(join(path,name));
 }
 function makeReceipt(job,release,site,publicPath){return {requestId:job.id,contentHash:job.packet.contentHash,packetHash:p.hash(job.packet),revision:job.packet.revision,operation:operation(job.packet),operationSequence:job.operationSequence,release,url:site.origin+job.packet.route,publicUrl:site.origin+'/'+publicPath};}

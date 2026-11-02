@@ -26,6 +26,7 @@ jobs:
           python3 scripts/install-receiver.py "$archive" --sha256 "$checksum" --root "$RUNNER_TEMP/rssd-receiver" > "$RUNNER_TEMP/receiver-installation.json"
           release=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["release"])' "$RUNNER_TEMP/receiver-installation.json")
           RSSD_RECEIVER_ARTIFACT_DIR="$release" "$release/node" --test tests/rssd-receiver-http.test.mjs
+          sudo env RSSD_RECEIVER_ARTIFACT_DIR="$release" "$release/node" --test tests/rssd-receiver-http.test.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: rssd-web-receiver-linux-x64-${{ github.sha }}

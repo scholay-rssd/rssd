@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,readFile,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,rm,stat,realpath,mkdir,writeFile,symlink,link,chmod} from 'node:fs/promises';
 import {createServer} from 'node:http';
+import {execFileSync,spawnSync} from 'node:child_process';
 import {join,resolve,sep} from 'node:path';
 import {tmpdir} from 'node:os';
 import {pathToFileURL} from 'node:url';
@@ -12,11 +13,16 @@ import p from '../contracts/rssd-v1.cjs';
 import mediaProtocol from '../contracts/rssd-media.cjs';
 const artifact=resolve(process.env.RSSD_RECEIVER_ARTIFACT_DIR||'.');
 const {createReceiver}=await import(pathToFileURL(join(artifact,'receiver/server.mjs')));
-const {buildAndActivate}=await import(pathToFileURL(join(artifact,'receiver/build.mjs')));
+const {buildAndActivate,publicModes,preparePublicParents}=await import(pathToFileURL(join(artifact,'receiver/build.mjs')));
 const {verifyLive}=await import(pathToFileURL(join(artifact,'admin/release-verification.mjs')));
 
 test('HTTP receiver builds bilingual pages and applies recoverable withdraw/delete/restore without stale revival',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'rssd-http-')),base=join(dir,'public'),current=join(base,'current');
+  // Production runs the receiver with UMask=0027 while the web server reads as another user.
+  const mask=process.umask(0o027);t.after(()=>process.umask(mask));
+  // A root-run Linux fixture can check real web-server-user access.
+  const checkWebUser=process.platform==='linux'&&process.getuid?.()===0;
+  if(checkWebUser)await chmod(dir,0o755);
   const server=createServer(async(req,res)=>{try{
     const pathname=new URL(req.url,'http://localhost').pathname,path=resolve(current,'.'+pathname+(pathname.endsWith('/')?'index.html':''));
     if(!path.startsWith(current+sep))throw Error('Invalid path');const data=await readFile(path);res.writeHead(200,{'Content-Type':path.endsWith('.json')?'application/json':'text/plain'});res.end(data);
@@ -24,9 +30,9 @@ test('HTTP receiver builds bilingual pages and applies recoverable withdraw/dele
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const site={...profiles.find(x=>x.id==='metho'),origin:'http://127.0.0.1:'+server.address().port,languages:['zh-CN','en']};
   const token='fixture-site-credential-not-real-1234567890',sectionId=sectionsForSite(site)[0].id;
-  let failVerification=false;
+  let failVerification=false,failModes=false;
   const receiver=await createReceiver({config:{home:join(dir,'state'),source:artifact,sites:[{site,publicRoot:base,tokenHash:p.hash(token)}]},
-    build:options=>buildAndActivate({...options,verify:manifest=>{if(failVerification)throw Error('Simulated public verification failure');return verifyLive(manifest,site.origin,false);}})});
+    build:options=>buildAndActivate({...options,makePublic:async path=>{if(failModes)throw Object.assign(Error('Simulated permission failure'),{code:'EPERM'});return publicModes(path);},verify:manifest=>{if(failVerification)throw Error('Simulated public verification failure');return verifyLive(manifest,site.origin,false);}})});
   t.after(async()=>{await receiver.app.close();await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});});
   const endpoint='/api/rssd-receiver/v1/sites/metho/submissions',headers={authorization:'Bearer '+token};
   const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aYZkAAAAASUVORK5CYII=','base64'),asset=mediaProtocol.imageManifest(png);
@@ -38,11 +44,24 @@ test('HTTP receiver builds bilingual pages and applies recoverable withdraw/dele
   const received=await receiver.app.inject({method:'POST',url:endpoint,headers,payload:packet});assert.equal(received.statusCode,200);assert.equal(received.json().state,'queued');
   await receiver.tick();const receipt=(await receiver.app.inject({url:endpoint+'/'+packet.requestId,headers})).json();assert.equal(receipt.state,'success',receipt.error);
   assert.match(await (await fetch(site.origin+packet.route)).text(),/Complete English body/);
+  const release=await realpath(current);assert.equal((await stat(release)).mode&0o777,0o755);
+  for(const path of ['en','en/news','en/news/example','rssd-content','article-media'])assert.equal((await stat(join(release,path))).mode&0o777,0o755,path);
+  for(const path of ['release.json',packet.route.slice(1)+'index.html','rssd-content/'+contentKey(packet)+'.json',asset.path.slice(1)])assert.equal((await stat(join(release,path))).mode&0o777,0o644,path);
+  assert.equal((await stat(join(dir,'state',site.id,'receiver.sqlite'))).mode&0o007,0,'private receiver database');
+  for(const parent of [base,join(base,'releases')])assert.equal((await stat(parent)).mode&0o777,0o755,parent);
+  if(checkWebUser){
+    const canRead=path=>spawnSync('runuser',['-u','www-data','--','test','-r',path]).status;
+    assert.equal(canRead(join(current,packet.route.slice(1),'index.html')),0,'web user can read the published article');
+    assert.equal(canRead(join(dir,'state',site.id,'receiver.sqlite')),1,'web user cannot read the private receiver database');
+  }
   assert.deepEqual(Buffer.from(await(await fetch(site.origin+asset.path)).arrayBuffer()),png);
   const visible=await(await fetch(site.origin+'/rssd-content/'+contentKey(packet)+'.json')).json();assert.equal(visible.requestId,packet.requestId);
   const prior=JSON.parse(await readFile(join(current,'release.json'),'utf8'));
   const update={...packet,requestId:'request-en-2',revision:2,contentHash:'b'.repeat(64),content:{...packet.content,title:'Revised English'}};
-  await receiver.app.inject({method:'POST',url:endpoint,headers,payload:update});failVerification=true;await receiver.tick();
+  await receiver.app.inject({method:'POST',url:endpoint,headers,payload:update});failModes=true;await receiver.tick();
+  assert.equal((await receiver.app.inject({url:endpoint+'/'+update.requestId,headers})).json().state,'failed');
+  assert.equal(JSON.parse(await readFile(join(current,'release.json'),'utf8')).release,prior.release);
+  failModes=false;failVerification=true;await receiver.app.inject({method:'POST',url:endpoint+'/'+update.requestId+'/retry',headers,payload:{}});await receiver.tick();
   assert.equal((await receiver.app.inject({url:endpoint+'/'+update.requestId,headers})).json().state,'failed');
   assert.equal(JSON.parse(await readFile(join(current,'release.json'),'utf8')).release,prior.release);
   failVerification=false;await receiver.app.inject({method:'POST',url:endpoint+'/'+update.requestId+'/retry',headers,payload:{}});await receiver.tick();
@@ -89,6 +108,31 @@ test('HTTP receiver builds bilingual pages and applies recoverable withdraw/dele
   assert.equal(entry.store.receipt(interrupted.id).state,'building');await receiver.tick();
   const recovered=(await receiver.app.inject({url:endpoint+'/'+interrupted.id,headers})).json();
   assert.equal(recovered.state,'success',recovered.error);assert.equal(recovered.release,activated.release);assert.equal(recovered.operationSequence,6);
+});
+
+test('public release permissions reject links without touching their targets', {skip:process.platform==='win32'},async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'rssd-public-modes-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const stage=join(dir,'stage'),outside=join(dir,'private');await mkdir(stage);await writeFile(outside,'private',{mode:0o600});await chmod(outside,0o600);
+ await symlink(outside,join(stage,'link'));
+ await assert.rejects(publicModes(stage),/Unexpected file type in public release/);
+ assert.equal((await stat(outside)).mode&0o777,0o600);assert.equal(await readFile(outside,'utf8'),'private');
+ await rm(join(stage,'link'));await link(outside,join(stage,'hard-link'));
+ await assert.rejects(publicModes(stage),/Unexpected file type in public release/);
+ assert.equal((await stat(outside)).mode&0o777,0o600);assert.equal(await readFile(outside,'utf8'),'private');
+});
+
+test('public parent preparation rejects symlinks without changing their targets', {skip:process.platform==='win32'},async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'rssd-public-parents-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const outside=join(dir,'outside'),base=join(dir,'public');await mkdir(outside,{mode:0o700});await chmod(outside,0o700);
+ await symlink(outside,base);await assert.rejects(preparePublicParents(base),/Invalid public release directory/);
+ assert.equal((await stat(outside)).mode&0o777,0o700);await rm(base);await mkdir(base);await symlink(outside,join(base,'releases'));
+ await assert.rejects(preparePublicParents(base),/Invalid public release directory/);assert.equal((await stat(outside)).mode&0o777,0o700);
+});
+
+test('public release permissions reject special files', {skip:process.platform==='win32'},async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'rssd-public-modes-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ execFileSync('mkfifo',[join(dir,'pipe')]);
+ await assert.rejects(publicModes(dir),/Unexpected file type in public release/);
 });
 
 test('paused site intake exposes authenticated status and refuses new submissions',async t=>{

@@ -9,7 +9,11 @@ It does not switch releases, start a writer or alter Nginx.
 Create the `rssd-receiver` system user, private configuration directory
 `/etc/rssd-receiver` (root-owned, service group readable), state directory
 `/var/lib/rssd-receiver` and public release directory `/opt/rssd-public` (both
-service-owned). Install `receiver/rssd-receiver.service` into systemd. Point
+service-owned). Ensure every ancestor of the site public roots, including
+`/opt/rssd-public` and `/opt/rssd-public/sites`, is searchable by the Nginx
+user. The receiver makes each site root and its `releases` directory 0755;
+its private state remains restricted by UMask 0027. Install
+`receiver/rssd-receiver.service` into systemd. Point
 `/opt/rssd-receiver/current` at the verified release before starting the service.
 The artifact includes Node 24 and dependencies; no server-side npm build occurs.
 
