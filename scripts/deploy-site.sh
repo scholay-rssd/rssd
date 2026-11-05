@@ -25,6 +25,10 @@ archive="$stage.tar.gz"
 trap 'rm -rf "$stage"; rm -f "$archive"' EXIT
 # Explicit code allowlist. No desktop, manuscripts, caches or credentials.
 cp -R admin scripts sites contracts "$stage/"
+# Ship the private seed overlay (docs/private-data-overlay.md) when present.
+seeds="$(node --input-type=module -e "import {overlayDirectory,SITE_SEEDS_DIR} from './scripts/data-overlay.mjs';console.log(overlayDirectory(SITE_SEEDS_DIR).directory)")"
+rm -rf "$stage/sites/seeds"
+cp -R "$seeds" "$stage/sites/seeds"
 node scripts/package-web-engine.mjs "$stage"
 cp package.json package-lock.json "$stage/"
 if node --input-type=module - "$site_id" <<'JS'

@@ -23,6 +23,7 @@ Readers:
 - `scripts/sync-data.mjs` (default calendar source),
 - `scripts/seed-site.mjs` and `scripts/preview-site-organization.mjs`
   (default seed file),
+- `scripts/deploy-site.sh` (seeds shipped in a site package),
 - desktop Vitest: `desktop/scripts/calendar-corpus-plugin.mjs` redirects
   calendar JSON imports and enables tests that need the real corpus
   (`__RSSD_CALENDAR_CORPUS__`); without it they are skipped.
