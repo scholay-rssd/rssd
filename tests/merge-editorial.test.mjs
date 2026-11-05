@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {applyEditorial, mergeEditorial, readYearCategories, validateItem} from '../scripts/merge-editorial.mjs';
+import {mkdtemp, writeFile, symlink, readFile, lstat, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {applyEditorial, mergeEditorial, readYearCategories, validateItem, writeAtomic} from '../scripts/merge-editorial.mjs';
 
 const yearCategories=['节假日','培养节点','学术会议','自然科学基金','人文社科基金','国家科技项目','地方科研项目','人才计划','博士后项目','国际科研机会','学术出版','科研岗位'];
 const item=(overrides={})=>({
@@ -83,4 +86,17 @@ test('readYearCategories follows the list in app.js', async () => {
  const {readFile}=await import('node:fs/promises');
  const source=await readFile(new URL('../web/themes/academic/public/app.js',import.meta.url),'utf8');
  assert.deepEqual(readYearCategories(source), yearCategories);
+});
+
+test('atomic writes replace a symlink target and keep the link', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'merge-editorial-'));
+  try {
+    await writeFile(join(dir, 'target.json'), '{"old":true}');
+    await symlink(join(dir, 'target.json'), join(dir, 'data.json'));
+    writeAtomic(join(dir, 'data.json'), '{"new":true}');
+    assert.ok((await lstat(join(dir, 'data.json'))).isSymbolicLink());
+    assert.equal(await readFile(join(dir, 'target.json'), 'utf8'), '{"new":true}');
+  } finally {
+    await rm(dir, {recursive: true, force: true});
+  }
 });
