@@ -165,12 +165,26 @@ export function snapshot(db,job=null,{reusePublishedAssets=false}={}) {
 }
 export function claim(db,options={}) {
   return db.transaction(()=>{
+    const resumeOnly=options.resumeOnly;
+    if(resumeOnly){
+      if(!['jobs','site_jobs'].includes(resumeOnly.table)||!/^[a-f0-9-]{36}$/.test(resumeOnly.id||'')||!/^[a-f0-9]{64}$/.test(resumeOnly.snapshotHash||''))fail('维护任务身份无效',409);
+      const running=[...db.prepare("SELECT id FROM jobs WHERE status='running'").all().map(x=>({table:'jobs',id:x.id})),...db.prepare("SELECT id FROM site_jobs WHERE status='running'").all().map(x=>({table:'site_jobs',id:x.id}))];
+      if(running.length!==1||running[0].table!==resumeOnly.table||running[0].id!==resumeOnly.id)fail('存在其他未完成任务',409);
+      const row=db.prepare(`SELECT * FROM ${resumeOnly.table} WHERE id=? AND status='running'`).get(resumeOnly.id);
+      if(!row||typeof row.snapshot!=='string'||row.snapshot_hash!==resumeOnly.snapshotHash||digest(row.snapshot)!==resumeOnly.snapshotHash)fail('维护任务身份无效',409);
+      return {...row,resume:true,snapshot:JSON.parse(row.snapshot)};
+    }
+    const maintenance=options.maintenanceJobId;
+    if(maintenance){
+      if(!/^[a-f0-9-]{36}$/.test(maintenance))fail('维护任务身份无效',409);
+      if(db.prepare("SELECT 1 FROM jobs WHERE status IN ('queued','running') LIMIT 1").get()||db.prepare("SELECT 1 FROM site_jobs WHERE status IN ('queued','running') AND id<>? LIMIT 1").get(maintenance))fail('存在其他未完成任务',409);
+    }
     const running=db.prepare("SELECT * FROM jobs WHERE status='running'").get();
     if(running)return {...running,resume:true,snapshot:JSON.parse(running.snapshot)};
     const siteRunning=db.prepare("SELECT * FROM site_jobs WHERE status='running'").get();
     if(siteRunning)return {...siteRunning,resume:true,snapshot:JSON.parse(siteRunning.snapshot)};
-    const articleJob=db.prepare("SELECT * FROM jobs WHERE status='queued' AND scheduled<=? ORDER BY scheduled,created LIMIT 1").get(Date.now());
-    const siteJob=db.prepare("SELECT * FROM site_jobs WHERE status='queued' AND scheduled<=? ORDER BY scheduled,created LIMIT 1").get(Date.now());
+    const articleJob=maintenance?null:db.prepare("SELECT * FROM jobs WHERE status='queued' AND scheduled<=? ORDER BY scheduled,created LIMIT 1").get(Date.now());
+    const siteJob=maintenance?db.prepare("SELECT * FROM site_jobs WHERE id=? AND status='queued' AND scheduled<=?").get(maintenance,Date.now()):db.prepare("SELECT * FROM site_jobs WHERE status='queued' AND scheduled<=? ORDER BY scheduled,created LIMIT 1").get(Date.now());
     const job=!articleJob?siteJob:!siteJob?articleJob:articleJob.scheduled<=siteJob.scheduled?articleJob:siteJob;
     if(!job)return null;
     const table=job===siteJob?'site_jobs':'jobs';

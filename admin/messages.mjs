@@ -3,6 +3,9 @@
 // the error handler swaps in the matching translation. Clients that send no
 // header (desktop, agents, tests) keep receiving the Chinese text unchanged.
 const MESSAGES={
+  '维护任务身份无效':['Invalid maintenance job identity.','メンテナンスジョブの識別情報が無効です。'],
+  '存在其他未完成任务':['Another job is still pending or running.','ほかに未完了のジョブがあります。'],
+  '内容写入正在维护中，请稍后重试':['Content writing is paused for maintenance. Please try again later.','コンテンツの書き込みはメンテナンス中です。しばらくしてから再試行してください。'],
   '文章语言未启用':['This article language is not enabled.','この言語の記事は有効になっていません。'],
   '暂只支持文章语言版本':['Language editions currently support news articles only.','現在、言語別バージョンは記事のみ対応しています。'],
   '译文依据的中文版本已变化或尚未公开，请重新对齐':['The Chinese source revision changed or is not public. Align the translation again.','中国語の元記事が変更されたか、まだ公開されていません。翻訳を再調整してください。'],

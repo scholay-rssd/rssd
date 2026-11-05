@@ -32,8 +32,20 @@ export function registerGuestbook(app,{db,site,origin,session,now=Date.now,publi
   if(!b.details||typeof b.details!=='object'||Array.isArray(b.details)||Object.keys(b.details).some(k=>!form.fields.some(f=>f.key===k)))error('表单字段不适用于该留言类型');
   return {kind:form.id,name:clean(b.name,60,true),message:clean(b.message,3000,true),contact:clean(b.contact??'',200),details:Object.fromEntries(form.fields.map(f=>[f.key,clean(b.details[f.key]??'',f.max,f.required)]))};
  }
- for(const [url,file,type] of [['/guestbook/','index.html','text/html'],['/guestbook/app.js','app.js','text/javascript'],['/guestbook/style.css','style.css','text/css'],['/manage/guestbook/','moderate.html','text/html'],['/manage/guestbook/moderate.js','moderate.js','text/javascript']]){
+ // The proxy sends /guestbook/* to this service, even for files included in a
+ // static release. Serve those exact public artifacts so the publication verifier
+ // checks the same bytes that visitors receive; older releases have no artifacts.
+ const staticMarker=async()=>{const marker=await readFile(join(publicRoot,'current/release.json'),'utf8').catch(err=>{if(err.code==='ENOENT')return null;throw err;});return marker?JSON.parse(marker).guestbook?.static===true:false;};
+ for(const [url,file,type] of [['/guestbook/','index.html','text/html'],['/guestbook/index.html','index.html','text/html'],['/guestbook/config.json','config.json','application/json'],['/guestbook/app.js','app.js','text/javascript'],['/guestbook/style.css','style.css','text/css'],['/manage/guestbook/','moderate.html','text/html'],['/manage/guestbook/moderate.js','moderate.js','text/javascript']]){
   app.get(url,async(req,reply)=>{
+   if(url.startsWith('/guestbook/')&&(url!=='/guestbook/'||await staticMarker())){
+    try{return reply.type(type+'; charset=utf-8').send(await readFile(join(publicRoot,'current/guestbook',file)));}
+    catch(e){
+     if(e.code!=='ENOENT')throw e;
+     // A declared static release must never silently fall back to runtime files.
+     if(file==='index.html'||file==='config.json'||await staticMarker())return reply.code(404).send();
+    }
+   }
    let bytes=await readFile(new URL('../../web/guestbook/'+file,import.meta.url));
    if(file==='index.html'){
     const englishHome=await access(join(publicRoot,'current/en/index.html')).then(()=>true,e=>{if(e.code==='ENOENT')return false;throw e;});
