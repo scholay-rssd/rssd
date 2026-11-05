@@ -146,6 +146,8 @@ npm run desktop:build:web
 | [rssd-themes](https://github.com/scholay-rssd/rssd-themes) | 主题、首页与浏览器导出模板 | `web/themes/` |
 | [rssd-sites](https://github.com/scholay-rssd/rssd-sites) | 公开站点、栏目、订阅源和品牌配置 | `sites/` |
 | [rssd-examples](https://github.com/scholay-rssd/rssd-examples) | 合成内容、主题与模块演示 | `web/demo/` |
+| [rssd-obsidian](https://github.com/scholay-rssd/rssd-obsidian) | Obsidian 插件：把中心空间作为草稿库打开 | `obsidian/` |
+| [rssd-secrets](https://github.com/scholay-rssd/rssd-secrets) | 密钥清单、读取程序与演示值（不含真实值） | 独立使用，见 [docs/secrets.md](docs/secrets.md) |
 
 各组件通过固定版本配置配合，可独立构建。欢迎从复现问题、补充来源、制作主题或改进连接器开始参与；代码检查入口为 `npm test` 和 `npm run check`。
 
