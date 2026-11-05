@@ -44,7 +44,7 @@ test('a dynamic legacy content fence rejects every mutation entrypoint and prese
   const created=await f.call('/manage/api/documents',{method:'POST',data:{kind:'news',data:news}});assert.equal(created.status,200);const doc=await created.json();
   assert.equal((await(await f.call('/manage/api/content-write-status')).json()).readOnly,false);
   const before=totals(f.app);await f.freeze();
-  assert.deepEqual(await(await f.call('/manage/api/content-write-status')).json(),{siteId:SITE.id,readOnly:true,state:'read_only',inFlight:0});
+  assert.deepEqual(await(await f.call('/manage/api/content-write-status')).json(),{siteId:SITE.id,readOnly:true,state:'read_only',inFlight:0,coordination:'disabled',coordinationSafe:false});
   const mutations=[
     ['POST','/manage/api/documents'],['PUT','/manage/api/documents/'+doc.id],
     ...['review','restore','queue'].map(action=>['POST','/manage/api/documents/'+doc.id+'/'+action]),

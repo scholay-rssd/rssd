@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm,readFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {openStore,enqueueSiteBuild,createDocument,setReview,enqueue,claim,finish,readDocument} from '../admin/store.mjs';
+import {buildSiteRelease} from '../web/engine/render-site.mjs';
+import {profiles} from '../scripts/site-config.mjs';
+test('an empty site can build through the publication queue without a fabricated article',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'site-bootstrap-'));
+  const db=openStore(join(root,'admin.sqlite'));t.after(async()=>{db.close();await rm(root,{recursive:true,force:true});});
+  const queued=enqueueSiteBuild(db);assert.equal(enqueueSiteBuild(db).id,queued.id);
+  const job=claim(db);assert.equal(job.action,'rebuild');assert.equal(claim(db).snapshot_hash,job.snapshot_hash);
+  assert.equal(db.prepare('SELECT count(*) AS n FROM documents').get().n,0);
+  const site=profiles.find(s=>s.id==='legis'),target=join(root,'public');
+  const manifest=await buildSiteRelease({site,target,source:process.cwd(),job});
+  assert.equal(manifest.counts.records,0);assert.match(await readFile(join(target,'index.html'),'utf8'),/犀术智法/);
+  assert.throws(()=>finish(db,job.id,{ok:true,release:manifest.release,hash:'wrong'}),/不匹配/);
+  finish(db,job.id,{ok:true,release:manifest.release,hash:job.snapshot_hash});
+  assert.equal(db.prepare('SELECT status FROM site_jobs WHERE id=?').get(job.id).status,'success');
+  assert.equal(db.prepare('SELECT count(*) AS n FROM documents').get().n,0);
+});
+test('site builds serialize with article publication and never approve or publish a newer draft',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'site-queue-'));
+  const db=openStore(join(root,'admin.sqlite'));t.after(async()=>{db.close();await rm(root,{recursive:true,force:true});});
+  const row=createDocument(db,'news',{id:'queue-note',title:'队列测试',summary:'测试摘要',markdown:'# 原始文章',date:'2026-10-15'},'test');
+  setReview(db,row.id,1,'approved','test');const publish=enqueue(db,row.id,1,'publish',Date.now(),'test');
+  const rebuild=enqueueSiteBuild(db);const first=claim(db);assert.equal(first.id,publish.id);assert.equal(claim(db).id,publish.id);
+  finish(db,first.id,{ok:true,hash:first.snapshot_hash,release:'admin-'+first.id});
+  const second=claim(db);assert.equal(second.id,rebuild.id);assert.equal(second.snapshot.news.length,1);
+  const before=readDocument(db,row.id);finish(db,second.id,{ok:true,hash:second.snapshot_hash,release:'admin-'+second.id});
+  assert.deepEqual(readDocument(db,row.id),before);assert.equal(claim(db),null);
+});

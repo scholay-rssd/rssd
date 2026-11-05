@@ -39,6 +39,7 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix desktop/runtime --no-audit --no-fund
       - run: npm run check
       - run: npm test
       - run: npm run demo:build
