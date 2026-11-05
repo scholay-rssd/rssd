@@ -4,9 +4,12 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import {execFileSync} from 'node:child_process';
+import {CALENDAR_DIR,overlayDirectory} from './data-overlay.mjs';
 
-const source=path.resolve(process.argv[2] || path.join(import.meta.dirname,'../desktop/src/calendar'));
-const project=path.resolve(source,'../..');
+// Data may come from the private overlay; the date logic always comes from this checkout.
+const source=process.argv[2]?path.resolve(process.argv[2]):overlayDirectory(CALENDAR_DIR).directory;
+const project=path.join(import.meta.dirname,'../desktop');
+const code=path.join(project,'src/calendar');
 const read=name=>JSON.parse(fs.readFileSync(path.join(source,name),'utf8'));
 const officialNames=[
  'yearOfficialSeeds.json','yearOfficialNationalSeeds.json','yearOfficialTalentSeeds.json',
@@ -41,8 +44,8 @@ let growYearEvents,pickGrowQueries,nationalHolidays;
 try{
  const yearModule=path.join(temp,'year.mjs');
  const holidayModule=path.join(temp,'holidays.mjs');
- execFileSync(esbuild,[path.join(source,'yearGrow.ts'),'--bundle','--platform=node','--format=esm','--outfile='+yearModule],{stdio:'ignore'});
- execFileSync(esbuild,[path.join(source,'nationalHolidays.ts'),'--bundle','--platform=node','--format=esm','--outfile='+holidayModule],{stdio:'ignore'});
+ execFileSync(esbuild,[path.join(code,'yearGrow.ts'),'--bundle','--platform=node','--format=esm','--outfile='+yearModule],{stdio:'ignore'});
+ execFileSync(esbuild,[path.join(code,'nationalHolidays.ts'),'--bundle','--platform=node','--format=esm','--outfile='+holidayModule],{stdio:'ignore'});
  ({growYearEvents,pickGrowQueries}=await import('file://'+yearModule));
  ({nationalHolidays}=await import('file://'+holidayModule));
 }finally{fs.rmSync(temp,{recursive:true,force:true})}

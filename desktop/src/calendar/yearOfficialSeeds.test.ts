@@ -13,6 +13,9 @@ import { growYearEvents, type GrowSeed } from "./yearGrow";
 import { isYearOpening, yearOpenings } from "./yearOpenings";
 import { yearOfficialSeeds } from "./yearOfficialSeedSets";
 
+// Defined by the calendar corpus plugin: true only with the private calendar corpus.
+declare const __RSSD_CALENDAR_CORPUS__: boolean;
+
 describe("official-search calendar seeds", () => {
   const seeds = yearOfficialSeeds;
   const events = growYearEvents(seeds);
@@ -26,7 +29,7 @@ describe("official-search calendar seeds", () => {
     ...(yearSeeds as GrowSeed[]),
   ];
 
-  it("keeps an expanding, official, reviewed seed set", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("keeps an expanding, official, reviewed seed set", () => {
     expect(seeds.length).toBeGreaterThanOrEqual(137);
     expect(events).toHaveLength(seeds.length);
     expect(new Set(seeds.map((seed) => seed.article.id)).size).toBe(seeds.length);
@@ -39,7 +42,7 @@ describe("official-search calendar seeds", () => {
     ))).toBe(true);
   });
 
-  it("makes verified one-off calls visible as current-year opportunities", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("makes verified one-off calls visible as current-year opportunities", () => {
     const openings = yearOpenings(events, 2026);
     expect(openings).toHaveLength(events.filter((event) => isYearOpening(event, 2026)).length);
     expect(openings.length).toBeGreaterThanOrEqual(40);
@@ -52,7 +55,7 @@ describe("official-search calendar seeds", () => {
     expect(openings.every((event) => event.kind === "point" || event.end?.day != null)).toBe(true);
   });
 
-  it("adds 985 campus notices as source-backed training nodes without turning them into opportunities", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("adds 985 campus notices as source-backed training nodes without turning them into opportunities", () => {
     const campus = events.filter((event) => event.tags.includes("培养节点"));
     const schools = new Set(campus.map((event) => event.payload.sourceName));
 
@@ -71,7 +74,7 @@ describe("official-search calendar seeds", () => {
     expect(campus.every((event) => !isYearOpening(event, event.start.year))).toBe(true);
   });
 
-  it("keeps state-funded exchange talent tracks on both relevant rails", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("keeps state-funded exchange talent tracks on both relevant rails", () => {
     const youthTeacher = events.find((event) => event.title.includes("青年骨干教师出国研修项目"));
     const artsTalent = events.find((event) => event.title.includes("艺术类人才培养特别项目第一批人员申报"));
 
@@ -79,7 +82,7 @@ describe("official-search calendar seeds", () => {
     expect(artsTalent?.tags).toEqual(expect.arrayContaining(["人才计划", "国际科研机会"]));
   });
 
-  it("expands the talent rail with people-based postdoc and public-study tracks", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("expands the talent rail with people-based postdoc and public-study tracks", () => {
     const talent = events.filter((event) => event.tags.includes("人才计划"));
     const overseasYouth = events.find((event) => event.title.includes("优秀青年科学基金项目（海外）"));
     const castDoctoral = events.find((event) => event.title.includes("2026年中国科协青年科技人才培育工程博士生专项计划推荐截止"));
@@ -95,7 +98,7 @@ describe("official-search calendar seeds", () => {
     expect(events.filter((event) => event.payload.body?.trim()).length).toBeGreaterThanOrEqual(25);
   });
 
-  it("keeps source-backed bodies for the first expanded funding and talent batch", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("keeps source-backed bodies for the first expanded funding and talent batch", () => {
     const aiPlan = events.find((event) => event.title.includes("下一代人工智能方法重大研究计划"));
     const sdic = events.find((event) => event.title.includes("可持续发展国际合作科学计划（SDIC）"));
     const platform = events.find((event) => event.title.includes("国家重大科技平台国际开放合作基础研究专项"));
@@ -107,7 +110,7 @@ describe("official-search calendar seeds", () => {
     expect(youthTeacher?.payload.body).toContain("9月30日前");
   });
 
-  it("hydrates every priority official record from a reviewed body or the original-text cache", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("hydrates every priority official record from a reviewed body or the original-text cache", () => {
     const priorityLanes = new Set(["科研申报", "人才计划", "国际基金", "会议征稿"]);
     const priority = seeds.filter((seed) => priorityLanes.has(seed.lane));
     const staticSeeds = [...seeds, ...legacy];
@@ -125,7 +128,7 @@ describe("official-search calendar seeds", () => {
     }
   });
 
-  it("attaches official-source originals to legacy RSS/search calendar records without changing their provenance", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("attaches official-source originals to legacy RSS/search calendar records without changing their provenance", () => {
     const cachedLegacy = attachOfficialBodyCache(legacy);
     const nsfc2026 = cachedLegacy.find((seed) => seed.article.id === 910031 && seed.article.url?.includes("www.nsfc.gov.cn"));
 
@@ -133,13 +136,13 @@ describe("official-search calendar seeds", () => {
     expect(nsfc2026?.article.body?.length).toBeGreaterThanOrEqual(180);
   });
 
-  it("keeps separately dated annual editions instead of collapsing them by title", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("keeps separately dated annual editions instead of collapsing them by title", () => {
     const monographGrants = events.filter((event) => event.title.includes("中国博士后科学基金优秀学术专著出版资助申报"));
 
     expect(monographGrants.map((event) => event.start.year)).toEqual([2024, 2025, 2026]);
   });
 
-  it("upgrades exact RSS copies without erasing distinct tracks from one official guide", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("upgrades exact RSS copies without erasing distinct tracks from one official guide", () => {
     const merged = growYearEvents([...seeds, ...legacy]);
     const futureIndustrial = merged.filter((event) => event.title.includes("未来工业互联网基础理论与关键技术") && event.start.year === 2026);
     const postdocGuide = merged.filter((event) => event.payload.sourceUrl?.includes("af35dac8-8e29-417b-b050-f120c3808dd6"));

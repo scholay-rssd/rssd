@@ -7,6 +7,7 @@ import {buildSiteRelease} from '../web/engine/render-site.mjs';
 import {buildThemeHome} from './build-theme-home.mjs';
 import {markdownImages} from './article-format.mjs';
 import {createHash} from 'node:crypto';
+import {SITE_SEEDS_DIR,overlayDirectory} from './data-overlay.mjs';
 const root=resolve('.local/organization-preview'),source=join(root,'input');
 await mkdir(source,{recursive:true});
 await cp('sites',join(source,'sites'),{recursive:true});
@@ -21,7 +22,7 @@ const fetchJson=async url=>(await fetchPublic(url)).json();
 const children=[],receipt=[];
 for(const [index,site] of profiles.entries()){
   const file=join(root,'snapshots',site.id+'.json');
-  const emptySeed=site.legacy?false:(JSON.parse(await readFile(new URL('../sites/seeds/'+site.id+'.json',import.meta.url),'utf8')).length===0);
+  const emptySeed=site.legacy?false:(JSON.parse(await readFile(join(overlayDirectory(SITE_SEEDS_DIR).directory,site.id+'.json'),'utf8')).length===0);
   if(emptySeed){try{await access(file);}catch(e){if(e.code!=='ENOENT')throw e;await writeFile(file,JSON.stringify({news:[],data:{year:[],history:[]},openSource:{items:[]},permalinks:{}}));}}
   if(process.argv.includes('--refresh-public')){
     const publicContent=await fetchJson(site.origin+'/published-content.json');

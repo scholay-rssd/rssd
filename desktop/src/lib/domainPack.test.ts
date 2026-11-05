@@ -5,7 +5,8 @@ import {ACADEMIC,domainType} from '../../scripts/agent/domain-pack.mjs';
 import {TASK_TYPES,TASK_TYPE_IDS,DISCOVERY_TASK,OTHER_TASK_MODES} from '../../scripts/agent/task-types.mjs';
 import {defaultTemplates,defaultTopicBoard} from '../editorial/topicTemplates';
 
-const desktop=join(__dirname,'../..'),workspaces=[join(desktop,'resources/workspace-template'),join(desktop,'../editorial')];
+// The editorial workspace is a private overlay; public checkouts verify the shipped template only.
+const desktop=join(__dirname,'../..'),editorial=join(desktop,'../editorial'),workspaces=[join(desktop,'resources/workspace-template'),...(existsSync(editorial)?[editorial]:[])];
 describe('academic domain pack',()=>{
  it('fills every content type and the discovery service, and nothing else',()=>{
   expect(Object.keys(ACADEMIC.types).sort()).toEqual([...TASK_TYPE_IDS].sort());

@@ -1,9 +1,11 @@
 import {readFile} from 'node:fs/promises';
+import {join} from 'node:path';
 import {openStore,createDocument,setReview,enqueueBatch,pendingDocument,readDocument} from '../admin/store.mjs';
 import {sourceKey} from '../admin/model.mjs';
+import {SITE_SEEDS_DIR,overlayDirectory} from './data-overlay.mjs';
 export async function seedSite(site,file){
   if(site.legacy)throw Error('学术站保留现有数据库，不使用新站初始数据');
-  const items=JSON.parse(await readFile(file||new URL('../sites/seeds/'+site.id+'.json',import.meta.url),'utf8'));
+  const items=JSON.parse(await readFile(file||join(overlayDirectory(SITE_SEEDS_DIR).directory,site.id+'.json'),'utf8'));
   const db=openStore(process.env.SCHOLAY_ADMIN_DB);let created=0;const members=[];
   try{return db.transaction(()=>{
     for(const item of items){
