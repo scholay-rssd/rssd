@@ -29,3 +29,8 @@ Readers:
   (`__RSSD_CALENDAR_CORPUS__`); without it they are skipped.
 
 Never commit overlay contents to this repository.
+`scripts/check-public-boundary.mjs` enforces this in CI: it rejects private
+overlay directories (`editorial/`, `deploy/`, `.local/`), real data exports,
+receipts, databases, key files, symlinks into overlays, credentials and
+personal home paths. Run it before every commit with
+`git config core.hooksPath .githooks`.

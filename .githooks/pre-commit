@@ -1,0 +1,3 @@
+#!/bin/sh
+# Enable with: git config core.hooksPath .githooks
+exec node "$(git rev-parse --show-toplevel)/scripts/check-public-boundary.mjs" --staged
