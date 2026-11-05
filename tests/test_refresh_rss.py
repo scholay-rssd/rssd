@@ -39,5 +39,26 @@ class RefreshRssTests(unittest.TestCase):
         self.assertEqual(result["sources"][1]["lastSuccessAt"], "2026-09-27T00:00:00Z")
 
 
+    def test_main_replaces_a_symlinked_output_target_and_keeps_the_link(self):
+        import contextlib, io, json, os, tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "overlay").mkdir()
+            sources = root / "rss-sources.json"
+            sources.write_text(json.dumps({"sources": []}))
+            target = root / "overlay" / "rss.json"
+            target.write_text("{}")
+            link = root / "rss.json"
+            os.symlink("overlay/rss.json", link)
+            snapshot = {"version": 1, "successfulSources": 0, "sources": [], "items": []}
+            with mock.patch.object(rss, "SOURCES", sources), mock.patch.object(rss, "OUTPUT", link), \
+                    mock.patch.object(rss, "build_snapshot", return_value=snapshot), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                rss.main()
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(json.loads(target.read_text()), snapshot)
+
+
 if __name__ == "__main__":
     unittest.main()
