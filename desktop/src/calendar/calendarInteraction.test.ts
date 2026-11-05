@@ -8,6 +8,9 @@ import CalendarBoard from "./CalendarBoard";
 import { WindowChromeContext } from "../components/PaneToolbar";
 import type { CalendarEvent } from "./types";
 
+// Defined by the calendar corpus plugin: true only with the private calendar corpus.
+declare const __RSSD_CALENDAR_CORPUS__: boolean;
+
 const events = vi.hoisted(() => [
   { id: "window", title: "Cross-month window", tags: ["学术会议"], start: { year: 2026, month: 5, day: 28 }, end: { year: 2026, month: 6, day: 3 }, kind: "span", source: "year", precision: "day", approximate: false, payload: { sourceUrl: "https://example.org/window" } },
   { id: "point", title: "Single-day event", tags: ["学术会议"], start: { year: 2026, month: 5, day: 29 }, kind: "point", source: "year", precision: "day", approximate: false, payload: {} },
@@ -97,7 +100,7 @@ it("keeps a card compact until its source detail is explicitly expanded", () => 
   expect(card.querySelector(".calendar-card-detail-block > small")?.textContent).toBe("正文");
   expect(card.querySelector(".calendar-card-source-block")?.textContent).toContain("原文链接");
 });
-it("keeps the history detail rail scoped to the selected date", async () => {
+it.skipIf(!__RSSD_CALENDAR_CORPUS__)("keeps the history detail rail scoped to the selected date", async () => {
   await act(async () => root.render(createElement(QueryClientProvider, { client: qc }, createElement(CalendarBoard, { active: true, view: "history" }))));
   const detail = host.querySelector<HTMLElement>(".calendar-detail")!;
   const total = Number(host.querySelector(".hot-source-nav button.is-active small")!.textContent);
@@ -108,7 +111,7 @@ it("keeps the history detail rail scoped to the selected date", async () => {
   expect(detail.querySelectorAll(".calendar-card").length).toBeGreaterThan(0);
   expect(detail.querySelectorAll(".calendar-card").length).toBeLessThan(total);
 });
-it("groups historic tags while preserving exact member filters", async () => {
+it.skipIf(!__RSSD_CALENDAR_CORPUS__)("groups historic tags while preserving exact member filters", async () => {
   await act(async () => root.render(createElement(QueryClientProvider, { client: qc }, createElement(CalendarBoard, { active: true, view: "history" }))));
   const tagButton = (name: string) => [...host.querySelectorAll<HTMLButtonElement>(".hot-source-nav button")]
     .find((button) => button.querySelector("span")?.textContent === name)!;

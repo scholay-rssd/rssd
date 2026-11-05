@@ -19,6 +19,9 @@ import { explainTag, HISTORY_GLOSSARY_TAGS, TAG_GLOSSARY, YEAR_GLOSSARY_TAGS } f
 import { filterHistoryByTag, HISTORY_GROUPS, historyGroupFor } from "./historyGroups";
 import { acceptSpan, classifyYearCategory, classifyYearTags, growEventId, growLaneForFeed, growLaneForFolder, growPlacement, growYearEvents, htmlToText, keepGrowArticle, needsDeepRead, parseBodyWindow, pickGrowQueries, spanDays, YEAR_GROUPS, yearCluster, type GrowSeed } from "./yearGrow";
 
+// Defined by the calendar corpus plugin: true only with the private calendar corpus.
+declare const __RSSD_CALENDAR_CORPUS__: boolean;
+
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const history = adaptHistoryEvents(historyEvents as HistoryEvent[]);
 
@@ -48,7 +51,7 @@ function seed(partial: Partial<GrowSeed["article"]> & { title: string }, lane = 
 }
 
 describe("academic calendar views", () => {
-  it("renders only the reviewed historical image batch", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("renders only the reviewed historical image batch", () => {
     const voyager = history.find((event) => event.title === "Voyager 2 首次飞掠天王星");
     const ligo = history.find((event) => event.title === "LIGO 宣布首次直接探测到引力波");
     const openAlex = history.find((event) => event.title === "OpenAlex 正式上线");
@@ -57,7 +60,7 @@ describe("academic calendar views", () => {
     expect(openAlex?.payload.media).toBeUndefined();
   });
 
-  it("grows the academic year from grant and meeting feeds, not a handwritten skeleton", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("grows the academic year from grant and meeting feeds, not a handwritten skeleton", () => {
     expect(growLaneForFolder("中国大陆·基金申报")).toBe("科研申报");
     expect(growLaneForFolder("国际基金·资助机会")).toBe("国际基金");
     expect(growLaneForFolder("学术会议·中文")).toBe("会议征稿");
@@ -273,7 +276,7 @@ describe("academic calendar views", () => {
     expect(calendarProvenance(legacy)).toMatchObject({ origin: "rss", sourceTier: "official", verification: "unverified" });
     expect(calendarProvenance(nationalHolidays(2026)[0])).toMatchObject({ origin: "curated", sourceTier: "official", verification: "verified" });
   });
-  it("uses source-stable IDs when static seed collections reuse a local article id", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("uses source-stable IDs when static seed collections reuse a local article id", () => {
     const program = (yearProgramSeeds as GrowSeed[])[0];
     const campus = (yearCampusSeeds as GrowSeed[])[0];
     expect(program.article.id).toBe(campus.article.id);
@@ -296,7 +299,7 @@ describe("academic calendar views", () => {
     ]);
     expect(new Set(allStaticEvents.map((event) => event.id)).size).toBe(allStaticEvents.length);
   });
-  it("files sourced campus notices under 培养节点 without turning a project seminar into one", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("files sourced campus notices under 培养节点 without turning a project seminar into one", () => {
     const grown = growYearEvents(yearCampusSeeds as GrowSeed[]);
     expect(grown).toHaveLength(yearCampusSeeds.length);
     const byTitle = (title: string) => grown.find((event) => event.title.includes(title));
@@ -314,7 +317,7 @@ describe("academic calendar views", () => {
     expect(listed.every((habit) => isListedHabit(habit) && habit.evidence.every((event) => event.payload.sourceUrl))).toBe(true);
     expect(grown.every((event) => event.payload.sourceUrl && !event.title.includes("开题论证"))).toBe(true);
   });
-  it("puts day-precision history on the matching civil day only", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("puts day-precision history on the matching civil day only", () => {
     expect(history.length).toBeGreaterThan(500);
     expect(dateKeyFromParts(9, 17)).toBe("09-17");
     const raw = eventsOnDate(historyEvents as HistoryEvent[], "01-19");
@@ -324,7 +327,7 @@ describe("academic calendar views", () => {
     expect(dayPoints(history, day!.start.year, day!.start.month, day!.start.day!).some((event) => event.title.includes("新视野号"))).toBe(true);
     expect(shiftDateKey("01-01", 2026, -1).dateKey).toBe("12-31");
   });
-  it("treats 昔日学术 as 366 same-month-day cells, not a year timeline", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("treats 昔日学术 as 366 same-month-day cells, not a year timeline", () => {
     const onDay = historyOnDateKey(history, "01-19");
     expect(onDay.some((event) => event.title.includes("新视野号"))).toBe(true);
     expect(onDay.every((event) => event.start.month === 1 && event.start.day === 19)).toBe(true);
@@ -349,7 +352,7 @@ describe("academic calendar views", () => {
     expect(board).toContain("标签组");
     expect(board).toContain("yearMode");
   });
-  it("dates an item by when it happens, not by when the feed posted it", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("dates an item by when it happens, not by when the feed posted it", () => {
     // Conference feeds label the window and warn that the sort date is a harvest artifact.
     expect(parseBodyWindow("会议时间（非发布时间）：2026-11-27~2026-11-29 地点：云南", 2026))
       .toMatchObject({ start: { month: 11, day: 27 }, end: { month: 11, day: 29 }, meta: "会期" });
@@ -437,7 +440,7 @@ describe("academic calendar views", () => {
     expect(onKey("09-07")).toBeLessThan(30);
     expect(packed.filter((event) => event.payload.meta === "会期").length).toBeGreaterThan(250);
   });
-  it("treats year events as evidence and promotes repeats into habits", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("treats year events as evidence and promotes repeats into habits", () => {
     const grown = growYearEvents([
       seed({ id: 31, title: "[国自然] 指南甲", publishedAt: "2026-03-01" }),
       seed({ id: 32, title: "[国自然] 指南乙", publishedAt: "2025-03-01" }),
@@ -536,7 +539,7 @@ describe("academic calendar views", () => {
     expect(board).not.toContain("STRIP_WINDOW");
     expect(board).not.toContain("monthRange(");
   });
-  it("refuses spans whose length contradicts what the source claims to be", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("refuses spans whose length contradicts what the source claims to be", () => {
     expect(spanDays({ year: 2026, month: 11, day: 5 }, { year: 2026, month: 11, day: 6 })).toBe(2);
     expect(spanDays({ year: 2026, month: 12, day: 27 }, { year: 2027, month: 2, day: 14 })).toBe(50);
     expect(acceptSpan({ year: 2026, month: 11, day: 5 }, { year: 2026, month: 11, day: 8 }, "会期")).toBe(true);
@@ -570,7 +573,7 @@ describe("academic calendar views", () => {
     expect(packed.some((event) => /精品会议推荐/.test(event.title))).toBe(false);
     expect(packed.filter((event) => event.payload.meta === "申报窗口").length).toBeGreaterThan(20);
   });
-  it("folds away months that hold nothing under the chosen tag", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("folds away months that hold nothing under the chosen tag", () => {
     const packed = packedYear();
     const emptyMonths = (tag: string | null) => {
       const visible = filterByTag(packed, tag);
@@ -616,7 +619,7 @@ describe("academic calendar views", () => {
     expect(board).toContain("setForceOpen(false)");
     expect(css).toContain(".calendar-almanac-month.is-collapsed");
   });
-  it("sorts tags by heat and keeps a resizable 1–12 month grid without spanning bars", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("sorts tags by heat and keeps a resizable 1–12 month grid without spanning bars", () => {
     const grown = growYearEvents([
       seed({ id: 11, title: "[国自然] 指南甲", publishedAt: "2026-09-01" }),
       seed({ id: 12, title: "[国社科] 指南乙", publishedAt: "2026-09-02" }),
@@ -780,7 +783,7 @@ describe("academic calendar views", () => {
     expect(parseTrendsSection("labels")).toBe("labels");
     expect(parseTrendsSection("hot")).toBe("hot");
   });
-  it("covers all 366 history dateKeys and the hard-event batch", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("covers all 366 history dateKeys and the hard-event batch", () => {
     const events = historyEvents as HistoryEvent[];
     const daysInMonth = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
     const expectedKeys = daysInMonth.flatMap((days, index) =>
@@ -819,7 +822,7 @@ describe("academic calendar views", () => {
       expect(event!.sources.some((source) => !source.url.includes("api.crossref.org"))).toBe(true);
     }
   });
-  it("orders the vertical timeline by occurrence and keeps a month-grid switch", () => {
+  it.skipIf(!__RSSD_CALENDAR_CORPUS__)("orders the vertical timeline by occurrence and keeps a month-grid switch", () => {
     const ordered = sortTimelineEvents(history);
     expect(ordered.length).toBe(history.length);
     for (let index = 1; index < ordered.length; index += 1) {
