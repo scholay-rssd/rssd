@@ -24,7 +24,14 @@ export function siteBrandIds(siteId){
  return ['site:'+siteId,'scholay-platform','enterscholar'];
 }
 export function siteBrandMounts(siteId,brands=brandSeeds()){
- return siteBrandIds(siteId).map(id=>{const brand=brands.find(b=>b.id===id);if(!brand)throw Error('品牌库缺少：'+id);return brand;});
+ const seeds=brandSeeds();
+ return siteBrandIds(siteId).map(id=>{
+  const seed=seeds.find(b=>b.id===id);
+  const direct=brands.find(b=>b.id===id);
+  const matches=direct?[direct]:seed?brands.filter(b=>hasSeed(b,seed)):[];
+  if(matches.length!==1)throw Error('品牌库缺少或品牌身份不唯一：'+id);
+  return matches[0]; // Preserve imported IDs, selected text and versions.
+ });
 }
 export function validateBrand(b){
  if(!b||typeof b!=='object'||Array.isArray(b))throw Error('品牌格式无效');

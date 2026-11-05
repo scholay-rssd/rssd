@@ -2556,9 +2556,15 @@
   "工作空间": "Workspace",
   "本机智能体": "Agent on this device",
   "选择智能体": "Choose an agent",
+  "空闲时自动选题（研究方法试点，每日最多 2 个新自动选题）": "Find topics when idle (Research Methods pilot, up to 2 new topics per day)",
+  "完成的文章会按该栏目已绑定的目标自动发布；选题或来源无法核查时会停止。": "Completed articles are published automatically to this section’s configured destinations. The worker stops if it cannot verify a topic or source.",
   " · 尚不可用": " · Unavailable",
   "工作实例正在启动，任务与运行状态会保留在本机。": "Starting the worker. Tasks and execution state are saved on this device.",
   "开启工作模式": "Start work mode",
+  "开启多站排程": "Start multi-site schedule",
+  "待提交的本机参考文献修订：": "Local reference correction ready to submit:",
+  "提交参考文献修订": "Submit reference correction",
+  "多站排程正在启动，发布前会检查各站切换状态。": "Starting the multi-site schedule. Each site's cutover status is checked before publishing.",
   "当前需求完成后停止领取。": "Stop claiming work after the current task finishes.",
   "本单完成后停止": "Stop after this task",
   "工作模式尚未开启": "Work mode has not started",
@@ -2857,5 +2863,11 @@
   "发送指令": "Send instruction",
   "停止助手": "Stop assistant",
   "沿用本机智能体授权。对话和执行记录保留在本机；中断后可继续，或新建对话保留旧记录。": "Uses your local agent login. Conversations and execution records stay on this device. Continue after an interruption or start a new conversation while retaining previous records.",
-  "认领、写作和交稿使用需求池的生产执行器。目标与排期管理使用浏览器账号。": "Claiming, writing and submission use the demand pool worker. Manage goals and schedules with your browser account."
+  "认领、写作和交稿使用需求池的生产执行器。目标与排期管理使用浏览器账号。": "Claiming, writing and submission use the demand pool worker. Manage goals and schedules with your browser account.",
+  "内部审查": "Internal review",
+  "内部审查记录": "Internal review notes",
+  "{{count}} 项": "{{count}} items",
+  "暂无内部审查记录": "No internal review notes",
+  "逐段批注": "Block annotations",
+  "读取失败": "Could not load"
 }

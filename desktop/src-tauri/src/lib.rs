@@ -26,6 +26,7 @@ mod publications;
 mod platforms;
 mod connections;
 mod rssd_center;
+mod rssd_multisite_intent;
 mod rssd_auth;
 #[cfg(windows)]
 mod windows_credentials;
@@ -131,6 +132,7 @@ pub fn run() {
     builder
         .setup(|app| {
             workbench_runtime::init(app.handle())?;
+            rssd_center::start_multisite_recovery();
             reader_shortcuts::install(app.handle())?;
             window_fit::install(app.handle());
             // ── Database ──────────────────────────────────────────────

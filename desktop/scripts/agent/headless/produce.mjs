@@ -10,6 +10,7 @@ import {createBridgeClient} from './bridge-client.mjs';
 import {confirmPublication} from './publication.mjs';
 import {assertHeadlessTarget} from './target.mjs';
 import {headlessEntry} from './update.mjs';
+import {columnWritingInstructions} from '../../../../contracts/editorial-column-policy.mjs';
 import {parseProduceMounts,loadMountList,parseBriefMounts} from '../resources/mount-spec.mjs';
 
 export function parseArgs(argv){
@@ -31,9 +32,10 @@ export async function produce(argv=process.argv.slice(2)){
  const ctx=applySiteEnv(args.siteKey);
  // Heading/skill contracts bind at module load, after selecting the site.
  const {IMAGE_PRIORITY,finalizeNotebook,publicationMetadataFromNotebook}=await import('../notebook-finalize.mjs');
- const {brandSeeds}=await import('../brand-library.mjs');
+ const {brandSeeds,brandLibrary}=await import('../brand-library.mjs');
  const {validateSectionId}=await import('../../../../contracts/site-sections.mjs');
  validateSectionId(args.sectionId,ctx.site);
+ const columnRules=columnWritingInstructions(ctx.site,args.sectionId);
  const {COMPLETION_PROMPT}=await import('../notebook-completion.mjs');
  const {createWebsitePublisher}=await import('../../../../scripts/website-publication.mjs');
  const {checkArticle}=await import('../../../../editorial/_ops/scripts/check-article.mjs');
@@ -62,7 +64,7 @@ export async function produce(argv=process.argv.slice(2)){
   if(args.resume&&args.agentId){const saved=await call('task_get',{taskId:args.resume});if((saved.agentId||'cursor')!==args.agentId)throw Error('恢复任务时不能更换智能体');}
   if(!args.resume){
    const parsedBrief=parseBriefMounts(readFileSync(args.briefFile,'utf8'));
-   const text=parsedBrief.text.trim();
+   const text=parsedBrief.text.trim()+'\n'+columnRules;
    const brief=text.includes('配图优先级')?text:text+'\n'+IMAGE_PRIORITY;
    t=await call('task_create',{agentId:args.agentId,mode:args.mode,title:brief.replace(/\s+/g,' ').slice(0,48),brief:'',days:args.mode==='xiwen'?7:30});
    Object.assign(result,{taskId:t.id,articleId:t.articleId});checkpoint();
@@ -86,7 +88,7 @@ export async function produce(argv=process.argv.slice(2)){
    let pre=await call('notebook_check',{taskId:t.id,phase:'prepare'});L('preflight',pre.ready,pre.issues);
    for(let i=0;i<2&&!pre.ready;i++){t=await agent(t.id,'fix-'+i,{text:'补齐预检缺项（只补缺，不改已写内容）：'+pre.issues.join('；')+'。属性字段写入 notebook.fields，取值必须来自已核实来源；图片位置写清 requirement。结构化记录不要新增二级标题。',sources:'combined',action:'organize',expectedRevision:t.revision});pre=await call('notebook_check',{taskId:t.id,phase:'prepare'});L('preflight',pre.ready,pre.issues);}
    if(!pre.ready)throw Error('preflight: '+pre.issues.join('；'));
-   t=await agent(t.id,'complete',{text:COMPLETION_PROMPT,action:'complete',sources:'combined',expectedRevision:t.revision});
+   t=await agent(t.id,'complete',{text:COMPLETION_PROMPT+'\n'+columnRules,action:'complete',sources:'combined',expectedRevision:t.revision});
   }else{
    t=await call('task_get',{taskId:args.resume});
    assertHeadlessTarget(t,target,{allowMissingNotebook:true});
@@ -112,7 +114,7 @@ export async function produce(argv=process.argv.slice(2)){
      pre=await call('notebook_check',{taskId:t.id,phase:'prepare'});
     }
     if(!pre.ready)throw Error('preflight: '+pre.issues.join('；'));
-    t=await agent(t.id,'resume-complete',{text:COMPLETION_PROMPT,action:'complete',sources:'combined',expectedRevision:t.revision});
+    t=await agent(t.id,'resume-complete',{text:COMPLETION_PROMPT+'\n'+columnRules,action:'complete',sources:'combined',expectedRevision:t.revision});
    }
   }
   result.taskId=t.id;result.articleId=t.articleId;
@@ -134,7 +136,8 @@ export async function produce(argv=process.argv.slice(2)){
    t=await call('task_get',{taskId:t.id});
   }
   t=await call('task_get',{taskId:t.id});if(t.completedAt)t=await call('notebook_reopen',{taskId:t.id,expectedRevision:t.revision});
-  const finalized=finalizeNotebook(t.notebook,{siteId:ctx.site.id,brands:brandSeeds()});
+  const brands=process.env.SCHOLAY_GLOBAL_APP_DATA?await brandLibrary():brandSeeds();
+  const finalized=finalizeNotebook(t.notebook,{siteId:ctx.site.id,brands});
   t=await call('task_update',{taskId:t.id,patch:{notebook:finalized.notebook},expectedRevision:t.revision});
   L('finalize','images',finalized.images.length,'alts',finalized.images.map(x=>x.alt),'endnotes',finalized.added);
   const c=await call('notebook_check',{taskId:t.id});L('check',c.ready,c.issues);if(!c.ready)throw Error('check: '+c.issues.join('；'));

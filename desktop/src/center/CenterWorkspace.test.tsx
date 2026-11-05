@@ -59,6 +59,49 @@ it('enters the live scheduling view only after saving the current local draft',a
 });
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.unstubAllGlobals();});
 
+it('enables automatic topics only when the user opts into the methods pilot',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>{
+  if(args.method==='registry')return {workspaces:[{id:'metho',name:'研究方法',sections:[{id:'methods',name:'方法百科'},{id:'statistics',name:'统计'}]}]};
+  if(args.method==='status')return {configured:true,origin:'https://center.example.org',agents:[{id:'codex',name:'Codex',enabled:true,available:true}],outbox:[],drafts:[]};
+  return fallback(command,args);
+ });
+ await mount();
+ const checkbox=host.querySelector<HTMLInputElement>('.rssd-center-controls input[type=checkbox]')!;
+ expect(checkbox.checked).toBe(false);expect(checkbox.disabled).toBe(true);
+ const section=host.querySelector<HTMLSelectElement>('.rssd-center-controls select')!;
+ await act(async()=>{section.value='methods';section.dispatchEvent(new Event('change',{bubbles:true}));});
+ expect(checkbox.disabled).toBe(false);
+ await act(async()=>checkbox.click());
+ expect(host.textContent).toContain('完成的文章会按该栏目已绑定的目标自动发布');
+ await click('开启工作模式');
+ expect((calls('start').at(-1)?.[1] as any).params).toMatchObject({agentId:'codex',workspaceIds:['metho'],sectionIds:['methods'],autoTopics:true});
+});
+
+it('shows a running worker’s actual automatic-topic setting after reopening the view',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>args.method==='status'?{configured:true,origin:'https://center.example.org',agents:[],outbox:[],drafts:[],worker:{state:'idle',autoTopics:true}}:fallback(command,args));
+ await mount();
+ const checkbox=host.querySelector<HTMLInputElement>('.rssd-center-controls input[type=checkbox]')!;
+ expect(checkbox.disabled).toBe(true);expect(checkbox.checked).toBe(true);
+ expect(host.textContent).toContain('完成的文章会按该栏目已绑定的目标自动发布');
+});
+
+it('starts the multi-site scheduler only when its private configuration is enabled',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>args.method==='status'?{configured:true,multisiteConfigured:true,origin:'https://center.example.org',agents:[],outbox:[],drafts:[]}:fallback(command,args));
+ await mount();await click('开启多站排程');
+ expect(calls('start_multisite')).toHaveLength(1);
+ expect((calls('start_multisite')[0][1] as any).params).toEqual({});
+});
+
+it('shows the prepared reference revision and submits through the native bridge',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>args.method==='status'?{configured:true,origin:'https://center.example.org',agents:[],outbox:[],drafts:[],preparedReference:{workId:'work-one',workspaceId:'first',title:'测试稿',locale:'zh-CN',baseRevision:1}}:args.method==='submit_prepared_revision'?{state:'accepted'}:fallback(command,args));
+ await mount();expect(host.textContent).toContain('待提交的本机参考文献修订：');expect(host.textContent).toContain('测试稿');
+ await click('提交参考文献修订');expect(calls('submit_prepared_revision')).toHaveLength(1);expect(host.textContent).toContain('中心已接收，发布结果请查看发布记录。');
+});
+
 it('never renders demand rows as works and ignores a late response from the prior tab',async()=>{
  const demand=deferred(),works=deferred(),fallback=vi.mocked(invoke).getMockImplementation()!;
  vi.mocked(invoke).mockImplementation((command,args:any)=>args.method==='demands'?demand.promise:args.method==='works'?works.promise:fallback(command,args));
