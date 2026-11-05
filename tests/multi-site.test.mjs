@@ -7,6 +7,7 @@ import {spawnSync} from 'node:child_process';
 import {profiles,validateOrigin,publicationDirectory} from '../scripts/site-config.mjs';
 import {registry,spaceContext,selectSpace,importSite} from '../scripts/space-registry.mjs';
 import {createWebsitePublisher} from '../scripts/website-publication.mjs';
+import {overlayDirectory,SITE_SEEDS_DIR} from '../scripts/data-overlay.mjs';
 test('spaces preserve academic paths and isolate workspaces, subscriptions and publication files',async t=>{
  const data=await mkdtemp(join(tmpdir(),'site-spaces-'));t.after(()=>rm(data,{recursive:true,force:true}));
  await writeFile(join(data,'editorial-workspace.json'),JSON.stringify({path:join(data,'original-editorial')}));
@@ -24,7 +25,7 @@ test('a mismatched site descriptor stops the publisher before sending credential
  await assert.rejects(client.catalog(),/身份/);assert.equal(calls.length,1);assert.equal(calls[0].headers,undefined);
 });
 for(const site of profiles.slice(1))test(`${site.id}: independent seed, public build, protocol and default retention`,async t=>{
- const data=await mkdtemp(join(tmpdir(),'site-roundtrip-'));t.after(()=>rm(data,{recursive:true,force:true}));const context=importSite(data,site);const seedCount=JSON.parse(await readFile(new URL('../sites/seeds/'+site.id+'.json',import.meta.url),'utf8')).length;
+ const data=await mkdtemp(join(tmpdir(),'site-roundtrip-'));t.after(()=>rm(data,{recursive:true,force:true}));const context=importSite(data,site);const seedCount=JSON.parse(await readFile(join(overlayDirectory(SITE_SEEDS_DIR).directory,site.id+'.json'),'utf8')).length;
  const result=spawnSync(process.execPath,['--input-type=module','-'],{cwd:process.cwd(),encoding:'utf8',env:{...process.env,SCHOLAY_SITE_CONFIG:context.configFile,SCHOLAY_SITE_ID:site.id,SCHOLAY_SITE_JSON:JSON.stringify(site),SCHOLAY_EDITORIAL_ROOT:context.workspaceRoot,SCHOLAY_ADMIN_DB:join(data,'admin.sqlite'),MULTI_SITE_TEST_ROOT:data},input:`
  import assert from 'node:assert/strict';import {readFile,writeFile,mkdir,cp} from 'node:fs/promises';import {join} from 'node:path';
  import {seedSite} from './scripts/seed-site.mjs';import {SITE} from './scripts/site-config.mjs';import {openStore,claim,finish,snapshot} from './admin/store.mjs';import {buildRelease} from './admin/worker.mjs';import {createApp,secret} from './admin/server.mjs';import {digest} from './admin/model.mjs';import {createWebsitePublisher} from './scripts/website-publication.mjs';import {createDraft} from './scripts/editorial-workspace.mjs';import {verifyWebsite} from './desktop/scripts/runtime/verify-website.mjs';
