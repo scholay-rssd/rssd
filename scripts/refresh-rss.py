@@ -207,10 +207,13 @@ def main():
         except (OSError, ValueError):
             pass
     snapshot = build_snapshot(sources, previous)
-    temporary = str(OUTPUT) + ".tmp"
+    # rss.json may be a symlink into a private overlay checkout; replace the
+    # target so the link survives.
+    target = os.path.realpath(OUTPUT)
+    temporary = target + ".tmp"
     with open(temporary, "w", encoding="utf-8") as file:
         json.dump(snapshot, file, ensure_ascii=False, separators=(",", ":"))
-    os.replace(temporary, str(OUTPUT))
+    os.replace(temporary, target)
     print("Wrote {} articles from {}/{} available sources".format(len(snapshot["items"]), snapshot["successfulSources"], len(sources)))
 
 
