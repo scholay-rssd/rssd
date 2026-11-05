@@ -1,4 +1,5 @@
 import {validatePrivateEditorial} from '../contracts/article-internal-notes.mjs';
+import {synchronizationState} from '../contracts/sync-state.mjs';
 import {replaceFile} from './replace-file.mjs';
 import {publicationDirectory,siteForWorkspace} from './site-config.mjs';
 import {readFile,writeFile,mkdir,rename,rm,stat} from 'node:fs/promises';
@@ -32,17 +33,7 @@ export async function localFingerprint(root,id,meta,{pullTransaction=false}={}){
   const privateNotes=await optionalJson(join(publicationDirectory(root),id,'internal-notes.json'));
   return sha(JSON.stringify({...(privateNotes?{privateNotes}:{}),markdown:draft.markdown,metadata:meta||await localMetadata(root,id,draft),images,record}));
 }
-export function synchronizationState({base,local,remote,known=false,pending=false}){
-  if(pending)return 'publishing';
-  if(!known)return 'unknown';
-  if(!base)return remote?.version||remote?.publishedVersion?'unlinked':'unpublished';
-  const localChanged=base.fingerprint!==local;
-  const remoteChanged=(remote?.version??remote?.publishedVersion??null)!==(base.cloudRevision??base.revision);
-  if(localChanged&&remoteChanged)return 'conflict';
-  if(remoteChanged)return 'remote_changed';
-  if(localChanged)return 'local_changed';
-  return 'synced';
-}
+export {synchronizationState};
 export async function syncItem(root,id,remote,known,pending=false){
   const base=await optionalJson(join(publicationDirectory(root),id,'sync.json'));
   try{const fingerprint=await localFingerprint(root,id);return {state:synchronizationState({base,local:fingerprint,remote,known,pending}),fingerprint,baseRevision:base?.revision??null,remoteRevision:remote?.version??remote?.publishedVersion??null,publishedRevision:remote?.publishedVersion??null};}

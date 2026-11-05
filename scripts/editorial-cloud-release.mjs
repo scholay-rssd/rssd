@@ -10,7 +10,15 @@ import {RECORD_STRUCTURE,recordFields} from './editorial-record.mjs';
 // Structured cloud records reconstruct their display envelope (date, author,
 // category and summary). Compare the authoritative fields and media instead,
 // while requiring both Markdown copies to agree with those same fields.
-export function samePublishedContent(expected,actual){
+export function samePublishedContent(expected,actual,{allowRetainedAssets=false}={}){
+  if(allowRetainedAssets&&Array.isArray(expected?.assets)&&Array.isArray(actual?.assets)){
+    const assets=new Map();
+    for(const asset of actual.assets){if(!asset?.path||assets.has(asset.path))return false;assets.set(asset.path,asset);}
+    if(expected.assets.some(asset=>!isDeepStrictEqual(asset,assets.get(asset.path))))return false;
+    const paths=new Set(expected.assets.map(asset=>asset.path));
+    if(actual.assets.some(asset=>!paths.has(asset.path)&&actual.markdown?.includes(asset.path)))return false;
+    actual={...actual,assets:expected.assets};
+  }
   if(!expected?.record&&!actual?.record)return isDeepStrictEqual(expected,actual);
   const project=data=>{
     const record=data?.record;
@@ -34,14 +42,17 @@ async function tree(root,path){
 export async function archivePrivateEditorial({root,id,packet,receipt,api}){
   const state=join(publicationDirectory(root),id),path=join(state,'internal-notes.json');
   const bytes=await readFile(path).catch(e=>{if(e.code==='ENOENT')return null;throw e;});if(!bytes)return null;
-  validatePrivateEditorial(JSON.parse(bytes.toString('utf8')));
+  const notes=validatePrivateEditorial(JSON.parse(bytes.toString('utf8')));
   if(receipt.requestKey!==packet?.requestKey||!(receipt.status==='draft_saved'||receipt.publicReadback&&receipt.job?.status==='success'))throw Error('提交尚未核验，内部备注仍保留在本地');
   if(await localFingerprint(root,id)!==packet.localFingerprint)throw Error('内部备注或正文已有修改，保留本地新版');
-  const file={path:relative(root,path).split(sep).join('/'),sha256:sha(bytes),data:bytes.toString('base64')};
+  const remote=await api('/cloud/'+packet.data.id);
+  if(remote.version!==receipt.revision||!samePublishedContent(packet.data,remote.data,{allowRetainedAssets:remote.preservesEditorialFieldsOnSave===true}))throw Error('云端版本已变化，内部备注保留在本地');
+  // Image URLs and whitespace are normalized for publication. Rebind only
+  // notes verified against this exact local source; stale notes stay stale.
+  const archived=notes.bodySha===packet.sourceSha256?Buffer.from(JSON.stringify({...notes,bodySha:sha(remote.data.markdown)})):bytes;
+  const file={path:relative(root,path).split(sep).join('/'),sha256:sha(archived),data:archived.toString('base64')};
   const bundle={articleId:packet.data.id,revision:receipt.revision,files:[file]},hash=sha(JSON.stringify(bundle));
   const cached=await optionalJson(join(state,'private-archive.json'));if(cached?.archiveId===hash)return cached;
-  const remote=await api('/cloud/'+packet.data.id);
-  if(remote.version!==receipt.revision||!samePublishedContent(packet.data,remote.data))throw Error('云端版本已变化，内部备注保留在本地');
   const proof=await api('/source-archives',bundle),readback=await api('/source-archives/'+proof.archiveId);
   if(proof.archiveId!==hash||readback.archiveSha256!==hash||sha(JSON.stringify(readback.bundle))!==hash)throw Error('内部备注归档未通过回读校验');
   return withWorkspaceLock(root,async()=>{

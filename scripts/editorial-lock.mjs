@@ -1,9 +1,19 @@
 import {mkdir,readFile,writeFile,rm} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const exec=promisify(execFile);
 async function processIdentity(pid){
-  if(process.platform!=='linux')return null;
-  try{const stat=await readFile('/proc/'+pid+'/stat','utf8'),boot=(await readFile('/proc/sys/kernel/random/boot_id','utf8')).trim();return boot+':'+stat.slice(stat.lastIndexOf(')')+2).split(' ')[19];}catch{return null;}
+  if(process.platform==='linux')try{const stat=await readFile('/proc/'+pid+'/stat','utf8'),boot=(await readFile('/proc/sys/kernel/random/boot_id','utf8')).trim();return boot+':'+stat.slice(stat.lastIndexOf(')')+2).split(' ')[19];}catch{return null;}
+  if(process.platform==='darwin')try{
+    const opts={encoding:'utf8',timeout:2000,env:{PATH:'/usr/bin:/bin:/usr/sbin:/sbin',LC_ALL:'C'}};
+    const [boot,start]=await Promise.all([exec('/usr/sbin/sysctl',['-n','kern.bootsessionuuid'],opts),exec('/bin/ps',['-p',String(pid),'-o','lstart='],opts)]);
+    const session=boot.stdout.trim(),time=start.stdout.trim().replace(/\s+/g,' ');
+    if(!/^[0-9A-Fa-f-]{36}$/.test(session)||!time)return null;
+    return 'darwin:'+session+':'+time;
+  }catch{return null;}
+  return null;
 }
 export async function lockOwnerAlive(owner){
   if(!Number.isSafeInteger(owner?.pid)||owner.pid<=0)return true;

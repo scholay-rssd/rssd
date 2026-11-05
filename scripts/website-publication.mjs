@@ -87,11 +87,16 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
     site={...site,centerManaged:true,languages:['zh-CN','en'],sectionCatalog:{...catalog,status:'ready'}};flowSite=site;
     await atomicJson(sectionCatalogPath(root),{...catalog,siteId:site.id,origin:site.origin,syncedAt:new Date().toISOString()});
   }
-  async function checkPublicationSection(meta){
+  async function checkPublicationSection(meta,id){
     if(await center.active()){
       const {workspace}=await center.verify({write:true});
       await applyCenterWorkspace(workspace);
-      if(!workspace.sections.some(section=>section.id===meta.sectionId&&section.enabled!==false&&section.writable!==false))throw Error('请先为稿件选择中心中可写的栏目');
+      if(!workspace.sections.some(section=>section.id===meta.sectionId&&section.enabled!==false&&section.writable!==false)){
+        const target=id&&await remoteId(id);
+        let existing;
+        if(target)try{existing=await center.request('/cloud/'+encodeURIComponent(target)+'?media=referenced');}catch(error){if(error.statusCode!==404)throw error;}
+        if(!existing?.workId||!existing.version||existing.data?.id!==target||existing.data?.sectionId!==meta.sectionId)throw Error('请先为稿件选择中心中可写的栏目');
+      }
       return;
     }
     if(!site.sectionCatalog&&meta.category!=='未归栏'&&!meta.sectionId)return; // Read compatibility for older publishers.
@@ -288,7 +293,7 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
     const p=paths(id),index=await optional(join(root,'_ops/inventory/article-index.json'));
     const local=await optional(join(p.dir,'internal-notes.json'));
     const retained=local?{source:'local',revision:null,privateEditorial:validatePrivateEditorial(local)}:null;
-    if(index?.articles?.[id])return retained||{source:'local',revision:null,privateEditorial:null};
+    if(index?.articles?.[id]&&revision===undefined)return retained||{source:'local',revision:null,privateEditorial:null};
     const target=await remoteId(id,index);
     let remote;
     try{remote=await cachedRemoteRead({file:join(p.dir,'read-private-notes.json'),identity:JSON.stringify([site.id,origin,target,revision??null,await center.cacheIdentity()]),minInterval:30000,load:async()=>({value:await remotePrivateNotes(target,revision)})});}
@@ -416,7 +421,7 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
       if(!input||typeof input!=='object'||Array.isArray(input))throw Error('稿件信息须为对象');
       for(const [key,max] of [['date',10],['summary',4000],['author',100],['category',80]])if(typeof input[key]!=='string'||input[key].length>max)throw Error('稿件信息字段格式无效：'+key);
       if(input.date)day(input.date);
-      const next=metadataOf(input);if(next.sectionId){requirePublishSection(next.sectionId,site);next.category=sectionsForSite(site).find(s=>s.id===next.sectionId).name;}else if(Object.hasOwn(input,'sectionId'))next.category='未归栏';
+      const next=metadataOf(input);if(next.sectionId){if(next.sectionId!==before.sectionId)requirePublishSection(next.sectionId,site);next.category=sectionsForSite(site).find(s=>s.id===next.sectionId)?.name||before.category;}else if(Object.hasOwn(input,'sectionId'))next.category='未归栏';
       await withWorkspaceLock(root,async()=>{const current=await readDraft(id,root);if(current.sha256!==draft.sha256||sha(JSON.stringify(await metadata(id,current)))!==params.expectedMetadataSha256)throw Error('稿件或栏目已变化，请重新载入后保存');const file=join(root,'_ops/inventory/article-index.json'),index=await optional(file);if(Object.hasOwn(input,'sectionId')){if(next.sectionId)index.articles[id].sectionId=next.sectionId;else delete index.articles[id].sectionId;if(!current.id.startsWith('record-'))index.articles[id].archiveCategory=next.category;}await atomic(p.metadata,next);if(Object.hasOwn(input,'sectionId'))await atomic(file,index);});
       return inspect(id);
     }
@@ -438,7 +443,7 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
     const draft=await readDraft(id,root),before=await metadata(id,draft);
     if(params.expectedSourceSha256&&params.expectedSourceSha256!==draft.sha256)throw Error('稿件已被其他编辑器更新，请重新载入后预览。');
     if(params.expectedMetadataSha256&&params.expectedMetadataSha256!==sha(JSON.stringify(before)))throw Error('发布信息已变化，请重新载入后编辑。');
-    const meta=metadataOf(params.metadata||before);await checkPublicationSection(meta);const frozenFingerprint=await localFingerprint(root,id,meta);
+    const meta=metadataOf(params.metadata||before);await checkPublicationSection(meta,id);const frozenFingerprint=await localFingerprint(root,id,meta);
     const pack=await packedDraft(id,root);
     // The server enforces this too; checking the cached catalog first gives the
     // producer a clear answer before any preview is frozen. An unreadable
@@ -505,7 +510,7 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
     if(packet.sourceSha256!==pack.draft.sha256)throw Error('正文已在预览后修改，请重新生成预览。');
     const current=await packedPayload(id,pack,meta);
     if(sha(JSON.stringify(current))!==sha(JSON.stringify(packet.data)))throw Error('发布信息或图片已在预览后修改，请重新生成预览。');
-    await checkPublicationSection(meta);
+    await checkPublicationSection(meta,id);
     const centerManaged=await center.active(),queue=centerManaged?null:await publicationQueueConfig(root);
     if(!centerManaged&&(background||queue)){
       const receipt={intent,status:'local_queued',requestKey:packet.requestKey,sourceSha256:packet.sourceSha256,submittedAt:new Date().toISOString(),job:{id:packet.requestKey,status:'queued'},asyncQueue:{version:1,owner:'local',phase:'queued',...(queue?{endpoint:queue.endpoint,continuationOwner:continuationOwnerFor(site,queue)}:{}),packetSha256:sha(JSON.stringify(packet)),updatedAt:new Date().toISOString(),attempts:0}};
