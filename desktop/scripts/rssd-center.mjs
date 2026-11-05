@@ -8,6 +8,7 @@ import {runProductionTurn} from '../../scripts/rssd-production-worker.mjs';
 import {CenterError,CenterOutbox,clearCompletedClaim,hasCompletedClaimReceipt,createCenterClient,saveCenterConnection,loadCenterConnection,writeCenterJson} from '../../scripts/rssd-center-client.mjs';
 import {withFileLock,lockOwnerAlive} from '../../scripts/editorial-lock.mjs';
 import protocol from '../../contracts/rssd-v1.cjs';
+import {COLUMN_RULES} from '../../contracts/editorial-column-policy.mjs';
 import {assistantLocal,runCenterAssistant} from './agent/center-assistant.mjs';
 import {readConfiguredLabels} from './runtime/labels-source.mjs';
 import {assertAutomaticTopicScope,automaticTopicTick} from './rssd-topic-auto.mjs';
@@ -86,13 +87,14 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
   if(method==='edit_demand')return client.request('/demands/'+encodeURIComponent(protocol.id(params.id))+'/definition',{method:'PATCH',body:{requestId:params.requestId,baseGeneration:params.baseGeneration,changes:params.changes}});
   if(method==='demands')return client.demands({workspaceId:params.workspaceId,search:params.search,limit:params.limit,offset:params.offset});
   if(method==='create_demand'){
-    // This bridge is deliberately scoped to the research-methods pilot. The
-    // caller retains the supplied ID and reconciles it after an uncertain POST.
+    // This bridge is deliberately scoped to the research-methods site and its
+    // owner-confirmed columns. The caller retains the supplied ID and
+    // reconciles it after an uncertain POST.
     const allowed=new Set(['id','workspaceId','sectionId','kind','title','brief','requiredLocales','source','priority']);
     if(!params||typeof params!=='object'||Array.isArray(params)||Object.keys(params).some(key=>!allowed.has(key)))throw Error('选题参数无效');
     protocol.id(params.id);protocol.text(params.title,'title',500);protocol.text(params.brief,'brief',100000,true);
-    if(params.workspaceId!=='metho'||params.sectionId!=='methods'||params.kind!=='write'||!Array.isArray(params.requiredLocales)||params.requiredLocales.length!==1||params.requiredLocales[0]!=='zh-CN'||(params.source!==undefined&&params.source!==null)||(params.priority!==undefined&&params.priority!==0))throw Error('选题不在研究方法试点范围内');
-    const input=protocol.demand({id:params.id,workspaceId:'metho',sectionId:'methods',kind:'write',title:params.title,brief:params.brief||'',requiredLocales:['zh-CN'],source:null,priority:0});
+    if(params.workspaceId!=='metho'||!Object.hasOwn(COLUMN_RULES.metho,params.sectionId)||params.kind!=='write'||!Array.isArray(params.requiredLocales)||params.requiredLocales.length!==1||params.requiredLocales[0]!=='zh-CN'||(params.source!==undefined&&params.source!==null)||(params.priority!==undefined&&params.priority!==0))throw Error('选题不在研究方法站已确认栏目范围内');
+    const input=protocol.demand({id:params.id,workspaceId:'metho',sectionId:params.sectionId,kind:'write',title:params.title,brief:params.brief||'',requiredLocales:['zh-CN'],source:null,priority:0});
     const result=await client.createDemand(input);
     if(result?.id!==input.id||result.workspaceId!==input.workspaceId||result.sectionId!==input.sectionId||protocol.canonical(result.payload)!==protocol.canonical(input))throw Error('选题回执与原请求不符，请按原 ID 核对');
     return {id:input.id,workspaceId:input.workspaceId,sectionId:input.sectionId,title:input.title,state:result.state,payload:input};

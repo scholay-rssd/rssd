@@ -61,7 +61,7 @@ test('desktop reconciles a completed cached claim only with its matching accepte
   assert.equal((await outbox.list())[0].state,'accepted');
 });
 
-test('the demand bridge accepts only the methods pilot and does not return credential data',async t=>{
+test('the demand bridge accepts only confirmed research-methods columns and does not return credential data',async t=>{
   const home=await mkdtemp(join(tmpdir(),'rssd-desktop-demand-'));
   t.after(()=>rm(home,{recursive:true,force:true}));
   const token='rssd_device_'+'a'.repeat(48),received=[];
@@ -81,10 +81,15 @@ test('the demand bridge accepts only the methods pilot and does not return crede
   assert.equal(received.length,1);assert.equal(received[0].method,'POST');assert.equal(received[0].path,'/api/rssd/v1/demands');
   assert.equal(received[0].authorization,'Bearer '+token);assert.deepEqual(received[0].body,payload);
   assert(!JSON.stringify(result).includes(token));
-  for(const changes of [{workspaceId:'other'},{sectionId:'statistics'},{kind:'translate'}, {requiredLocales:['en']},{id:''},{title:''},{source:{}},{priority:1},{token}]){
+  for(const sectionId of ['statistics','experiments','frontiers']){
+    const column={...input,id:'topic-'+sectionId,sectionId};
+    assert.equal((await centerDesktopCall('create_demand',column,home)).sectionId,sectionId);
+    assert.deepEqual(received.at(-1).body,{...column,source:null,priority:0});
+  }
+  for(const changes of [{workspaceId:'other'},{workspaceId:'academic',sectionId:'history'},{sectionId:'news'},{sectionId:'resources'},{sectionId:'toString'},{kind:'translate'}, {requiredLocales:['en']},{id:''},{title:''},{source:{}},{priority:1},{token}]){
     await assert.rejects(centerDesktopCall('create_demand',{...input,...changes},home));
   }
-  assert.equal(received.length,1,'invalid requests must not reach the server');
+  assert.equal(received.length,4,'invalid requests must not reach the server');
 });
 
 test('the demand bridge does not retry an uncertain POST and preserves its original ID',async t=>{
