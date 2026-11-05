@@ -1,0 +1,60 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import sharp from 'sharp';
+import {TaskStore} from '../desktop/scripts/agent/task-store.mjs';
+import {createAgentTools} from '../desktop/scripts/agent/tools.mjs';
+import {articleImages,imageSlots,replaceImageSlot,galleryList,galleryBytes,saveGallery} from '../desktop/scripts/agent/image-library.mjs';
+import {createDraft,readDraft,saveDraft,packedDraft} from '../scripts/editorial-workspace.mjs';
+import {flowPermission,workflowPrompt} from '../desktop/scripts/agent/workflow.mjs';
+async function fixture(t){const root=await mkdtemp(join(tmpdir(),'scholay-images-'));t.after(()=>rm(root,{recursive:true,force:true}));await mkdir(join(root,'_ops/inventory'),{recursive:true});await mkdir(join(root,'articles'));await writeFile(join(root,'_ops/inventory/article-index.json'),JSON.stringify({articles:{},annexColumns:['学界犀闻']}));return {root,store:new TaskStore(root)};}
+const news=id=>({id,title:id,summary:'真实来源摘要',url:'https://example.org/'+id,publisher:'机构',date:'2026-10-04'});
+test('incremental candidates need a human selection; append preserves cards and deleted events stay removed',async t=>{
+ const {store}=await fixture(t);let task=await store.create({mode:'xiwen'});
+ task=await store.update(task.id,{board:{titles:[],sections:[{id:'s',title:'方法',items:[news('a')]}]}},task.revision,{agent:true});
+ assert.equal(task.board.sections[0].items[0].selected,false);await assert.rejects(store.confirm(task.id,'topic',task.revision),/选择新闻/);
+ let board=structuredClone(task.board);Object.assign(board.sections[0].items[0],{selected:true,locked:true,excluded:false});task=await store.update(task.id,{board},task.revision);
+ board=structuredClone(task.board);board.sections[0].items.push(news('b'));task=await store.update(task.id,{board},task.revision,{agent:true});assert.equal(task.board.sections[0].items[0].locked,true);assert.equal(task.board.sections[0].items[1].selected,false);
+ await store.runtime(task.id,{lastAction:{action:'append'}});board=structuredClone(task.board);board.sections[0].items.shift();await assert.rejects(store.update(task.id,{board},task.revision,{agent:true}),/已有卡片/);
+ board=structuredClone(task.board);board.dismissed=['https://example.org/b','b'];board.sections[0].items.pop();task=await store.update(task.id,{board},task.revision);
+ board=structuredClone(task.board);board.sections[0].items.push(news('b'));await assert.rejects(store.update(task.id,{board},task.revision,{agent:true}),/已删除素材/);
+ board=structuredClone(task.board);board.sections[0].items.push({...news('c'),url:news('a').url});await assert.rejects(store.update(task.id,{board},task.revision,{agent:true}),/同一来源/);
+ assert.ok((await store.confirm(task.id,'topic',task.revision)).topicConfirmed);
+});
+test('draft tools create actual placeholders; replacement preserves edits and publication rejects remaining placeholders',async t=>{
+ const {root,store}=await fixture(t);let task=await store.create({mode:'xiwen'});
+ task=await store.update(task.id,{board:{titles:[],sections:[{id:'s',title:'方法',items:[news('a')]}]}},task.revision);task=await store.confirm(task.id,'topic',task.revision);
+ task=await store.update(task.id,{outline:{titleCandidates:['标题甲','标题乙'],selectedTitle:0,blocks:[{id:'figure',type:'image',text:'研究步骤示意图'}]}},task.revision);task=await store.confirm(task.id,'outline',task.revision);
+ const call=createAgentTools({root,taskId:task.id,taskStore:store,approve:async()=>true});
+ await call('draft_create',{id:task.articleId,title:'占位测试',column:'学界犀闻',markdown:'# 正文\n\n保留人工编辑。\n\n[来源](https://example.org)'});
+ await store.releaseOwner(task.id);const before=await readDraft(task.articleId,root),info=await articleImages(store,task.articleId);assert.equal(info.slots.length,2);assert.ok(before.markdown.includes(imageSlots(task)[0].path));await assert.rejects(packedDraft(task.articleId,root),/占位/);
+ const bytes=await sharp({create:{width:100,height:60,channels:3,background:'blue'}}).png().toBuffer();
+ await saveDraft({id:task.articleId,markdown:before.markdown+'\n手工修改',expectedSha256:before.sha256},root);
+ await assert.rejects(replaceImageSlot(store,{articleId:task.articleId,slotPath:info.slots[0].path,expectedSha:info.sha,data:bytes.toString('base64')}),/已有修改/);
+ const latest=await articleImages(store,task.articleId);await replaceImageSlot(store,{articleId:task.articleId,slotPath:latest.slots[0].path,expectedSha:latest.sha,data:bytes.toString('base64')});
+ const remaining=await articleImages(store,task.articleId);assert.equal(remaining.slots.length,1);await assert.rejects(packedDraft(task.articleId,root),/占位/);
+ await replaceImageSlot(store,{articleId:task.articleId,slotPath:remaining.slots[0].path,expectedSha:remaining.sha,data:bytes.toString('base64')});
+ assert.equal((await articleImages(store,task.articleId)).slots.length,0);assert.match((await readDraft(task.articleId,root)).markdown,/手工修改/);await packedDraft(task.articleId,root);
+});
+test('independent image tasks register real files without a manuscript and preserve shared bytes after task deletion',async t=>{
+ const {store}=await fixture(t);const a=await store.create({mode:'image',brief:'一张步骤示意图'}),b=await store.create({mode:'image'});
+ const bytes=await sharp({create:{width:40,height:30,channels:3,background:'green'}}).png().toBuffer();
+ const assetA=await store.asset(a.id,{data:bytes.toString('base64')}),assetB=await store.asset(b.id,{data:bytes.toString('base64')});
+ assert.equal(assetA.storage,'gallery');assert.equal((await galleryList(store)).length,2);assert.deepEqual(await galleryBytes(store,a.id,assetA.id),bytes);assert.deepEqual(await galleryBytes(store,b.id,assetB.id),bytes);
+ await assert.rejects(store.asset(a.id,{data:Buffer.from('not an image').toString('base64')}));
+ await store.remove(a.id);assert.deepEqual(await galleryBytes(store,a.id,assetA.id),bytes);
+ const authorized={...b,workflow:{authorized:true}};assert.match(workflowPrompt(authorized,{action:'image'}),/不创建或修改文章/);assert.equal(flowPermission(authorized,{kind:'other',title:'Generate Image',rawInput:{_toolName:'GenerateImage'}}),true);
+ assert.equal(flowPermission({...authorized,mode:'xiwen',outlineConfirmed:'yes',runtime:{lastAction:{action:'draft'}}},{kind:'other',title:'Generate Image',rawInput:{_toolName:'GenerateImage'}}),false);
+});
+test('gallery identifies imports and omits retired manuscript assets while retaining independent originals',async t=>{
+ const {root,store}=await fixture(t),imageTask=await store.create({mode:'image',title:'独立图片'}),articleTask=await store.create({mode:'xiwen'});
+ const bytes=await sharp({create:{width:40,height:30,channels:3,background:'red'}}).png().toBuffer();
+ const imported=await saveGallery(root,imageTask,bytes,'原创示意图','imported');
+ await createDraft({id:articleTask.articleId,title:'仅本地测试稿',column:'学界犀闻',markdown:'# 测试稿'},root);
+ const articleAsset=await store.asset(articleTask.id,{data:bytes.toString('base64'),name:'正文配图'});
+ const before=await galleryList(store);assert.equal(before.length,2);assert.equal(before.find(x=>x.id===imported.id&&x.storage==='gallery').origin,'imported');assert.equal(before[0].taskTitle,'独立图片');
+ const indexFile=join(root,'_ops/inventory/article-index.json'),index=JSON.parse(await readFile(indexFile,'utf8'));index.cloudArticles={[articleTask.articleId]:index.articles[articleTask.articleId]};delete index.articles[articleTask.articleId];await writeFile(indexFile,JSON.stringify(index));
+ const after=await galleryList(store);assert.equal(after.length,1);assert.equal(after[0].storage,'gallery');assert.deepEqual(await galleryBytes(store,imageTask.id,imported.id),bytes);assert.ok((await store.get(articleTask.id)).assets.some(a=>a.id===articleAsset.id));
+});
