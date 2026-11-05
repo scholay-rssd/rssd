@@ -73,7 +73,7 @@ export class CenterOutbox {
     const result=[];for(const file of files.filter(file=>/^[a-f0-9]{64}\.json$/.test(file))){const entry=await json(join(this.directory,file));this.verify(entry);result.push(entry);}
     return result.sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   }
-  async flushOne(requestId,{retry=false}={}){
+  async flushOne(requestId,{retry=false,lookupOnly=false}={}){
     const path=this.path(requestId);
     return withFileLock(path+'.lock',async()=>{
       const entry=await json(path);this.verify(entry);
@@ -82,7 +82,7 @@ export class CenterOutbox {
       try{
         let receipt;
         try{receipt=await this.client.submission(entry.requestId);}
-        catch(error){if(error.status!==404)throw error;await uploadPacketMedia({packet:entry.packet,directory:join(this.directory,'../media'),client:this.client});receipt=await this.client.submit(entry.packet);}
+        catch(error){if(error.status!==404||lookupOnly)throw error;await uploadPacketMedia({packet:entry.packet,directory:join(this.directory,'../media'),client:this.client});receipt=await this.client.submit(entry.packet);}
         if(receipt?.requestId!==entry.requestId||receipt.workId!==entry.packet.workId||receipt.workspaceId!==entry.packet.workspaceId||receipt.status!=='accepted')
           throw new CenterError('Center receipt does not match the submitted work',{code:'receipt_mismatch'});
         if(!Array.isArray(receipt.editions)||receipt.editions.length!==entry.packet.editions.length||entry.packet.editions.some(edition=>{
@@ -98,6 +98,29 @@ export class CenterOutbox {
     },{timeout:1000});
   }
   async flush(){const results=[];for(const entry of await this.list())if(entry.state==='pending')results.push(await this.flushOne(entry.requestId));return results;}
+}
+
+// A completed receipt belongs to this precise claim, including its token: a
+// later claim of the same demand must not be cleared by an earlier receipt.
+export function hasCompletedClaimReceipt(active,origin,entries,workerId){
+  const claim=active?.claim;
+  if(active?.origin!==origin||!claim?.id||!claim.claimToken||!claim.workspaceId||!claim.sectionId||
+    (workerId&&claim.workerId&&workerId!==claim.workerId))return false;
+  const matching=entries.filter(entry=>entry.origin===origin&&entry.packet?.demandId===claim.id&&
+    entry.packet.claimToken===claim.claimToken&&entry.packet.workspaceId===claim.workspaceId&&entry.packet.sectionId===claim.sectionId);
+  if(!matching.length||matching.some(entry=>entry.state!=='accepted'))return false;
+  return matching.some(({packet,requestId,receipt})=>receipt?.status==='accepted'&&receipt.demandState==='completed'&&
+    receipt.requestId===requestId&&receipt.workId===packet.workId&&receipt.workspaceId===packet.workspaceId&&
+    Array.isArray(receipt.editions)&&receipt.editions.length===packet.editions.length&&packet.editions.length>0&&
+    packet.editions.every(edition=>{const received=receipt.editions.find(item=>item.locale===edition.locale);
+      return received?.hash===protocol.hash(edition)&&received.revision===packet.baseRevisions[edition.locale]+1;}));
+}
+// The caller holds worker.lock so a newly claimed task cannot be overwritten.
+export async function clearCompletedClaim(home,origin,entries,workerId){
+  const path=join(home,'active-claim.json');
+  let active;try{active=await json(path);}catch(error){if(error.code==='ENOENT')return false;throw error;}
+  if(!hasCompletedClaimReceipt(active,origin,entries,workerId))return false;
+  await atomic(path,{origin,claim:null});return true;
 }
 
 export async function saveCenterConnection(directory,{origin,token,persistToken=true,credentialService}){

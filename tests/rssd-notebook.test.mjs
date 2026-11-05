@@ -19,6 +19,23 @@ test('updates preserve previous notes and signatures even when the agent omits t
  assert.equal(result.metadata.notebook.blockNotes.body.notes.supplement,'Private supplement');
  assert.deepEqual(result.metadata.notebook.modelSignatures,[{agentId:'previous'},{agentId:'actual'}]);
 });
+test('center editions use the requested language for generated reference headings',()=>{
+ const n=notebook();
+ n.sources=[{id:'s',title:'Source',url:'https://example.org/source',summary:'Source evidence',acquiredVia:'web',reviewed:false}];
+ n.blocks[0].sourceIds=['s'];
+ const english=notebookEdition({notebook:n},{locale:'en'}),chinese=notebookEdition({notebook:n},{locale:'zh-CN'});
+ assert.match(english.bodyMarkdown,/### References\n\n1\. \[Source\]\(https:\/\/example\.org\/source\)/);
+ assert.doesNotMatch(english.bodyMarkdown,/参考文献|Private/);
+ assert.match(chinese.bodyMarkdown,/### 参考文献/);
+ assert.equal(english.metadata.notebook.internalNotes.verification,'Private verification');
+ n.blocks[0].text+='\n\n### References\n\n- [Earlier](https://example.org/earlier)';
+ const merged=notebookEdition({notebook:n},{locale:'en'}).bodyMarkdown;
+ assert.equal((merged.match(/### References/g)||[]).length,1);
+ assert.match(merged,/1\. \[Earlier\].*\n\n2\. \[Source\]/s);
+ n.blocks[0].text='Article body\n\n### Notes\n\nOrdinary narrative.';
+ const withNotes=notebookEdition({notebook:n},{locale:'en'}).bodyMarkdown;
+ assert.match(withNotes,/### Notes\n\nOrdinary narrative\.\n\n### References/);
+});
 test('center images use real HTTP references while desktop local image validation is preserved',()=>{
  const n=notebook();n.blocks.push({id:'image',type:'image',state:'ready',text:'https://example.com/image.png',alt:'Fixture',sourceIds:[]});
  assert.match(notebookEdition({notebook:n}).bodyMarkdown,/!\[Fixture\]\(https:/);
