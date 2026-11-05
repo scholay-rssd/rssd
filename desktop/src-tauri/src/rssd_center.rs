@@ -49,6 +49,48 @@ pub(crate) async fn connect_native(origin:String,token:String)->Result<Value,Str
 
 pub(crate) fn configured()->Result<bool,String>{let (_,data)=crate::workbench_runtime::paths()?;Ok(data.join("center/connection.json").try_exists().map_err(|_|"无法读取中心连接配置")?)}
 
+async fn spawn_multisite(home:&std::path::Path,secret:&str)->Result<Value,String>{
+    let mut command=crate::workbench_runtime::command("scripts/rssd-multisite-cli.mjs")?;
+    command.env("RSSD_CENTER_TOKEN",secret);
+    std::fs::create_dir_all(home).map_err(|_|"无法创建中心运行目录")?;
+    let log=std::fs::OpenOptions::new().create(true).append(true).open(home.join("worker.log")).map_err(|_|"无法记录工作状态")?;
+    let input=serde_json::to_vec(&json!({"configPath":home.join("multisite-config.json"),"home":home})).map_err(|_|"中心请求无效")?;
+    let mut child=command.arg("--worker").stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::from(log)).spawn().map_err(|_|"无法启动中心工作实例")?;
+    let pid=child.id();let mut stdin=child.stdin.take().ok_or("无法连接工作实例")?;
+    WORKER_ACTIVE.store(true,Ordering::SeqCst);
+    tokio::spawn(async move{let _=child.wait().await;WORKER_ACTIVE.store(false,Ordering::SeqCst);});
+    stdin.write_all(&input).await.map_err(|_|"工作实例启动中断")?;stdin.write_all(b"\n").await.map_err(|_|"工作实例启动中断")?;stdin.shutdown().await.map_err(|_|"工作实例启动中断")?;
+    Ok(json!({"state":"starting","pid":pid}))
+}
+
+/// Only a previous explicit multi-site start creates intent. Never prompt for
+/// Keychain from this background loop or bypass the cross-process daemon lock.
+pub(crate) fn start_multisite_recovery(){
+    tauri::async_runtime::spawn(async move{
+        let mut attempt=0usize;let mut running_since=None;
+        loop{
+            tokio::time::sleep(crate::rssd_multisite_intent::delay(attempt)).await;
+            let _change=CHANGES.lock().await;
+            let Ok((_,data))=crate::workbench_runtime::paths() else {continue};let home=data.join("center");
+            if !matches!(crate::rssd_multisite_intent::wanted(&home),Ok(true)){attempt=0;running_since=None;continue;}
+            if WORKER_ACTIVE.load(Ordering::SeqCst){if running_since.is_none(){running_since=Some(std::time::Instant::now());}if running_since.is_some_and(|t|t.elapsed().as_secs()>=300){attempt=0;}continue;}
+            if running_since.take().is_some(){attempt=attempt.saturating_add(1).min(3);}
+            if UPDATING.load(Ordering::SeqCst){continue;}
+            // A durable stop request is also a restart veto if persisting the
+            // disabled intent failed (for example due to a full disk).
+            match home.join("stop.json").try_exists(){Ok(false)=>{},_=>continue}
+            // A reported policy, authentication, or original-request block is
+            // operator-visible and never converted into a retry storm.
+            if !crate::rssd_multisite_intent::can_recover(&home){attempt=3;continue;}
+            // The previous app may have exited while its worker continued.
+            // The common lock prevents starting a second producer.
+            if bridge("prepare_update",json!({}),None).await.is_err(){continue;}
+            let secret=match background_credential().await{Ok(Some(value)) if value.starts_with("rssd_device_")&&value.len()==60&&value.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'_'||b==b'-')=>value,_=>{attempt=attempt.saturating_add(1).min(3);continue;}};
+            if spawn_multisite(&home,&secret).await.is_ok(){running_since=Some(std::time::Instant::now());}else{attempt=attempt.saturating_add(1).min(3);}
+        }
+    });
+}
+
 #[tauri::command]
 pub async fn rssd_center_call(webview:tauri::Webview,method:String,params:Option<Value>,token:Option<String>)->Result<Value,String>{
     crate::hot_board::require_main(&webview)?;
@@ -61,22 +103,32 @@ pub async fn rssd_center_call(webview:tauri::Webview,method:String,params:Option
         let result=bridge("disconnect",json!({}),None).await?;
         save_credential(None).await?;return Ok(result);
     }
-    if !["status","connect","overview","calendar","channels","goals","edit_demand","registry","demands","works","work","publications","labels","claim","release","submit","recover","start","stop","save_local","local_draft","delete_local","prepare_update","cancel_update","assistant_send","assistant_status","assistant_cancel","assistant_reset"].contains(&method.as_str()){return Err("未知中心操作".into());}
+    if !["status","connect","overview","calendar","channels","goals","edit_demand","registry","demands","create_demand","works","work","publications","labels","claim","release","submit","submit_prepared_revision","recover","start","start_multisite","stop","save_local","local_draft","delete_local","prepare_update","cancel_update","assistant_send","assistant_status","assistant_cancel","assistant_reset"].contains(&method.as_str()){return Err("未知中心操作".into());}
     let _change=CHANGES.lock().await;
     if method=="cancel_update"{UPDATING.store(false,Ordering::SeqCst);return Ok(json!({"cancelled":true}));}
     if method=="prepare_update"&&(WORKER_ACTIVE.load(Ordering::SeqCst)||ASSISTANT_ACTIVE.load(Ordering::SeqCst)){return Err("中心生产任务仍在运行，请先停止领取并等待本单完成后安装更新".into());}
-    if method=="start"&&(UPDATING.load(Ordering::SeqCst)||WORKER_ACTIVE.load(Ordering::SeqCst)){return Err("正在准备更新或已有生产实例运行，暂不能启动新实例".into());}
+    if method=="submit_prepared_revision"&&(UPDATING.load(Ordering::SeqCst)||WORKER_ACTIVE.load(Ordering::SeqCst)){return Err("请先停止生产并等待本单完成，再提交修订".into());}
+    if (method=="start"||method=="start_multisite")&&(UPDATING.load(Ordering::SeqCst)||WORKER_ACTIVE.load(Ordering::SeqCst)){return Err("正在准备更新或已有生产实例运行，暂不能启动新实例".into());}
     if method=="assistant_send"&&(UPDATING.load(Ordering::SeqCst)||ASSISTANT_ACTIVE.load(Ordering::SeqCst)){return Err("请等待本轮助手结束或停止后再发送".into());}
     let params=params.unwrap_or_else(||json!({}));
     if method=="connect"{return connect_locked(params["origin"].as_str().ok_or("请输入中心网址")?.to_owned(),token.ok_or("请输入中心设备凭据")?).await;}
+    let (_,data)=crate::workbench_runtime::paths()?;let home=data.join("center");
+    // Disable persisted intent before asking the running worker to stop.
+    if method=="stop"{if let Err(error)=crate::rssd_multisite_intent::disable(&home){let _=bridge("stop",json!({}),None).await;return Err(format!("{error}；已尝试停止工作实例，请检查本机存储"));}}
     let local=["status","stop","save_local","local_draft","delete_local","prepare_update"].contains(&method.as_str());
     let old=if local{None}else{credential().await?};
     let secret=if method=="connect"{Some(token.ok_or("请输入中心设备凭据")?)}else{old.clone()};
     if let Some(ref value)=secret{if !value.starts_with("rssd_device_")||value.len()!=60||!value.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'_'||b==b'-'){return Err("中心设备凭据格式无效".into());}}
     if !local&&secret.is_none(){return Err("请先连接 RSSD 中心".into());}
-    let mut command=crate::workbench_runtime::command("desktop/scripts/rssd-center.mjs")?;
+    if method=="start_multisite"{
+        bridge("prepare_update",json!({}),None).await?;
+        crate::rssd_multisite_intent::enable(&home)?;
+        match std::fs::remove_file(home.join("stop.json")){Ok(())=>{},Err(e) if e.kind()==std::io::ErrorKind::NotFound=>{},Err(_)=>return Err("无法清除旧停止请求".into())}
+        return spawn_multisite(&home,secret.as_deref().ok_or("请先连接 RSSD 中心")?).await;
+    }
+    let mut command=crate::workbench_runtime::command(if method=="start_multisite"{"scripts/rssd-multisite-cli.mjs"}else{"desktop/scripts/rssd-center.mjs"})?;
     if let Some(ref value)=secret{command.env("RSSD_CENTER_TOKEN",value);}else{command.env_remove("RSSD_CENTER_TOKEN");}
-    let mut input=serde_json::to_vec(&json!({"method":method,"params":params})).map_err(|_|"中心请求无效")?;
+    let mut input=if method=="start_multisite"{let (_,data)=crate::workbench_runtime::paths()?;let home=data.join("center");serde_json::to_vec(&json!({"configPath":home.join("multisite-config.json"),"home":home})).map_err(|_|"中心请求无效")?}else{serde_json::to_vec(&json!({"method":method,"params":params})).map_err(|_|"中心请求无效")?};
     if input.len()>24*1024*1024{return Err("中心请求过大".into());}input.push(b'\n');
     if method=="start"||method=="assistant_send"{
         let (_,data)=crate::workbench_runtime::paths()?;let home=data.join("center");std::fs::create_dir_all(&home).map_err(|_|"无法创建中心运行目录")?;

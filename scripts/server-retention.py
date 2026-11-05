@@ -20,6 +20,7 @@ import urllib.request
 
 SITES = ('scholay-today', 'lingxi', 'piggytuck', 'personal', 'pets',
          'legis', 'metho', 'enter', 'xsiching', 'study')
+RECEIVER_SITES = Path('/opt/rssd-public/sites')
 CONFIG = Path('/etc/scholay-retention/config.json')
 STATE = Path('/var/lib/scholay-retention')
 
@@ -90,10 +91,13 @@ def release_selection(base, kind, site, validate=validate_release):
     if not current_link.is_symlink() or releases.is_symlink():
         raise ValueError('Missing current symlink or unsafe release root: ' + str(base))
     current = current_link.resolve(strict=True)
-    if current.parent != releases.resolve(strict=True):
-        raise ValueError('Current escapes releases: ' + str(current))
     directories = [p for p in releases.iterdir()
                    if p.is_dir() and not p.is_symlink() and not p.name.startswith('.')]
+    if kind == 'web' and current.is_relative_to((RECEIVER_SITES / site).resolve()):
+        # After cutover the old web root forwards to the receiver; its own releases are pre-cutover history.
+        return held(base, current, directories, [], 'Served by the RSSD receiver after cutover')
+    if current.parent != releases.resolve(strict=True):
+        raise ValueError('Current escapes releases: ' + str(current))
     validate(current, kind, site)
     ordered = sorted((p for p in directories if p != current),
                      key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)
@@ -108,9 +112,56 @@ def release_selection(base, kind, site, validate=validate_release):
         if len(kept) == 3:
             break
     if len(kept) != 3:
-        raise ValueError('Two validated rollback releases are required: ' + str(base))
+        return held(base, current, directories, rejected, 'Two validated rollback releases are required')
     return {'base': str(base), 'current': str(current), 'keep': list(map(str, kept)),
             'candidates': [str(p) for p in directories if p not in kept], 'rejected': rejected}
+
+
+def held(base, current, directories, rejected, reason):
+    # Too few rollbacks: keep every release of this site and let the other sites proceed.
+    emit('release-group-held', base=str(base), reason=reason)
+    return {'base': str(base), 'current': str(current), 'keep': list(map(str, directories)),
+            'candidates': [], 'rejected': rejected, 'held': reason}
+
+
+def receiver_bases(root=None):
+    root = RECEIVER_SITES if root is None else root
+    return [root / site for site in SITES if (root / site / 'current').is_symlink()]
+
+
+def chain_selection(base, site, validate=validate_release):
+    """Receiver rollbacks follow recorded predecessors, so a build that never went live is not kept."""
+    releases = base / 'releases'
+    current_link = base / 'current'
+    if not current_link.is_symlink() or releases.is_symlink():
+        raise ValueError('Missing current symlink or unsafe release root: ' + str(base))
+    root = releases.resolve(strict=True)
+    current = current_link.resolve(strict=True)
+    if current.parent != root or current.is_symlink() or not current.is_dir():
+        raise ValueError('Current escapes releases: ' + str(current))
+    validate(current, 'web', site)
+    directories = [p for p in releases.iterdir()
+                   if p.is_dir() and not p.is_symlink() and not p.name.startswith('.')]
+    kept, path = [current], current
+    while len(kept) < 3:
+        previous = json.loads((path / 'release.json').read_text()).get('previousRelease')
+        if previous is None:
+            return held(base, current, directories, [], 'Two recorded rollback releases are required')
+        if not isinstance(previous, str) or Path(previous).name != previous or previous in ('', '.', '..'):
+            raise ValueError('Unsafe recorded rollback release: ' + str(path))
+        path = releases / previous
+        if path in kept:
+            raise ValueError('Cyclic release chain: ' + str(path))
+        try:
+            if path.is_symlink() or not path.is_dir():
+                raise ValueError('Recorded rollback release is missing: ' + str(path))
+            validate(path, 'web', site)
+        except (ValueError, OSError, KeyError) as error:
+            return held(base, current, directories, [{'path': str(path), 'error': str(error)}],
+                        'Two recorded rollback releases are required')
+        kept.append(path)
+    return {'base': str(base), 'current': str(current), 'keep': list(map(str, kept)),
+            'candidates': [str(p) for p in directories if p not in kept], 'rejected': []}
 
 
 def backup_groups():
@@ -122,7 +173,7 @@ def backup_groups():
     return [p for p in roots if p.is_dir() and not p.is_symlink()]
 
 
-def backup_selection(root):
+def backup_selection(root, require=True):
     entries = sorted((p for p in root.iterdir() if not p.name.startswith('.') and
                       p.suffix not in ('.partial', '.tmp') and not p.is_symlink()),
                      key=lambda p: (p.stat().st_mtime_ns, p.name), reverse=True)
@@ -145,8 +196,12 @@ def backup_selection(root):
                 pass
             if len(keep) == 3:
                 break
-        if not keep:
+        if not keep and require:
             raise ValueError('No valid local database backup: ' + str(root))
+        if not keep:
+            # A dry run takes no online backup first; an applied run must find the one it just made.
+            emit('backup-group-held', base=str(root), reason='No valid local database backup yet')
+            return {'base': str(root), 'keep': list(map(str, entries)), 'candidates': [], 'held': 'No valid local database backup yet'}
     return {'base': str(root), 'keep': list(map(str, keep)),
             'candidates': [str(p) for p in entries if p not in keep]}
 
@@ -187,10 +242,11 @@ def fingerprint(path):
     return {'fingerprint': h.hexdigest(), 'coverage': hex(coverage), 'nodes': count, 'bytes': size}
 
 
-def make_plan(bootstrap=False):
+def make_plan(bootstrap=False, dry_run=False):
     releases = [release_selection(base, kind, site) for site in SITES
                 for kind, base in zip(('app', 'web'), site_paths(site)[:2])]
-    backups = [backup_selection(root) for root in backup_groups()]
+    releases += [chain_selection(base, base.name) for base in receiver_bases()]
+    backups = [backup_selection(root, require=not dry_run) for root in backup_groups()]
     candidates = [p for group in releases + backups for p in group['candidates']]
     # One-time historical migration bundles; never broad-match /var/backups.
     if bootstrap:
@@ -319,6 +375,7 @@ class Restic:
 def archive_paths():
     paths = [str(base / 'releases') for site in SITES for base in site_paths(site)[:2]]
     paths += [str(site_paths(site)[2] / 'backups') for site in SITES]
+    paths += [str(base / 'releases') for base in receiver_bases()]
     paths += [str(p) for p in Path('/var/backups').glob('scholay-*')]
     paths += [str(p) for p in Path('/etc/systemd/system').glob('scholay*')]
     paths += ['/var/backups/multisite-migration-20261013.tar.gz', '/var/backups/today-before-multisite.json',
@@ -396,7 +453,7 @@ def main():
     args = parser.parse_args()
     os.umask(0o077)
     if not args.apply:
-        plan = make_plan(args.bootstrap)
+        plan = make_plan(args.bootstrap, dry_run=True)
         print(json.dumps(plan, indent=2))
         return
     config = json.loads(CONFIG.read_text())

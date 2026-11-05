@@ -2,16 +2,6 @@
 export const SITE_SECTIONS={
   "scholay-today": [
     {
-      "id": "briefings",
-      "name": "学界犀闻",
-      "defaultMode": "xiwen"
-    },
-    {
-      "id": "observations",
-      "name": "学者观察",
-      "defaultMode": "observation"
-    },
-    {
       "id": "calendar",
       "name": "今日学术",
       "defaultMode": "calendar"
@@ -22,24 +12,42 @@ export const SITE_SECTIONS={
       "defaultMode": "history"
     },
     {
+      "id": "briefings",
+      "name": "学界犀闻",
+      "defaultMode": "xiwen"
+    },
+    {
+      "id": "observations",
+      "name": "学者观察",
+      "defaultMode": "observation"
+    },
+    {
       "id": "resources",
       "name": "学术资源",
-      "defaultMode": "opensource"
+      "defaultMode": "opensource",
+      "enabled": false,
+      "writable": false
     },
     {
       "id": "open-source",
       "name": "学术开源",
-      "defaultMode": "opensource"
+      "defaultMode": "opensource",
+      "enabled": false,
+      "writable": false
     },
     {
       "id": "collaboration",
       "name": "项目合作",
-      "defaultMode": "observation"
+      "defaultMode": "observation",
+      "enabled": false,
+      "writable": false
     },
     {
       "id": "courses",
       "name": "课程资源",
-      "defaultMode": "opensource"
+      "defaultMode": "opensource",
+      "enabled": false,
+      "writable": false
     }
   ],
   "lingxi": [
@@ -177,7 +185,7 @@ export const SITE_SECTIONS={
   "enter": [
     {
       "id": "forums",
-      "name": "学术论坛",
+      "name": "学术社区",
       "defaultMode": "opensource"
     },
     {
@@ -221,12 +229,12 @@ export const SITE_SECTIONS={
   "study": [
     {
       "id": "courses",
-      "name": "免费课程",
+      "name": "课程学习",
       "defaultMode": "opensource"
     },
     {
       "id": "models",
-      "name": "模型排行",
+      "name": "模型前沿",
       "defaultMode": "observation"
     },
     {

@@ -24,7 +24,7 @@ function extractTitle(html,url){
  return (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]||'').replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim()||new URL(url).hostname;
 }
 function extractText(html){
- return html.replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+ return html.replace(/<!--[\s\S]*?-->/g,' ').replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
 }
 export async function readPublicPage(url,fetcher=fetch,{maxBytes=800000}={}){
  const href=publicHttpUrl(url);if(!href)throw Error('请输入可公开访问的 http(s) 网址');
@@ -52,10 +52,14 @@ export async function readPublicPage(url,fetcher=fetch,{maxBytes=800000}={}){
  const buf=Buffer.from(await response.arrayBuffer());
  if(buf.length>maxBytes)throw Error('网页过大，已停止读取');
  const html=buf.toString('utf8');
+ const pageText=extractText(html);
+ // A 200 response may be an interstitial rather than the requested document.
+ // Keep this as a failed read; never turn a security challenge into evidence.
+ if(/checking (?:the security of your|your browser|your) (?:connection|browser)|verify (?:that )?you are human|enable javascript and cookies to continue|just a moment|access denied/i.test(extractTitle(html,href)+' '+pageText.slice(0,1200)))throw Error('网页返回访问验证页，未读取正文：'+href);
  const date=extractDate(html);
- const text=extractText(html).slice(0,20000);
+ const text=pageText.slice(0,20000);
  return {
-  url:href,title:extractTitle(html,href),text,truncated:extractText(html).length>20000,
+  url:href,title:extractTitle(html,href),text,truncated:pageText.length>20000,
   publishedAt:date.date,dateBasis:date.basis,contentHash:hash(text||href),fetchedBytes:buf.length,
  };
 }

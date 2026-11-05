@@ -10,8 +10,8 @@ import './preview-internal-notes.css';
 type CloudNotes={source:'local'|'cloud'|'unsupported';revision:number|null;privateEditorial:PrivateEditorialData|null};
 /** A cloud work's notes come through the publisher, which reads this Mac's file
  *  or the site's private archive written by any machine. */
-function usePrivateNotes(articleId:string,version:unknown,cloudRevision?:number){
- const [state,setState]=useState<{id:string;version:unknown;data:PrivateEditorialData|null;error:string;notice?:string}>();
+export function usePrivateNotes(articleId:string,version:unknown,cloudRevision?:number){
+ const [state,setState]=useState<{id:string;version:unknown;data:PrivateEditorialData|null;error:string;notice?:string;cloudRevision?:number}>();
  useEffect(()=>{
   if(!articleId)return;
   let obsolete=false;
@@ -19,11 +19,11 @@ function usePrivateNotes(articleId:string,version:unknown,cloudRevision?:number)
    ?invoke<PrivateEditorialData|null>('editorial_call',{method:'draft_private_notes',params:{id:articleId}}).then(data=>({data,notice:''}))
    :invoke<CloudNotes>('website_publish_call',{method:'private_notes',params:{id:articleId,revision:cloudRevision}}).then(x=>({data:x.privateEditorial,notice:x.source==='unsupported'?tr('官网暂不支持读取其他设备的作者备注'):x.source==='cloud'&&x.revision&&x.revision!==cloudRevision?tr('作者备注来自 v{{revision}}',{revision:x.revision}):''}));
   void load.then(({data,notice})=>{
-   if(!obsolete)setState({id:articleId,version,data:data&&(data.internalNotes||data.blockNotes||data.modelSignatures)?data:null,error:'',notice});
-  }).catch(error=>{if(!obsolete)setState({id:articleId,version,data:null,error:/Article not found/.test(String(error))?'':String(error)});});
+   if(!obsolete)setState({id:articleId,version,cloudRevision,data:data&&(data.internalNotes||data.blockNotes||data.modelSignatures)?data:null,error:'',notice});
+  }).catch(error=>{if(!obsolete)setState({id:articleId,version,cloudRevision,data:null,error:/Article not found/.test(String(error))?'':String(error)});});
   return()=>{obsolete=true;};
  },[articleId,version,cloudRevision]);
- return state&&state.id===articleId&&state.version===version?state:undefined;
+ return state&&state.id===articleId&&state.version===version&&state.cloudRevision===cloudRevision?state:undefined;
 }
 type Point={id:string;left:number;top:number;notes?:BlockInternalNotes[string]['notes']};
 type Placement={key:unknown;points:Point[];unplaced:BlockInternalNotes};

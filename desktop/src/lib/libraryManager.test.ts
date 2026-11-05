@@ -74,9 +74,9 @@ it('shows all online sections including empty sections and filters independent o
  const work=(id:string,type:string,category:string):Work=>({id,title:id,type,category,locations:['local'],status:null,external:[],date:''});
  await render([work('report-as-news','observation','学界犀闻'),work('report','observation','学者观察'),work('digest','xiwen','学界犀闻')]);
  const tab=(name:string)=>[...host.querySelectorAll<HTMLButtonElement>('.manager-categories button')].find(b=>b.querySelector('span')?.textContent===name)!;
- expect(host.querySelector('[aria-label="按用途筛选"]')).toBeNull();expect(tab('项目合作').querySelector('small')?.textContent).toBe('0');expect(tab('课程资源')).toBeTruthy();
+ expect(host.querySelector('[aria-label="按用途筛选"]')).toBeNull();expect(tab('今日学术').querySelector('small')?.textContent).toBe('0');expect(tab('昔日学术')).toBeTruthy();
  await act(async()=>tab('学界犀闻').click());expect([...host.querySelectorAll('.manager-card strong')].map(x=>x.textContent)).toEqual(['report-as-news','digest']);
- await act(async()=>tab('项目合作').click());expect(host.querySelectorAll('.manager-card')).toHaveLength(0);
+ await act(async()=>tab('今日学术').click());expect(host.querySelectorAll('.manager-card')).toHaveLength(0);
  await act(async()=>tab('全部栏目').click());expect(host.querySelectorAll('.manager-card')).toHaveLength(3);
 });
 

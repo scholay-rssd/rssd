@@ -7,10 +7,11 @@ const headings=new Set(['参考文献','参考资料','来源','附注','品牌�
 // continuation paragraphs, links and ordering; never rewrite body prose.
 export function canonicalArticleEndnotes(markdown,options={}){
   const text=normalizeArticleEndnotes(markdown,options),tokens=md.parse(text,{}),lines=text.split('\n');
+  const english=options.locale==='en',knownHeadings=english?new Set([...headings,'References']):headings;
   const sections=[];
   for(let i=0;i<tokens.length;i++)if(tokens[i].type==='heading_open'&&tokens[i].level===0)sections.push({i,line:tokens[i].map[0],title:tokens[i+1].content,tag:tokens[i].tag});
   let first=sections.length;
-  while(first>0&&headings.has(sections[first-1].title))first--;
+  while(first>0&&knownHeadings.has(sections[first-1].title))first--;
   if(first===sections.length)return text;
   const tail=sections.slice(first),entries=[];
   for(let s=0;s<tail.length;s++){
@@ -35,7 +36,7 @@ export function canonicalArticleEndnotes(markdown,options={}){
     }
   }
   if(!entries.length)return text;
-  const heading=tail.find(s=>s.title==='参考文献'||s.title==='参考资料')||tail[0];
+  const heading=tail.find(s=>s.title==='参考文献'||s.title==='参考资料'||english&&s.title==='References')||tail[0];
   const numbered=entries.map((entry,i)=>{const prefix=(i+1)+'. ';return prefix+entry.replace(/\n/g,'\n'+' '.repeat(prefix.length));}).join('\n\n');
-  return lines.slice(0,tail[0].line).join('\n').trimEnd()+'\n\n'+'#'.repeat(Number(heading.tag.slice(1)))+' 参考文献\n\n'+numbered+'\n';
+  return lines.slice(0,tail[0].line).join('\n').trimEnd()+'\n\n'+'#'.repeat(Number(heading.tag.slice(1)))+' '+(english?'References':'参考文献')+'\n\n'+numbered+'\n';
 }

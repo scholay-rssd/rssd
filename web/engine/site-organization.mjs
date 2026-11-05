@@ -60,7 +60,8 @@ export function organizeContent(content,organization){
     const binding=bindings.get(r.id),old=previous.get(r.collectionId);
     // Only explicit bindings or an exact section name establish membership.
     // Never classify from title keywords or silently rewrite an old manuscript.
-    if(r.sectionId&&!known.has(r.sectionId))throw Error('Unknown article section');
+    const historical=previous.get(r.sectionId);
+    if(r.sectionId&&!known.has(r.sectionId)&&!(historical?.enabled===false&&historical?.writable===false))throw Error('Unknown article section');
     const collectionId=r.sectionId||binding?.sectionId||names.get(old?.name)||r.collectionId;
     return {...r,collectionId,...(binding?{tags:[...binding.tags],related:binding.related.map(({id,role})=>({id,role})),...(binding.course?{course:{format:binding.course.format,fee:binding.course.fee,registration:binding.course.registration}}:{})}:{})};
   });

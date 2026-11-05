@@ -8,6 +8,7 @@ import {withFileLock} from './editorial-lock.mjs';
 import {articleLocale,sourceContentSha256,editionArticleId,editionRoute} from '../contracts/language-editions.mjs';
 import {withRecordSourceLinks} from './editorial-record.mjs';
 import {freezeFlowCredential,flushCloudFlow} from './publishing-flow-credentials.mjs';
+import {forumUrl} from './community-link-policy.mjs';
 
 export const flowDirectory=root=>join(root,'.local/publishing-flow');
 export const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
@@ -97,7 +98,6 @@ export function validateTranslation(source,english){
  return {status:'passed',checks:['complete','source-urls','images'],warnings,sha256:hash(english)};
 }
 const slotKey=(plan,target)=>hash([plan.siteId,plan.articleId,target.locale,target.platform,target.integrationId,target.channelId||'',target.format]).slice(0,40);
-function forumUrl(value){try{const u=new URL(value);return u.origin==='https://enterscholar.com'&&/^\/t\/(?:[^/]+\/)?\d+\/?$/.test(u.pathname)&&!u.search&&!u.hash?u.href:null;}catch{return null;}}
 async function communityMap(root,origin,fetcher,now){
  const file=join(flowDirectory(root),'community-cache.json'),old=await optional(file);
  if(old?.origin===origin&&now-old.checkedAt<300000)return old.links;

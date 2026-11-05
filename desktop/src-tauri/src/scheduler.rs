@@ -94,6 +94,36 @@ async fn refresh_in_space(app:&AppHandle,progress:Option<Channel<RefreshProgress
     Ok(total_new)
 }
 
+// Refresh registered inactive libraries without selecting them or emitting active-space
+// UI events. A switch cancels this pass through the same lifecycle as normal refresh.
+async fn refresh_inactive_spaces() -> Result<(), String> {
+    let (_, data) = crate::workbench_runtime::paths()?;
+    let bytes = tokio::fs::read(data.join("spaces.json")).await.map_err(|e|e.to_string())?;
+    let registry: serde_json::Value = serde_json::from_slice(&bytes).map_err(|e|e.to_string())?;
+    let sites = registry["sites"].as_array().ok_or("Missing workspace registry")?;
+    for site in sites {
+        let Some(id) = site["spaceId"].as_str() else { continue; };
+        if id.is_empty() || !id.bytes().all(|c|c.is_ascii_lowercase() || c.is_ascii_digit() || c==b'-') { continue; }
+        let mut cancellation = crate::spaces::refresh_cancellation();
+        let Ok(_lease) = crate::spaces::Lease::acquire() else { return Ok(()); };
+        if crate::spaces::text("spaceId")?.as_str() == id { continue; }
+        let dir = if site["legacy"].as_bool()==Some(true) { data.to_path_buf() } else { data.join("spaces").join(id) };
+        let path = dir.join("papr.db");
+        // Do not initialize a workspace merely because a profile is registered.
+        if !path.is_file() { continue; }
+        let db = match crate::db::open(&path) { Ok(db)=>db, Err(e)=>{log::warn!("inactive RSS {id}: {e}");continue;} };
+        let client = crate::ingestion::fetch::build_client_from_settings(&db);
+        let db = tokio::sync::Mutex::new(db);
+        tokio::select! {
+            result=refresh::refresh_core(&db,&client,RefreshScope::Due,|_|{})=>{
+                if let Err(e)=result { log::warn!("inactive RSS {id}: {e}"); }
+            }
+            _=cancellation.changed()=>return Ok(()),
+        }
+    }
+    Ok(())
+}
+
 /// How often the background loop wakes to look for *due* feeds. Each tick is a
 /// cheap indexed query (and an early return when nothing is due), so a short,
 /// fixed cadence keeps per-feed intervals honoured to within one tick.
@@ -107,6 +137,9 @@ pub fn spawn_scheduler(app: AppHandle) {
         loop {
             if let Err(e) = refresh_all(&app, None, false, RefreshScope::Due).await {
                 log::warn!("scheduled refresh failed: {e}");
+            }
+            if let Err(e)=refresh_inactive_spaces().await {
+                log::warn!("inactive workspace refresh failed: {e}");
             }
             tokio::time::sleep(SCHEDULER_TICK).await;
         }
