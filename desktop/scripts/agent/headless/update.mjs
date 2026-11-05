@@ -6,7 +6,7 @@ import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomUUID} from 'node:crypto';
 
-const exec=promisify(execFile),official='git@github.com:scholay/rssd.git',legacyOrigins=new Set(['git@github.com:scholay/today.git','https://github.com/scholay/today.git','https://github.com/scholay/rssd.git']);
+const exec=promisify(execFile),official='https://github.com/scholay-rssd/rssd.git',alternateOrigins=new Set(['https://github.com/scholay-rssd/rssd','git@github.com:scholay-rssd/rssd.git']);
 export const installationRoot=resolve(dirname(fileURLToPath(import.meta.url)),'../../../..');
 const alive=pid=>{try{process.kill(pid,0);return true;}catch(e){return e.code!=='ESRCH';}};
 const exists=async path=>access(path).then(()=>true,()=>false);
@@ -47,7 +47,7 @@ async function active(root){
  }
  return false;
 }
-function trusted(value,origin){return value===origin||(origin===official&&legacyOrigins.has(value));}
+function trusted(value,origin){return value===origin||(origin===official&&alternateOrigins.has(value));}
 async function unpack(root,ref,target){
  await mkdir(target,{recursive:true,mode:0o700});
  await new Promise((ok,fail)=>{
@@ -69,7 +69,7 @@ export async function updateRuntime({root=installationRoot,apply=false,automatic
  const unlock=await gate(root);let candidate,activated=false;const swapped=[];
  try{
   if(await active(root))return {status:'deferred',reason:'有运行中的队列或任务，保留当前版本'};
-  if(!trusted(await git(root,'remote','get-url','origin'),origin))throw Error('更新源必须是私有 scholay/rssd 仓库（旧名 scholay/today 仍兼容）');
+  if(!trusted(await git(root,'remote','get-url','origin'),origin))throw Error('更新源必须是 scholay-rssd/rssd 仓库；旧私有仓库的检出请从该仓库重新克隆');
   if(await git(root,'branch','--show-current')!=='main')return {status:'deferred',reason:'当前不在 main 分支'};
   if(await git(root,'status','--porcelain'))return {status:'deferred',reason:'工作目录有本地修改，未覆盖'};
   const before=await git(root,'rev-parse','HEAD');

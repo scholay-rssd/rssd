@@ -1,6 +1,6 @@
 # today
 
-Local RSS and editorial desktop client for **today**. Source repository: [scholay/rssd](https://github.com/scholay/rssd)（原名 scholay/today）. Each creative space has its own site logo and local subscriptions. The compatible MCP server entry remains `scholay-today`.
+Local RSS and editorial desktop client for **today**. Source repository: [scholay-rssd/rssd](https://github.com/scholay-rssd/rssd). Each creative space has its own site logo and local subscriptions. The compatible MCP server entry remains `scholay-today`.
 
 The imported `.github/` workflows are historical source, not active root CI.
 
