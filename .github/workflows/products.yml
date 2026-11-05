@@ -6,6 +6,23 @@ on:
 permissions:
   contents: read
 jobs:
+  secrets-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: scholay-rssd/rssd-secrets
+          path: .local/rssd-secrets
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Every secret read is declared in rssd-secrets
+        run: node .local/rssd-secrets/scripts/coverage.mjs .
   public-build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
