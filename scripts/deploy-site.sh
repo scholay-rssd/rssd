@@ -19,6 +19,9 @@ if [[ -n "${SCHOLAY_DEPLOY_PREPARED:-}" ]]; then
   ssh "${ssh_options[@]}" "$deploy_host" "set -e; test -d '$remote'; test ! -L '$remote'; cd '$remote'; test -f package.json; test -f scripts/run-site.mjs; test ! -e desktop; test ! -e editorial; test ! -e .git; test ! -e .local; export PATH=/opt/scholay-admin/runtime/bin:\$PATH; npm ci --omit=dev --no-audit --no-fund; if [ -d theme-homepages ]; then python3 scripts/activate-theme-site.py '$site_id' '$site_port'; else bash scripts/install-site.sh '$site_id' '$site_port'; fi"
   exit 0
 fi
+# A private deployment overlay pins the public commit production is built from
+# and rejects uncommitted or untracked code (docs/private-data-overlay.md).
+if [[ -f deploy/drift.mjs ]]; then node deploy/drift.mjs; fi
 stage="$(mktemp -d /tmp/scholay-site-package.XXXXXX)"
 chmod 755 "$stage"
 archive="$stage.tar.gz"

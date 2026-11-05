@@ -34,3 +34,9 @@ overlay directories (`editorial/`, `deploy/`, `.local/`), real data exports,
 receipts, databases, key files, symlinks into overlays, credentials and
 personal home paths. Run it before every commit with
 `git config core.hooksPath .githooks`.
+
+When the overlay provides `deploy/drift.mjs`, `scripts/deploy-site.sh` and
+`npm run desktop:release` run it before packaging. It refuses a checkout that
+is not the pinned public commit or that has uncommitted or untracked changes.
+`RSSD_ALLOW_UNPINNED=1` lets `desktop:release` install a local development
+build anyway; the installation receipt records it as unpinned.
