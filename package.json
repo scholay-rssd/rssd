@@ -33,6 +33,7 @@
     "rss:sources:opml": "node scripts/rss-sources.mjs opml",
     "rss:sources:sync": "node scripts/rss-sources.mjs sync",
     "history:batch": "node scripts/history-batch.mjs",
+    "calendar:batch": "node scripts/calendar-data-batch.mjs",
     "receiver": "node receiver/server.mjs"
   },
   "dependencies": {

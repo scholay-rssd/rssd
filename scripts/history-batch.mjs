@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 // Light batch publisher for 昔日学术 (kind=history) records on Scholay Today.
+// Center-gated year+history calendar-data batches use scripts/calendar-data-batch.mjs.
 //
 //   node scripts/history-batch.mjs validate <entries-dir> [--live <calendar-history.json>]
 //   node scripts/history-batch.mjs publish  <entries-dir> --workspace <dir> [--gap 75] [--limit N]
