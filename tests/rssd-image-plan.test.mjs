@@ -20,6 +20,7 @@ test('frozen image plan preserves body and binds only all uploaded registered sl
  const bound=bindImagePlan({plan,images,origin:'https://center.example'}),edition=notebookEdition(bound,{sectionId:'methods',locale:'zh-CN'});
  assert.equal(bound.notebook.blocks[0].text,'Public body');assert.equal(bound.notebook.blockNotes.body.notes.supplement,'Private existing');assert.equal(bound.notebook.internalNotes.verification,'Private check');
  assert.match(edition.bodyMarkdown,/!\[/);assert.doesNotMatch(edition.bodyMarkdown,/Private existing|Private check/);assert.ok(edition.metadata.notebookBodyHash);
+ assert.equal(edition.media.length,2);assert.equal(edition.media[0].id,images[0].id);
  await assert.rejects(freezeImagePlan({...x,result:{...draft(),summary:'Different'}}),/different content/);
 });
 test('fake image URLs and non-image placeholders cannot enter the plan',async t=>{

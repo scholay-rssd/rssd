@@ -40,7 +40,10 @@ export function createCenterClient({origin,token,fetcher=fetch,timeoutMs=30000})
     changeDemand:(id,body)=>request('/demands/'+encodeURIComponent(protocol.id(id)),{method:'PATCH',body}),
     submit:body=>request('/submissions',{method:'POST',body:protocol.submission(body)}),
     submission:id=>request('/submissions/'+encodeURIComponent(protocol.id(id))),
-    publications:options=>request('/publications?'+query(options))};
+    publications:options=>request('/publications?'+query(options)),
+    // Workspace-scoped website retry. Owner-only POST /publications/:id/retry
+    // and GET /destinations stay owner-only configuration endpoints.
+    editorialRetry:(workspaceId,requestKey,body)=>request('/editorial/'+encodeURIComponent(protocol.id(workspaceId))+'/requests/'+encodeURIComponent(protocol.id(requestKey))+'/retry',{method:'POST',body})};
 }
 async function atomic(path,value){
   await mkdir(dirname(path),{recursive:true,mode:0o700});
@@ -94,6 +97,22 @@ export class CenterOutbox {
         entry.error={message:error.message,code:error.code||'network_error',status:error.status||0};
         entry.state=error.status>=400&&error.status<500&&![408,429].includes(error.status)||['receipt_mismatch','outbox_conflict'].includes(error.code)?'needs_attention':'pending';
       }
+      entry.updatedAt=new Date().toISOString();await atomic(path,entry);return entry;
+    },{timeout:1000});
+  }
+  async repairUnsubmitted(requestId,packet){
+    const path=this.path(requestId);
+    return withFileLock(path+'.lock',async()=>{
+      const entry=await json(path);this.verify(entry);
+      if(entry.state==='accepted')throw new CenterError('Accepted request cannot change',{status:409,code:'request_conflict'});
+      const next=protocol.submission(packet);
+      if(next.requestId!==entry.requestId||next.workId!==entry.packet.workId||next.workspaceId!==entry.packet.workspaceId)throw new CenterError('Repair must keep the original request identity',{status:409,code:'request_conflict'});
+      const strip=value=>{const {media,...rest}=value;return rest;};
+      if(entry.packet.editions.length!==next.editions.length||entry.packet.editions.some((edition,index)=>protocol.hash(strip(edition))!==protocol.hash(strip(next.editions[index]))))
+        throw new CenterError('Repair is limited to completing the media manifest',{status:409,code:'request_conflict'});
+      try{const receipt=await this.client.submission(entry.requestId);if(receipt)throw new CenterError('Center already accepted the original request; submit a new revision',{status:409,code:'request_conflict'});}
+      catch(error){if(error.status!==404)throw error;}
+      entry.packet=next;entry.payloadHash=protocol.hash(next);entry.state='pending';delete entry.error;
       entry.updatedAt=new Date().toISOString();await atomic(path,entry);return entry;
     },{timeout:1000});
   }

@@ -13,6 +13,7 @@ import {assistantLocal,runCenterAssistant} from './agent/center-assistant.mjs';
 import {readConfiguredLabels} from './runtime/labels-source.mjs';
 import {assertAutomaticTopicScope,automaticTopicTick} from './rssd-topic-auto.mjs';
 import {preparedReferencePreview,submitPreparedReferenceRevision} from '../../scripts/rssd-prepared-reference-revision.mjs';
+import {completeStoredEdition} from '../../scripts/rssd-device-media.mjs';
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw e;}};
 
 export async function centerDesktopCall(method,params={},home=centerHome()){
@@ -111,8 +112,16 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
     if(current)await client.changeDemand(current.id,{action:'release',claimToken:current.claimToken});
     await writeCenterJson(join(home,'active-claim.json'),{origin:client.origin,claim:null});return {released:true};
   }
-  if(method==='submit'){const entry=await outbox.enqueue(params.packet);return outbox.flushOne(entry.requestId);}
+  if(method==='submit'){
+    const packet=await completeStoredEdition({packet:params.packet,home,directory:home,client});
+    const entry=await outbox.enqueue(packet);return outbox.flushOne(entry.requestId);
+  }
   if(method==='recover')return params.requestId?outbox.flushOne(params.requestId,{retry:true}):outbox.flush();
+  if(method==='retry_website'){
+    protocol.id(params.workspaceId,'workspaceId');protocol.id(params.requestKey,'requestKey');protocol.id(params.jobId,'jobId');
+    if(Array.isArray(identity.workspaceIds)&&!identity.workspaceIds.includes(params.workspaceId))throw Error('Workspace access denied');
+    return client.editorialRetry(params.workspaceId,params.requestKey,{jobId:params.jobId});
+  }
   throw Error('Unknown center operation');
 }
 export async function runDesktopWorker(params,{home=centerHome(),producer=produceCenterEdition,topicTick=automaticTopicTick,turn=runProductionTurn,connect=loadCenterConnection,retryDelaysMs=[5000,15000,30000],idleRetryCapMs=300000,pause=ms=>new Promise(r=>setTimeout(r,ms))}={}){

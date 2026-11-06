@@ -4,6 +4,7 @@ import {notebookMarkdown} from './notebook.mjs';
 import {headingFormatErrors} from './notebook-headings.mjs';
 import {appendInternalNotes,privateEditorialData} from '../../../contracts/article-internal-notes.mjs';
 import {cleanNotebookCitations} from '../../../scripts/clean-citation-urls.mjs';
+import protocol from '../../../contracts/rssd-v1.cjs';
 
 export const CENTER_NOTEBOOK_OUTPUT=`只返回一个 JSON 对象（不要围栏或解释），使用现有 notebook v2 结构，不直接生成 bodyMarkdown。程序从公开内容行生成 Markdown，内部备注始终私有。本接口通过一次 JSON 交稿，不提供 task_read/task_update 工具；把同一次写作的正文与备注放在下面结构中即可。
 {"notebook":{"version":2,"kind":"article","title":"文章标题","skills":[],"fields":{},"groups":[],"blocks":[{"id":"intro","type":"paragraph","state":"ready","text":"完整正文段落","sourceIds":[]}],"sources":[],"blockNotes":{},"internalNotes":{}},"summary":"面向读者的摘要","metadata":{}}
@@ -30,5 +31,14 @@ export function notebookEdition(result,{source,signature,sectionId,locale}={}){
  const bodyMarkdown=notebookMarkdown(n,{site:null,locale});
  const metadata={...source?.payload?.metadata,...result.metadata,notebook:n,notebookBodyHash:createHash('sha256').update(bodyMarkdown).digest('hex')};
  delete metadata.modelSignatures;
- return {title:n.title,bodyMarkdown,summary:typeof result.summary==='string'?result.summary:'',sources:n.sources.map(s=>({title:s.title,url:s.url})),media:[],metadata};
+ return {title:n.title,bodyMarkdown,summary:typeof result.summary==='string'?result.summary:'',sources:n.sources.map(s=>({title:s.title,url:s.url})),media:editionMedia(bodyMarkdown,n,source),metadata};
+}
+function editionMedia(bodyMarkdown,notebook,source){
+ const prior=new Map((source?.payload?.media||[]).map(item=>[item.id,item])),media=new Map();
+ for(const block of (notebook?.blocks||[]).filter(b=>b.type==='image'&&b.state==='ready')){
+  const match=String(block.text||'').match(/^(?:https?:\/\/[^/]+)?\/api\/rssd\/v1\/media\/([a-zA-Z0-9._:-]+)\/raw$/);
+  if(match)media.set(match[1],{id:match[1],alt:block.alt||prior.get(match[1])?.alt||''});
+ }
+ for(const id of protocol.referencedMediaIds(bodyMarkdown))if(!media.has(id))media.set(id,{id,alt:prior.get(id)?.alt||''});
+ return [...media.values()];
 }
