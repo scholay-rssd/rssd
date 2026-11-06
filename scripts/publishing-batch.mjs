@@ -257,6 +257,8 @@ async function main(args){
  const controller=new AbortController();process.once('SIGINT',()=>controller.abort());process.once('SIGTERM',()=>controller.abort());
  return watchPostiz({directory,signal:controller.signal,tick:()=>postizTick({handoffDirectory:directory,adapter:batchGatedAdapter(directory,postizAdapter({handoffDirectory:directory,allowedTargets:policy.targets,allowedSources:policy.sources,delivery:policy.delivery||'draft',publishAuthorization:policy.publishAuthorization}))})});
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+// No top-level await: watch holds an open Promise, and recovery-cohort
+// statically imports this module during the first Postiz scan.
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url))void (async()=>{
  try{console.log(JSON.stringify(await main(process.argv.slice(2))));}catch(error){console.error('Publishing batch: '+error.message);process.exitCode=1;}
-}
+})();

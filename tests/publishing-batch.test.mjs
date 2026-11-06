@@ -1,11 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {spawn,execFile} from 'node:child_process';
 import {mkdtemp,mkdir,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
+import {promisify} from 'node:util';
 import {initializeBatchGate,beginBatch,refreshBatch,batchGatedAdapter,setBatchThreshold,settleBatch,validateBatchManifest} from '../scripts/publishing-batch.mjs';
 import {atomic,optional,hash,postizTick,externalPackage} from '../scripts/publishing-flow.mjs';
 import {sourceContentSha256} from '../contracts/language-editions.mjs';
+
+const batchCli=join(process.cwd(),'scripts/publishing-batch.mjs');
+const runCli=promisify(execFile);
+function watchBatchCli(directory,t){
+ const child=spawn(process.execPath,[batchCli,'watch',directory],{stdio:['ignore','pipe','pipe']});
+ const output={stdout:'',stderr:''};
+ child.stdout.on('data',chunk=>{output.stdout+=chunk;});
+ child.stderr.on('data',chunk=>{output.stderr+=chunk;});
+ t.after(()=>{try{child.kill('SIGKILL');}catch{}});
+ return {child,output};
+}
+function firstWatchScan({child,output},timeoutMs=8000){
+ return new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>finish(Error('watch CLI first scan did not finish: '+output.stderr+output.stdout)),timeoutMs);
+  const finish=error=>{clearTimeout(timer);child.stdout.off('data',onData);child.off('exit',onExit);error?reject(error):resolve(output);};
+  const onData=()=>{if(output.stdout.includes('\n'))finish();};
+  const onExit=(code,signal)=>finish(Error('watch CLI exited before first scan ('+code+'/'+signal+'): '+output.stderr));
+  child.stdout.on('data',onData);child.on('exit',onExit);onData();
+ });
+}
 
 async function fixture(t,{sites=['metho','pets'],minimumReady}={}){
  const root=await mkdtemp(join(tmpdir(),'today-batch-'));t.after(()=>rm(root,{recursive:true,force:true}));
@@ -177,4 +199,23 @@ test('a completed legacy whole-batch archive keeps its ready packets available d
  const f=await fixture(t);await beginBatch(f.directory,'daily-20261023',f.manifest);await f.evidence('metho');await f.evidence('pets');
  assert.equal((await refreshBatch(f.directory)).status,'complete');await beginBatch(f.directory,'daily-20261024',f.manifest);assert.equal((await refreshBatch(f.directory)).releaseReady,false);
  const packet=await f.packet();const result=await f.tick();assert.equal(result.find(r=>r.id===packet.id).status,'verified');await f.tick();assert.equal(f.counts().sends,1);
+});
+
+test('direct CLI watch completes its first scan while recovery-cohort imports this module',async t=>{
+ const f=await fixture(t);await beginBatch(f.directory,'daily-20261023',f.manifest);await f.packet();
+ await atomic(join(f.directory,'postiz-policy.json'),{enabled:true,authorization:'Existing Postiz destination approval',sources:[{siteId:'metho',articleId:'*'}],targets:f.targets});
+ const watching=watchBatchCli(f.directory,t),scan=await firstWatchScan(watching);
+ assert.doesNotMatch(scan.stderr,/unsettled top-level await/);
+ const line=JSON.parse(scan.stdout.trim().split('\n')[0]);
+ assert.equal(line[0]?.status||line.status,'deferred');
+});
+
+test('non-watch CLI subcommands still print JSON and keep their error prefix',async t=>{
+ const f=await fixture(t);
+ const {stdout}=await runCli(process.execPath,[batchCli,'status',f.directory]);
+ assert.equal(JSON.parse(stdout).status,'idle');assert.equal(stdout.trim().split('\n').length,1);
+ await assert.rejects(runCli(process.execPath,[batchCli,'watch','relative-handoff']),error=>{
+  assert.match(error.stderr,/Publishing batch: Use an absolute handoff directory/);
+  assert.equal(error.code,1);return true;
+ });
 });
