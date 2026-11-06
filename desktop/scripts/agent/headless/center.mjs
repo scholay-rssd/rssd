@@ -2,6 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {saveCenterConnection,loadCenterConnection,CenterOutbox} from '../../../../scripts/rssd-center-client.mjs';
+import {completeStoredEdition} from '../../../../scripts/rssd-device-media.mjs';
 import {runProductionTurn} from '../../../../scripts/rssd-production-worker.mjs';
 import {produceCenterEdition} from '../center-producer.mjs';
 import {deviceLogin} from '../../../../scripts/rssd-device-login.mjs';
@@ -23,7 +24,7 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
     const result=await saveCenterConnection(home,{origin:args[0],token:(await readFile(tokenFile,'utf8')).trim()});emit(result);return result;
   }
   if(!command||command==='help'||command==='--help'){
-    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id]','claim --workspace id [--section id] [--id demandId]','submit <packet.json>','recover [requestId] [--retry]','work --agent id --workspace id [--section id] [--once] [--resume]']});return;
+    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id]','claim --workspace id [--section id] [--id demandId]','submit <packet.json>','recover [requestId] [--retry]','retry-website --workspace id --request-key key --job-id id','work --agent id --workspace id [--section id] [--once] [--resume]']});return;
   }
   const {client,identity}=await loadCenterConnection(home),outbox=new CenterOutbox({directory:join(home,'outbox'),client});
   if(command==='status'){const entries=await outbox.list();const result={origin:client.origin,identity,outbox:entries.map(e=>({requestId:e.requestId,workId:e.packet.workId,state:e.state,error:e.error,receipt:e.receipt}))};emit(result);return result;}
@@ -32,9 +33,15 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
   if(command==='claim'){const result=await client.claim({workspaceIds:values('--workspace'),sectionIds:values('--section'),demandId:flag('--id')});emit(result);return result;}
   if(command==='submit'){
     if(!args[0])throw Error('Provide a complete submission JSON file');
-    const entry=await outbox.enqueue(JSON.parse(await readFile(args[0],'utf8'))),result=await outbox.flushOne(entry.requestId);emit(result);return result;
+    const packet=await completeStoredEdition({packet:JSON.parse(await readFile(args[0],'utf8')),home,directory:home,client});
+    const entry=await outbox.enqueue(packet),result=await outbox.flushOne(entry.requestId);emit(result);return result;
   }
   if(command==='recover'){const result=args[0]&&!args[0].startsWith('--')?await outbox.flushOne(args[0],{retry:args.includes('--retry')}):await outbox.flush();emit(result);return result;}
+  if(command==='retry-website'){
+    const workspaceId=flag('--workspace'),requestKey=flag('--request-key'),jobId=flag('--job-id');
+    if(!workspaceId||!requestKey||!jobId)throw Error('Usage: center retry-website --workspace id --request-key key --job-id id');
+    const result=await client.editorialRetry(workspaceId,requestKey,{jobId});emit(result);return result;
+  }
   if(command!=='work')throw Error('Unknown center command');
   const agentId=flag('--agent'),workspaceIds=values('--workspace');
   if(!agentId||!workspaceIds.length)throw Error('Select --agent and at least one --workspace before starting work');

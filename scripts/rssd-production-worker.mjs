@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import protocol from '../contracts/rssd-v1.cjs';
 import {withFileLock} from './editorial-lock.mjs';
 import {CenterOutbox,clearCompletedClaim,writeCenterJson} from './rssd-center-client.mjs';
-import {prepareEditionMedia} from './rssd-device-media.mjs';
+import {prepareEditionMedia,completeStoredEdition} from './rssd-device-media.mjs';
 import {ARTICLE_WRITING_INSTRUCTIONS,ARTICLE_WRITING_POLICY} from '../contracts/article-writing-policy.mjs';
 import {platformProductionInstructions} from '../contracts/rssd-platform-content.cjs';
 import {verifyAutomatedReferences} from './rssd-reference-gate.mjs';
@@ -264,13 +264,21 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
           }
           if(requiredModel||scoped)requirePilotEdition(output);
           if(scoped){const evidence=await sourceStage.restore({claim,slot:sourceSlot,directory,signal});await requireSourceProof(join(directory,locale+'.result-source-binding.json'),evidence,output);requireScopedSkills(output);verifyAutomatedReferences(output);const verifiedEdition={...output,locale};await verifyVerifiedBibliography({snapshot:evidence.snapshot,directory,edition:verifiedEdition,signal});const credits=await imageCreditContext({directory,claim,client,edition:verifiedEdition});if((await sourceStage.verifyEdition({claim,slot:sourceSlot,directory,edition:verifiedEdition,signal,...credits}))?.ok!==true)throw Error('原稿来源核验未通过');}
-          output=await prepareEditionMedia({edition:output,home,directory,client,workspaceId:claim.workspaceId,signal});
+          output=await prepareEditionMedia({edition:output,home,directory,client,workspaceId:claim.workspaceId,signal,source:chinesePacket?.editions[0]||source?.payload||source});
           packet=protocol.submission({requestId:randomUUID(),workId,workspaceId:claim.workspaceId,sectionId:claim.sectionId,
             demandId:claim.id,claimToken:claim.claimToken,baseRevisions:{[locale]:context.baseRevisions[locale]||0},
             editions:[{...output,locale,translationOf}]});
           // Durable packet exists before the first request is made.
           await save(packetFile,packet);
           if(scoped){const evidence=await sourceStage.restore({claim,slot:sourceSlot,directory,signal});await requireSourceProof(join(directory,locale+'.result-source-binding.json'),evidence,await read(resultFile));await save(join(directory,locale+'.packet-source-binding.json'),sourceProof(evidence,packet));}
+        }else{
+          const chinese=locale==='en'?await read(join(directory,'zh-CN.packet.json')):null;
+          const completed=await completeStoredEdition({packet,home,directory,client,signal,source:chinese?.editions?.[0]||context.source?.payload||context.source});
+          if(protocol.hash(completed)!==protocol.hash(packet)){
+            await save(packetFile,completed);
+            if((await outbox.list()).some(entry=>entry.requestId===packet.requestId))await outbox.repairUnsubmitted(packet.requestId,completed);
+            packet=completed;
+          }
         }
         if(requiredModel)requirePilotPacket(packet);
         if(scoped){await attest(packet,claim);await attestOutbox(claim);await ready('before_submission');}
