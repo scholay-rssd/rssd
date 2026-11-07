@@ -16,6 +16,8 @@ import {verifyStoredVisualReview} from './rssd-image-visual-review.mjs';
 import {imageTranslationInstructions,orderedOriginalImages} from './rssd-image-translation-prompt.mjs';
 import {prepareVerifiedBibliography,applyVerifiedBibliography,verifyVerifiedBibliography,VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS} from './rssd-verified-bibliography.mjs';
 import {assertBoundSourceCurrent,assertStoreOnlyReceipt,requireStoreOnlyContract,requireTranslateClaim,requireTranslatePacket,storeOnlyClaimBody} from './rssd-translate-continuation.mjs';
+import {parseCenterMediaRef} from './rssd-center-media-ref.mjs';
+import {recoverPersistedCenterEdition} from './rssd-center-generation-evidence.mjs';
 
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};
 const save=writeCenterJson;
@@ -41,9 +43,17 @@ function notebookImages(edition){
     return {id:image.id,url:image.text,alt:image.alt,caption:captions[0].text};
   });
 }
-export function requireReusedTranslationImages(source,edition){
+export function requireReusedTranslationImages(source,edition,origin){
   const expected=notebookImages(source),actual=notebookImages(edition);
-  if(expected.length<2||actual.length!==expected.length||actual.some((x,i)=>x.url!==expected[i].url))throw Error('英文稿必须按原顺序复用中文稿的全部图片及对应图注');
+  if(expected.length<2||actual.length!==expected.length)throw Error('英文稿必须按原顺序复用中文稿的全部图片及对应图注');
+  const same=actual.every((x,i)=>{
+    if(origin){
+      const want=parseCenterMediaRef(expected[i].url,{origin}),got=parseCenterMediaRef(x.url,{origin});
+      return want&&got&&want.id===got.id&&want.origin===got.origin;
+    }
+    return x.url===expected[i].url;
+  });
+  if(!same)throw Error('英文稿必须按原顺序复用中文稿的全部图片及对应图注');
 }
 function requirePilotPacket(packet){
   if(packet?.workspaceId!=='metho'||packet.sectionId!=='methods'||!Array.isArray(packet.editions)||packet.editions.length!==1||packet.editions[0]?.locale!=='zh-CN')throw Error('待提交稿件不属于研究方法试点，已保留等待核对');
@@ -124,7 +134,7 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
           const chinese=await read(join(directory,'zh-CN.packet.json'));
           if(chinese?.workId!==packet.workId||chinese?.claimToken!==packet.claimToken||chinese?.editions?.[0]?.locale!=='zh-CN')throw Error('英文稿缺少原中文稿图片凭据');
           await confirmChineseReceipt(chinese);
-          requireReusedTranslationImages(chinese.editions[0],edition);
+          requireReusedTranslationImages(chinese.editions[0],edition,client.origin);
           const originalPlan=await read(join(directory,'zh-CN.image-plan.json')),originalReceipt=await read(join(directory,'zh-CN.image-receipt.json'));
           if(!originalPlan||!originalReceipt||originalPlan.claimId!==original.id||originalPlan.generation!==original.generation||originalReceipt.planHash!==protocol.hash(originalPlan)||originalReceipt.origin!==client.origin||originalReceipt.workspaceId!==original.workspaceId||!Array.isArray(originalReceipt.images))throw Error('英文稿缺少原中文稿图片验收凭据');
           const originalBound=bindImagePlan({plan:originalPlan,images:originalReceipt.images,origin:originalReceipt.origin});
@@ -278,6 +288,7 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
         if(!packet){
           onEvent({type:'producing',demandId:claim.id,locale,agentId});
           let translationOf=null,source=context.source,chinesePacket=null;
+          if(source&&claim.payload?.source?.workId&&!source.workId)source={...source,workId:claim.payload.source.workId};
           if(claim.kind==='translate')translationOf=claim.payload.source;
           else if(locale==='en'&&claim.payload.requiredLocales.includes('zh-CN')){
             const chinese=await read(join(directory,'zh-CN.packet.json'));
@@ -288,15 +299,21 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
           const resultFile=join(directory,locale+'.result.json');
           let output=await read(resultFile);
           if(!output){
+            const recovered=await recoverPersistedCenterEdition({directory,locale,source,origin:client.origin,workspaceId:claim.workspaceId,sectionId:claim.sectionId,agentId,demandId:claim.id,generation:claim.generation,workerId:claim.workerId||client.workerId||claim.payload?.storeOnlyWorkerId,sourceHash:claim.payload?.sourceHash});
+            if(recovered?.edition){
+              output=recovered.edition;
+              await save(resultFile,output);
+            }else{
             const evidence=scoped?await sourceStage.restore({claim,slot:sourceSlot,directory,signal}):null;
             if(scoped){sourceProof(evidence,null);if(typeof evidence.prompt!=='string'||!evidence.prompt)throw Error('原任务来源正文材料缺失');}
             const bibliography=scoped?await prepareVerifiedBibliography({snapshot:evidence.snapshot,directory,signal}):null;
             let imageInstructions;if(scoped?.imagePlanRequired&&locale==='en'){if(!chinesePacket)throw Error('英文稿缺少原中文稿图片凭据');await attest(chinesePacket,claim);const originalReceipt=await read(join(directory,'zh-CN.image-receipt.json'));imageInstructions=imageTranslationInstructions({edition:chinesePacket.editions[0],images:originalReceipt.images});}
-            output=await producer({claim,locale,workId,source,directory,agentId,...(scoped?{expectedModel:scoped.modelId,verifiedSourcePrompt:evidence.prompt,verifiedSourceSnapshotHash:evidence.snapshot.snapshotHash,verifiedSourceSelectionHash:evidence.selectionHash,verifiedSourceBindingHash:evidence.bindingHash}:{}),...(scoped?.imagePlanRequired&&locale==='zh-CN'?{imagePlanRequired:true}:{}),...(imageInstructions?{imageTranslationInstructions:imageInstructions}:{}),...(bibliography?{verifiedBibliographyInstructions:VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS}:{}),signal,onEvent,writingPolicy:context.writingPolicy});
+            output=await producer({claim,locale,workId,source,directory,agentId,origin:client.origin,...(scoped?{expectedModel:scoped.modelId,verifiedSourcePrompt:evidence.prompt,verifiedSourceSnapshotHash:evidence.snapshot.snapshotHash,verifiedSourceSelectionHash:evidence.selectionHash,verifiedSourceBindingHash:evidence.bindingHash}:{}),...(scoped?.imagePlanRequired&&locale==='zh-CN'?{imagePlanRequired:true}:{}),...(imageInstructions?{imageTranslationInstructions:imageInstructions}:{}),...(bibliography?{verifiedBibliographyInstructions:VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS}:{}),signal,onEvent,writingPolicy:context.writingPolicy});
             if(requiredModel||scoped)requirePilotEdition(output);
             if(bibliography)output=applyVerifiedBibliography(output,bibliography,locale);
             let fresh=null;if(scoped)try{fresh=await sourceStage.restore({claim,slot:sourceSlot,directory,signal});if(protocol.canonical(sourceProof(evidence,output))!==protocol.canonical(sourceProof(fresh,output)))throw Error('写作期间原来源发生变化，已保留结果等待核对');}catch(error){await save(resultFile,output);throw error;}
             await save(resultFile,output);if(scoped)await save(join(directory,locale+'.result-source-binding.json'),sourceProof(fresh,output));
+            }
           }
           if(requiredModel||scoped)requirePilotEdition(output);
           if(scoped){const evidence=await sourceStage.restore({claim,slot:sourceSlot,directory,signal});await requireSourceProof(join(directory,locale+'.result-source-binding.json'),evidence,output);requireScopedSkills(output);verifyAutomatedReferences(output);const verifiedEdition={...output,locale};await verifyVerifiedBibliography({snapshot:evidence.snapshot,directory,edition:verifiedEdition,signal});const credits=await imageCreditContext({directory,claim,client,edition:verifiedEdition});if((await sourceStage.verifyEdition({claim,slot:sourceSlot,directory,edition:verifiedEdition,signal,...credits}))?.ok!==true)throw Error('原稿来源核验未通过');}
