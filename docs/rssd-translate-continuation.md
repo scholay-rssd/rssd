@@ -2,6 +2,8 @@
 
 This is the application companion to [rssd-center PR 9](https://github.com/scholay-rssd/rssd-center/pull/9) at `ffb0886cd18b39a007eebe784e4c08eab11188b0`. It does not merge, deploy, claim, submit or publish. Do not treat `177f5f87` or `9632f4fd` as the advertised contract version.
 
+Default `enqueue-translate` **may still create publication tasks** after accept when the section has English targets. For one existing work stored as English only, with exclusive device claim and zero publications, use [`store-en`](rssd-store-only-translate.md) (`contracts.storeOnlyTranslate` v1 eleven guarantees, center PR 10 `f38d8e6b`). Do not pass `--store-only` to `enqueue-translate`. Do not treat `1db773af` as this pack.
+
 `cloud-sync` remains old website-artifact readback, not a launch path. `SCHOLAY_CLOUD_EXECUTOR` and `rssd produce` are also not this path.
 
 ## Official executor

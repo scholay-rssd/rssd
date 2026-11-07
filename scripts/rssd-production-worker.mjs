@@ -15,7 +15,7 @@ import {imageCreditContext,validateReusedImageCredits} from './rssd-image-credit
 import {verifyStoredVisualReview} from './rssd-image-visual-review.mjs';
 import {imageTranslationInstructions,orderedOriginalImages} from './rssd-image-translation-prompt.mjs';
 import {prepareVerifiedBibliography,applyVerifiedBibliography,verifyVerifiedBibliography,VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS} from './rssd-verified-bibliography.mjs';
-import {assertBoundSourceCurrent,requireTranslateClaim,requireTranslatePacket} from './rssd-translate-continuation.mjs';
+import {assertBoundSourceCurrent,assertStoreOnlyReceipt,requireStoreOnlyContract,requireTranslateClaim,requireTranslatePacket,storeOnlyClaimBody} from './rssd-translate-continuation.mjs';
 
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};
 const save=writeCenterJson;
@@ -66,9 +66,14 @@ function requireScopedPacket(packet,scope){
   requireScopedSkills(packet.editions[0]);
   verifyAutomatedReferences(packet.editions[0]);
 }
-export async function runProductionTurn({client,home,producer,agentId,workspaceIds,sectionIds=[],demandId,resume=false,requiredModel,productionScope,writingSkillScope,sourceStage,verifyReady,signal,onEvent=()=>{},writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}}){
+export async function runProductionTurn({client,home,producer,agentId,workspaceIds,sectionIds=[],demandId,resume=false,storeOnly=false,requiredModel,productionScope,writingSkillScope,sourceStage,verifyReady,signal,onEvent=()=>{},writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}}){
   if(requiredModel&&(requiredModel!=='gpt-6.1-terra'||agentId!=='codex'||workspaceIds?.length!==1||workspaceIds[0]!=='metho'||sectionIds.length!==1||sectionIds[0]!=='methods'))throw Error('自动试点的模型或工作范围不匹配');
   if(requiredModel&&productionScope)throw Error('不能同时使用两种生产守卫');
+  if(storeOnly){
+    if(productionScope||requiredModel)throw Error('Store-only English cannot run under scoped auto-publish production');
+    await requireStoreOnlyContract(client);
+    if(!demandId)throw Object.assign(Error('Store-only English requires a pointed demandId'),{code:'store_only_required',status:403});
+  }
   const scoped=normalizeScope(productionScope,{agentId,workspaceIds,sectionIds,demandId,verifyReady});
   if(scoped&&(!sourceStage||typeof sourceStage.restore!=='function'||typeof sourceStage.verifyEdition!=='function'))throw Object.assign(Error('来源验证与冻结阶段未配置，原任务保持待处理'),{code:'source_verification_unavailable'});
   const sourceSlot=scoped?{...scoped,id:scoped.demandId}:null;
@@ -148,7 +153,15 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
     const flushScoped=async original=>{for(const entry of await outbox.list())if(entry.state==='pending'){await attest(entry.packet,original);await ready('before_submission');await outbox.flushOne(entry.requestId);}};
     if(requiredModel)for(const entry of await outbox.list())if(['pending','needs_attention'].includes(entry.state))requirePilotPacket(entry.packet);
     if(scoped){await ready('before_recovery');for(const entry of await outbox.list())if(['pending','needs_attention'].includes(entry.state))requireScopedPacket(entry.packet,scoped);}
-    else await outbox.flush();
+    else if(!storeOnly) await outbox.flush();
+    else{
+      for(const entry of await outbox.list()){
+        if(entry.storeOnly!==true||demandId&&entry.packet.demandId!==demandId)continue;
+        try{await client.submission(entry.requestId);}catch(error){if(error.status===404)continue;throw error;}
+        const flushed=await outbox.flushOne(entry.requestId,{lookupOnly:true});
+        if(flushed.state==='accepted')assertStoreOnlyReceipt(flushed.receipt,entry.packet,{workerId:client.workerId});
+      }
+    }
     let claim,offline=false;
     try{claim=await client.activeClaim();}
     catch(error){
@@ -190,20 +203,34 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
       }
     }
     if(!claim){
+      if(storeOnly){
+        const done=(await outbox.list()).filter(entry=>entry.state==='accepted'&&entry.storeOnly===true&&(!demandId||entry.packet.demandId===demandId)&&entry.receipt?.demandState==='completed');
+        if(done.length){
+          for(const entry of done)assertStoreOnlyReceipt(entry.receipt,entry.packet,{workerId:client.workerId});
+          await clearCompletedClaim(home,client.origin,await outbox.list());
+          return {state:'accepted',demandId:demandId||done[0].packet.demandId,workId:done[0].packet.workId,submissions:done.map(entry=>({requestId:entry.requestId,state:entry.state,receipt:entry.receipt}))};
+        }
+      }
       // A flush can leave a request unresolved (or requiring attention).
       // Preserve the original packet and do not claim another demand until
       // its receipt is reconciled. An already active claim may still resume.
       const unresolved=(await outbox.list()).filter(entry=>entry.state!=='accepted');
-      if(unresolved.length){
+      const blocking=storeOnly&&demandId?[]:unresolved;
+      if(blocking.length){
         await client.heartbeat({state:'blocked',agentId,message:'原提交尚未确认，已保留并停止领取'}).catch(()=>{});
         return {state:'pending',message:'原提交尚未确认，已保留并停止领取'};
       }
-      await save(activeFile,{origin:client.origin,claim:null});await ready('before_claim');claim=await client.claim({workspaceIds,sectionIds,...(demandId?{demandId}:{})});
+      await save(activeFile,{origin:client.origin,claim:null});await ready('before_claim');
+      claim=await client.claim(storeOnly?storeOnlyClaimBody({workspaceIds,sectionIds,demandId}):{workspaceIds,sectionIds,...(demandId?{demandId}:{})});
     }
     if(!claim){await client.heartbeat({state:'idle',agentId});return {state:'idle'};}
     // Save a newly acquired identity before any later validation or network
     // operation, so an ineligible claim can still be released or recovered.
     await save(activeFile,{origin:client.origin,claim});
+    if(claim.payload?.storeOnly===true){
+      if(!storeOnly)throw Object.assign(Error('Store-only demand requires --store-only / storeOnly:true'),{code:'store_only_required',status:403});
+      await requireStoreOnlyContract(client);
+    }else if(storeOnly)throw Object.assign(Error('Claim is not store-only'),{code:'not_store_only',status:409});
     if(!workspaceIds.includes(claim.workspaceId)||sectionIds.length&&!sectionIds.includes(claim.sectionId))throw Error('The active demand is outside the selected scope; resume that scope or release it explicitly');
     if(scoped)try{requireScopedClaim(claim,scoped);}catch(error){try{await client.changeDemand(claim.id,{action:'blocked',claimToken:claim.claimToken,message:error.message});}catch{}throw error;}
     if(requiredModel&&(claim.kind!=='write'||claim.payload.requiredLocales?.length!==1||claim.payload.requiredLocales[0]!=='zh-CN')){
@@ -293,10 +320,13 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
         if(requiredModel)requirePilotPacket(packet);
         if(translateSource)requireTranslatePacket(packet,claim);
         if(scoped){await attest(packet,claim);await attestOutbox(claim);await ready('before_submission');}
-        await outbox.enqueue(packet);if(scoped){await attestOutbox(claim);await attest(packet,claim);await ready('before_submission');}else await outbox.flush();
-        const result=await outbox.flushOne(packet.requestId,{retry:resume});results.push(result);
+        await outbox.enqueue(packet,{storeOnly:storeOnly===true||claim.payload?.storeOnly===true});if(scoped){await attestOutbox(claim);await attest(packet,claim);await ready('before_submission');}else if(!storeOnly) await outbox.flush();
+        else await outbox.flushOne(packet.requestId);
+        const result=await outbox.flushOne(packet.requestId,{retry:resume});
+        if(storeOnly&&result.state==='accepted')assertStoreOnlyReceipt(result.receipt,packet,{workerId:client.workerId||claim.payload?.storeOnlyWorkerId});
+        results.push(result);
         onEvent({type:result.state,demandId:claim.id,locale,requestId:packet.requestId});
-        if(result.state==='needs_attention')throw Error(result.error?.message||'Submission needs attention');
+        if(result.state==='needs_attention')throw Object.assign(Error(result.error?.message||'Submission needs attention'),{code:result.error?.code,status:result.error?.status});
         // Continue producing the remaining language even if the center goes offline.
       }
       const pending=results.some(r=>r.state==='pending');

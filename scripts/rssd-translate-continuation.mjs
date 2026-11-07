@@ -1,5 +1,7 @@
 import protocol from '../contracts/rssd-v1.cjs';
 import {CenterError} from './rssd-center-client.mjs';
+import {STORE_ONLY_CONTRACT,assertStoreOnlyReceipt,requireStoreOnlyContract,storeOnlyTranslateContract,supportsStoreOnlyTranslate} from './rssd-store-only-contract.mjs';
+export {STORE_ONLY_CONTRACT,assertStoreOnlyReceipt,requireStoreOnlyContract,storeOnlyTranslateContract,supportsStoreOnlyTranslate};
 
 export const TRANSLATE_TARGET_LOCALE='en';
 export const TRANSLATE_SOURCE_LOCALE='zh-CN';
@@ -19,7 +21,6 @@ export function supportsTranslateContinuation(overview){
   if(!row||typeof row!=='object'||Array.isArray(row)||!Number.isInteger(row.version)||row.version<TRANSLATE_CONTRACT.requiredVersion||!Array.isArray(row.guarantees))return false;
   return TRANSLATE_CONTRACT.guarantees.every(token=>row.guarantees.includes(token));
 }
-
 export function translateDemandId({workId,revision,targetLocale=TRANSLATE_TARGET_LOCALE}){
   return 'tr-'+protocol.hash({workId,locale:TRANSLATE_SOURCE_LOCALE,revision,targetLocale}).slice(0,40);
 }
@@ -92,6 +93,10 @@ export async function requireTranslateContract(client){
   const overview=await readOverview(client);
   if(!supportsTranslateContinuation(overview))fail('Center did not advertise a supported translateContinuation contract; enqueue refused','contract_unavailable',409);
 }
+export function storeOnlyClaimBody({workspaceIds,sectionIds,demandId}={}){
+  if(!demandId)fail('Store-only English requires --id <demandId> with storeOnly:true','store_only_required',403);
+  return {demandId,storeOnly:true,...(workspaceIds?.length?{workspaceIds}:{}),...(sectionIds?.length?{sectionIds}:{})};
+}
 
 export async function enqueueTranslateContinuation({client,workId,revision}={}){
   if(!client||typeof client.work!=='function'||typeof client.createDemand!=='function'||typeof client.demands!=='function')fail('Missing center work and demand client');
@@ -119,4 +124,33 @@ export async function enqueueTranslateContinuation({client,workId,revision}={}){
   if(payload.kind&&payload.kind!=='translate'||payload.source&&protocol.canonical(payload.source)!==protocol.canonical(bound.source)||payload.requiredLocales&&protocol.canonical([...payload.requiredLocales].sort())!==protocol.canonical(requiredLocales))fail('Demand receipt changed the work or source bind','identity_conflict',409);
   if(typeof payload.sourceHash!=='string'||payload.sourceHash!==bound.sourceHash)fail('Center did not bind the current Chinese source hash','source_unbound',409);
   return {status,id:result.id,workspaceId:bound.workspaceId,sectionId:bound.sectionId,workId:bound.workId,source:bound.source,sourceHash:payload.sourceHash,demand,receipt:result};
+}
+
+export async function enqueueStoreOnlyTranslate({client,workId,revision}={}){
+  if(!client||typeof client.work!=='function'||typeof client.createDemand!=='function'||typeof client.demands!=='function')fail('Missing center work and demand client');
+  await requireStoreOnlyContract(client);
+  const id=protocol.id(workId,'workId');
+  const work=await client.work(id);
+  if(!work||work.id!==id)fail('Work identity does not match the requested id','identity_conflict',409);
+  const bound=boundTranslateSource(work,{revision});
+  if(bound.skip)return {status:'skipped',reason:'locale_present',workId:bound.workId,workspaceId:bound.workspaceId,sectionId:bound.sectionId,source:bound.source,sourceHash:bound.sourceHash,existingLocales:bound.present,storeOnly:true};
+  const requiredLocales=[TRANSLATE_TARGET_LOCALE];
+  const demand=protocol.demand({
+    id:translateDemandId({workId:bound.workId,revision:bound.source.revision}),
+    workspaceId:bound.workspaceId,sectionId:bound.sectionId,kind:'translate',
+    title:protocol.text(bound.title||('Store English '+bound.workId),'title',500),
+    brief:'Store English only for existing work '+bound.workId+' from zh-CN revision '+bound.source.revision+'. Do not rewrite the Chinese edition. Do not create publication tasks.',
+    requiredLocales,source:bound.source,priority:10,
+  });
+  const open=await listOpenTranslates(client,bound.workspaceId,bound.workId);
+  if(open.some(row=>!sameTranslateBind(row,bound.source,bound.sourceHash,requiredLocales)))fail('An open translate task already exists for this work; wait for expiry, release or completion before rebinding','open_translate_conflict',409);
+  const result=await client.createDemand({...demand,storeOnly:true});
+  if(result?.status==='skipped')return {status:'skipped',reason:result.reason||'locale_present',workId:result.workId||bound.workId,workspaceId:bound.workspaceId,sectionId:bound.sectionId,source:bound.source,sourceHash:bound.sourceHash,existingLocales:result.existingLocales||bound.present,storeOnly:true};
+  const payload=result?.payload,status=result?.status==='existing'?'existing':'created';
+  if(!result||!result.id||!payload)fail('Center did not accept the store-only translate demand','invalid_response');
+  if(result.id!==demand.id&&status==='created')fail('Created demand identity does not match the original request','identity_conflict',409);
+  if(payload.kind&&payload.kind!=='translate'||payload.source&&protocol.canonical(payload.source)!==protocol.canonical(bound.source)||payload.requiredLocales&&protocol.canonical([...payload.requiredLocales].sort())!==protocol.canonical(requiredLocales))fail('Demand receipt changed the work or source bind','identity_conflict',409);
+  if(typeof payload.sourceHash!=='string'||payload.sourceHash!==bound.sourceHash)fail('Center did not bind the current Chinese source hash','source_unbound',409);
+  if(payload.storeOnly!==true||typeof payload.storeOnlyWorkerId!=='string'||!payload.storeOnlyWorkerId)fail('Center did not freeze store-only intent; refused to treat this as default translate','not_store_only',409);
+  return {status,id:result.id,workspaceId:bound.workspaceId,sectionId:bound.sectionId,workId:bound.workId,source:bound.source,sourceHash:payload.sourceHash,storeOnly:true,storeOnlyWorkerId:payload.storeOnlyWorkerId,demand:{...demand,storeOnly:true},receipt:result};
 }
