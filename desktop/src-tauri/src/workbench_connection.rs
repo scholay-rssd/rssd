@@ -36,6 +36,7 @@ fn token_cache()->&'static crate::website_credentials::WebsiteCredentials { TOKE
 pub(crate) fn cached_token()->Result<Option<String>,String>{token_cache().cached(&service()?)}
 pub fn read_token()->Result<Option<String>,String>{read_for(&service()?)}
 pub(crate) fn read_for(service:&str)->Result<Option<String>,String>{token_cache().read(service,||read_vault(service))}
+pub(crate) fn read_for_fresh(service:&str)->Result<Option<String>,String>{read_vault(service)}
 pub(crate) fn read_for_background(service:&str)->Result<Option<String>,String>{background_credential(token_cache(),service,||read_vault_background(service))}
 pub(crate) async fn read_for_background_bounded(service:&str)->Result<Option<String>,String>{
     let key=service.to_owned();
@@ -124,6 +125,21 @@ pub async fn workbench_connection(_space: crate::spaces::Lease, webview:tauri::W
 #[cfg(test)]
 mod background_tests {
     use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn authorization_recovery_reads_vault_changes_from_another_process(){
+        let service=format!("scholay-tody.test.authorization.{}",uuid::Uuid::new_v4());
+        struct Cleanup(String);
+        impl Drop for Cleanup {fn drop(&mut self){let _=forget_for(&self.0);}}
+        let _cleanup=Cleanup(service.clone());
+        let pending=r#"{"ready":false}"#;
+        let ready=r#"{"ready":true,"token":"synthetic"}"#;
+        save_for(&service,pending).unwrap();
+        // Another protocol process writes the exchanged result without this cache.
+        save_vault(&service,ready).unwrap();
+        assert_eq!(read_for(&service).unwrap().as_deref(),Some(pending));
+        assert_eq!(read_for_fresh(&service).unwrap().as_deref(),Some(ready));
+    }
     #[test]
     fn background_recovery_uses_only_the_matching_cached_service(){
         let cache=crate::website_credentials::WebsiteCredentials::default();cache.save("site-a","synthetic",||Ok(())).unwrap();
