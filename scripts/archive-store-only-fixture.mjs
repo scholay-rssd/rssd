@@ -1,5 +1,6 @@
 import {createHash} from 'node:crypto';
-import {mkdir,readFile,rm,writeFile} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -18,10 +19,10 @@ async function extractTarGz(archive,destination){
   if(tar.status!==0)throw Error('tar extract failed: '+(tar.stderr||'').toString());
 }
 
-export async function archiveStoreOnlyFixture(out,base=root){
-  const tree=requireStoreOnlyFixtureTree(base);
+export async function archiveStoreOnlyFixture(out,base=root,{extractTree=false}={}){
+  const fixture=requireStoreOnlyFixtureTree(base);
   const appHead=git(['rev-parse','HEAD'],base);
-  const sitesSha=tree.sitesGitlink;
+  const sitesSha=fixture.sitesGitlink;
   const sitesHead=git(['-C','sites','rev-parse','HEAD'],base);
   if(sitesHead!==sitesSha)throw Error('sites worktree '+sitesHead+' does not match gitlink '+sitesSha+'; checkout the recorded submodule');
   await rm(out,{recursive:true,force:true});
@@ -32,13 +33,17 @@ export async function archiveStoreOnlyFixture(out,base=root){
   if(appResult.status!==0)throw Error('git archive app failed');
   const sitesResult=spawnSync('git',['-C','sites','archive','--format=tar.gz','-o',sitesArchive,'HEAD'],{cwd:base});
   if(sitesResult.status!==0)throw Error('git archive sites submodule failed');
-  const combined=join(out,'tree');
-  await extractTarGz(appArchive,combined);
-  await mkdir(join(combined,'sites'),{recursive:true});
-  await extractTarGz(sitesArchive,join(combined,'sites'));
-  const extractedProfiles=JSON.parse(await readFile(join(combined,STORE_ONLY_PROFILES),'utf8'));
-  if(!extractedProfiles.some(site=>site.id==='enter'&&typeof site.origin==='string'&&site.origin.startsWith('https://')))throw Error('combined archive is missing the real enter profile');
-  await import(pathToFileURL(join(combined,'scripts/site-config.mjs')).href);
+  const combined=extractTree?join(out,'tree'):await mkdtemp(join(tmpdir(),'rssd-store-only-extract-'));
+  try{
+    await extractTarGz(appArchive,combined);
+    await mkdir(join(combined,'sites'),{recursive:true});
+    await extractTarGz(sitesArchive,join(combined,'sites'));
+    const extractedProfiles=JSON.parse(await readFile(join(combined,STORE_ONLY_PROFILES),'utf8'));
+    if(!extractedProfiles.some(site=>site.id==='enter'&&typeof site.origin==='string'&&site.origin.startsWith('https://')))throw Error('combined archive is missing the real enter profile');
+    await import(pathToFileURL(join(combined,'scripts/site-config.mjs')).href);
+  }finally{
+    if(!extractTree)await rm(combined,{recursive:true,force:true});
+  }
   const appBytes=await readFile(appArchive);
   const sitesBytes=await readFile(sitesArchive);
   const manifest={
@@ -60,7 +65,7 @@ export async function archiveStoreOnlyFixture(out,base=root){
   };
   await writeFile(join(out,'MANIFEST.json'),JSON.stringify(manifest,null,2)+'\n');
   await writeFile(join(out,'SHA256SUMS.txt'),manifest.app.sha256+'  '+manifest.app.archive+'\n'+manifest.sites.sha256+'  '+manifest.sites.archive+'\n');
-  await writeFile(join(out,'README.md'),`# Application store-only fixture tree (no credentials)
+  await writeFile(join(out,'README.md'),`# Application store-only fixture pack (no credentials)
 
 Node.js **24+** is required (\`package.json\` engines, headless packager). Node 22 cannot be treated as a complete verification.
 
@@ -80,18 +85,22 @@ node --test tests/rssd-protocol.test.mjs tests/rssd-center-client.test.mjs tests
 
 Do not \`echo '[]' > sites/profiles.json\`. Headless packaging copies the same real file (\`desktop/scripts/prepare-workbench.mjs\`).
 
-## This pack
+## This pack (extract on local disk, Node 24+)
 
-1. Extract \`${manifest.app.archive}\` (application HEAD \`${appHead}\`).
-2. Extract \`${manifest.sites.archive}\` **into** \`sites/\` (submodule \`${sitesSha}\`).
-3. \`npm ci --omit=dev\` (needs \`markdown-it\`).
-4. Run the tests above with Node 24+.
-
-Combined tree is also under \`tree/\` in this directory after the archive script runs.
+\`\`\`sh
+replay=$(mktemp -d)
+tar -xzf ${manifest.app.archive} -C "$replay"
+mkdir -p "$replay/sites"
+tar -xzf ${manifest.sites.archive} -C "$replay/sites"
+cd "$replay"
+node -v   # must be v24+
+npm ci --omit=dev --no-audit --no-fund
+node --test tests/rssd-protocol.test.mjs tests/rssd-center-client.test.mjs tests/rssd-production-worker.test.mjs tests/rssd-translate-continuation.test.mjs tests/rssd-store-only-translate.test.mjs tests/rssd-store-only-fixture.test.mjs tests/rssd-translate-isolated-acceptance.test.mjs
+\`\`\`
 
 Mint device tokens only at the test site. Producer remains an in-process mock, not Codex.
 `);
-  return {out,appHead,sitesSha,appArchive,sitesArchive,manifest,combined};
+  return {out,appHead,sitesSha,appArchive,sitesArchive,manifest,combined:extractTree?combined:null};
 }
 
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){

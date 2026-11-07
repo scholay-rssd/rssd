@@ -93,7 +93,16 @@ Or emit the credential-free pack (parent archive **plus** the recorded `sites` t
 node scripts/archive-store-only-fixture.mjs /tmp/rssd-store-only-fixture
 ```
 
-Then extract `rssd-app-*.tar.gz` and extract `rssd-sites-*.tar.gz` into `sites/`. Do not mint production tokens; mint a test device token at the fixture site. The in-test producer is a mock `{title, bodyMarkdown}`, not Codex.
+Then, on local disk with Node 24+:
+
+```sh
+replay=$(mktemp -d)
+tar -xzf rssd-app-*.tar.gz -C "$replay"
+mkdir -p "$replay/sites"
+tar -xzf rssd-sites-*.tar.gz -C "$replay/sites"
+```
+
+Do not mint production tokens; mint a test device token at the fixture site. The in-test producer is a mock `{title, bodyMarkdown}`, not Codex.
 
 ## Fixture vs live
 

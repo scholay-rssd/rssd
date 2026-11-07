@@ -54,7 +54,7 @@ test('an empty stub is not accepted as profiles.json',async t=>{
 
 test('official pack extracts a tree that can import site-config without a stub',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'rssd-store-pack-'));t.after(()=>rm(dir,{recursive:true,force:true}));
-  const packed=await archiveStoreOnlyFixture(dir);
+  const packed=await archiveStoreOnlyFixture(dir,root,{extractTree:true});
   assert.equal(packed.sitesSha,sitesGitlinkSha());
   const extracted=JSON.parse(await readFile(join(packed.combined,STORE_ONLY_PROFILES),'utf8'));
   assert.deepEqual(extracted,readStoreOnlyProfiles());
