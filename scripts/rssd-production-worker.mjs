@@ -15,7 +15,7 @@ import {imageCreditContext,validateReusedImageCredits} from './rssd-image-credit
 import {verifyStoredVisualReview} from './rssd-image-visual-review.mjs';
 import {imageTranslationInstructions,orderedOriginalImages} from './rssd-image-translation-prompt.mjs';
 import {prepareVerifiedBibliography,applyVerifiedBibliography,verifyVerifiedBibliography,VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS} from './rssd-verified-bibliography.mjs';
-import {assertBoundSourceCurrent,requireTranslateClaim,requireTranslatePacket} from './rssd-translate-continuation.mjs';
+import {assertBoundSourceCurrent,assertStoreOnlyReceipt,requireStoreOnlyContract,requireTranslateClaim,requireTranslatePacket,storeOnlyClaimBody} from './rssd-translate-continuation.mjs';
 
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};
 const save=writeCenterJson;
@@ -66,9 +66,14 @@ function requireScopedPacket(packet,scope){
   requireScopedSkills(packet.editions[0]);
   verifyAutomatedReferences(packet.editions[0]);
 }
-export async function runProductionTurn({client,home,producer,agentId,workspaceIds,sectionIds=[],demandId,resume=false,requiredModel,productionScope,writingSkillScope,sourceStage,verifyReady,signal,onEvent=()=>{},writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}}){
+export async function runProductionTurn({client,home,producer,agentId,workspaceIds,sectionIds=[],demandId,resume=false,storeOnly=false,requiredModel,productionScope,writingSkillScope,sourceStage,verifyReady,signal,onEvent=()=>{},writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}}){
   if(requiredModel&&(requiredModel!=='gpt-6.1-terra'||agentId!=='codex'||workspaceIds?.length!==1||workspaceIds[0]!=='metho'||sectionIds.length!==1||sectionIds[0]!=='methods'))throw Error('自动试点的模型或工作范围不匹配');
   if(requiredModel&&productionScope)throw Error('不能同时使用两种生产守卫');
+  if(storeOnly){
+    if(productionScope||requiredModel)throw Error('Store-only English cannot run under scoped auto-publish production');
+    await requireStoreOnlyContract(client);
+    if(!demandId)throw Object.assign(Error('Store-only English requires a pointed demandId'),{code:'store_only_required',status:403});
+  }
   const scoped=normalizeScope(productionScope,{agentId,workspaceIds,sectionIds,demandId,verifyReady});
   if(scoped&&(!sourceStage||typeof sourceStage.restore!=='function'||typeof sourceStage.verifyEdition!=='function'))throw Object.assign(Error('来源验证与冻结阶段未配置，原任务保持待处理'),{code:'source_verification_unavailable'});
   const sourceSlot=scoped?{...scoped,id:scoped.demandId}:null;
@@ -198,7 +203,8 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
         await client.heartbeat({state:'blocked',agentId,message:'原提交尚未确认，已保留并停止领取'}).catch(()=>{});
         return {state:'pending',message:'原提交尚未确认，已保留并停止领取'};
       }
-      await save(activeFile,{origin:client.origin,claim:null});await ready('before_claim');claim=await client.claim({workspaceIds,sectionIds,...(demandId?{demandId}:{})});
+      await save(activeFile,{origin:client.origin,claim:null});await ready('before_claim');
+      claim=await client.claim(storeOnly?storeOnlyClaimBody({workspaceIds,sectionIds,demandId}):{workspaceIds,sectionIds,...(demandId?{demandId}:{})});
     }
     if(!claim){await client.heartbeat({state:'idle',agentId});return {state:'idle'};}
     // Save a newly acquired identity before any later validation or network
@@ -218,6 +224,11 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
       await client.heartbeat({state:'blocked',agentId,message:String(error.message).slice(0,2000)}).catch(()=>{});
       await save(join(directory,'failure.json'),{message:error.message,at:new Date().toISOString(),...(error.diagnostics?{diagnostics:error.diagnostics}:{})});throw error;
     }
+    if(claim.payload?.storeOnly===true){
+      if(!storeOnly)throw Object.assign(Error('Store-only demand requires --store-only / storeOnly:true'),{code:'store_only_required',status:403});
+      await requireStoreOnlyContract(client);
+      if(claim.payload.storeOnly!==true)throw Object.assign(Error('Claim did not freeze store-only intent'),{code:'not_store_only',status:409});
+    }else if(storeOnly)throw Object.assign(Error('Claim is not store-only'),{code:'not_store_only',status:409});
     const translateSource=claim.kind==='translate'?requireTranslateClaim(claim):null;
     const workId=translateSource?.workId||claim.payload.workId||claim.payload.source?.workId||'work-'+protocol.hash(claim.id).slice(0,32);
     const contextFile=join(directory,'context.json');
@@ -293,10 +304,13 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
         if(requiredModel)requirePilotPacket(packet);
         if(translateSource)requireTranslatePacket(packet,claim);
         if(scoped){await attest(packet,claim);await attestOutbox(claim);await ready('before_submission');}
-        await outbox.enqueue(packet);if(scoped){await attestOutbox(claim);await attest(packet,claim);await ready('before_submission');}else await outbox.flush();
-        const result=await outbox.flushOne(packet.requestId,{retry:resume});results.push(result);
+        await outbox.enqueue(packet,{storeOnly:storeOnly===true});if(scoped){await attestOutbox(claim);await attest(packet,claim);await ready('before_submission');}else if(!storeOnly) await outbox.flush();
+        else await outbox.flushOne(packet.requestId);
+        const result=await outbox.flushOne(packet.requestId,{retry:resume});
+        if(storeOnly&&result.state==='accepted')assertStoreOnlyReceipt(result.receipt,packet,{workerId:client.workerId||claim.payload?.storeOnlyWorkerId});
+        results.push(result);
         onEvent({type:result.state,demandId:claim.id,locale,requestId:packet.requestId});
-        if(result.state==='needs_attention')throw Error(result.error?.message||'Submission needs attention');
+        if(result.state==='needs_attention')throw Object.assign(Error(result.error?.message||'Submission needs attention'),{code:result.error?.code,status:result.error?.status});
         // Continue producing the remaining language even if the center goes offline.
       }
       const pending=results.some(r=>r.state==='pending');

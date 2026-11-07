@@ -28,6 +28,15 @@ rssd center enqueue-translate --work <existingWorkId>
 rssd center work --agent codex --workspace <workspaceId> --section <sectionId> --id <demandId> --once
 ```
 
+That default path may publish. For one existing work stored as English only (zero publications, creating device only), after center PR 10 `f38d8e6b` is deployed and overview advertises `contracts.storeOnlyTranslate` v1 with all eleven guarantees:
+
+```sh
+rssd center store-en --work <existingWorkId>
+rssd center work --agent codex --workspace <workspaceId> --id <demandId> --once --store-only
+```
+
+See `docs/rssd-store-only-translate.md`. Center CI success is not a live deploy.
+
 Omit `--once` only when explicitly starting ongoing work. Use `--section` to
 limit scope and `--resume` to resume this device's blocked claim. A quota failure retains
 the task and generated result; it does not switch subscriptions or reassign

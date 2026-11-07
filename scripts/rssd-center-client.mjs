@@ -57,18 +57,21 @@ async function json(path){return JSON.parse(await readFile(path,'utf8'));}
 export class CenterOutbox {
   constructor({directory,client}){this.directory=directory;this.client=client;}
   path(requestId){return join(this.directory,protocol.hash(protocol.id(requestId))+'.json');}
-  async enqueue(input){
-    const packet=protocol.submission(input),path=this.path(packet.requestId),payloadHash=protocol.hash(packet);
+  async enqueue(input,{storeOnly=false}={}){
+    const packet=protocol.submission(input),path=this.path(packet.requestId);
+    const payloadHash=storeOnly?protocol.hash({storeOnly:true,packet}):protocol.hash(packet);
     return withFileLock(path+'.lock',async()=>{
-      try{const old=await json(path);this.verify(old);if(old.payloadHash!==payloadHash)throw new CenterError('Request identity already contains different content',{status:409,code:'request_conflict'});return old;}
+      try{const old=await json(path);this.verify(old);if(old.payloadHash!==payloadHash||Boolean(old.storeOnly)!==Boolean(storeOnly))throw new CenterError('Request identity already contains different content',{status:409,code:'request_conflict'});return old;}
       catch(error){if(error.code!=='ENOENT')throw error;}
       const entry={version:1,origin:this.client.origin,requestId:packet.requestId,payloadHash,packet,
-        state:'pending',attempts:0,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+        state:'pending',attempts:0,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),...(storeOnly?{storeOnly:true}:{})};
       await atomic(path,entry);return entry;
     });
   }
   verify(entry){
-    if(entry.version!==1||entry.origin!==this.client.origin||entry.requestId!==entry.packet?.requestId||protocol.hash(entry.packet)!==entry.payloadHash)
+    const storeOnly=entry.storeOnly===true;
+    const expected=storeOnly?protocol.hash({storeOnly:true,packet:entry.packet}):protocol.hash(entry.packet);
+    if(entry.version!==1||entry.origin!==this.client.origin||entry.requestId!==entry.packet?.requestId||expected!==entry.payloadHash||(entry.storeOnly!==undefined&&entry.storeOnly!==true))
       throw new CenterError('Outbox identity or content changed; preserve the files for recovery',{code:'outbox_conflict'});
   }
   async list(){
@@ -83,6 +86,10 @@ export class CenterOutbox {
       if(entry.state==='accepted'||entry.state==='needs_attention'&&!retry)return entry;
       entry.attempts++;entry.updatedAt=new Date().toISOString();await atomic(path,entry);
       try{
+        if(entry.storeOnly===true){
+          const {requireStoreOnlyContract}=await import('./rssd-store-only-contract.mjs');
+          await requireStoreOnlyContract(this.client);
+        }
         let receipt;
         try{receipt=await this.client.submission(entry.requestId);}
         catch(error){if(error.status!==404||lookupOnly)throw error;await uploadPacketMedia({packet:entry.packet,directory:join(this.directory,'../media'),client:this.client});receipt=await this.client.submit(entry.packet);}
@@ -92,10 +99,16 @@ export class CenterOutbox {
           const received=receipt.editions.find(item=>item.locale===edition.locale);
           return received?.hash!==protocol.hash(edition)||received?.revision!==entry.packet.baseRevisions[edition.locale]+1;
         }))throw new CenterError('Center receipt does not match the edition content',{code:'receipt_mismatch'});
+        if(entry.storeOnly===true){
+          if(receipt.storeOnly!==true||typeof receipt.storeOnlyWorkerId!=='string'||!receipt.storeOnlyWorkerId||!Array.isArray(receipt.publicationIds)||receipt.publicationIds.length)
+            throw new CenterError('Store-only receipt is missing storeOnly:true, storeOnlyWorkerId, or included publications; not treated as success',{status:409,code:'not_store_only'});
+          if(this.client.workerId&&receipt.storeOnlyWorkerId!==this.client.workerId)
+            throw new CenterError('Store-only receipt is bound to a different device; not treated as success',{status:409,code:'not_store_only'});
+        }
         entry.state='accepted';entry.receipt=receipt;delete entry.error;
       }catch(error){
         entry.error={message:error.message,code:error.code||'network_error',status:error.status||0};
-        entry.state=error.status>=400&&error.status<500&&![408,429].includes(error.status)||['receipt_mismatch','outbox_conflict'].includes(error.code)?'needs_attention':'pending';
+        entry.state=error.status>=400&&error.status<500&&![408,429].includes(error.status)||['receipt_mismatch','outbox_conflict','not_store_only','contract_unavailable'].includes(error.code)?'needs_attention':'pending';
       }
       entry.updatedAt=new Date().toISOString();await atomic(path,entry);return entry;
     },{timeout:1000});
@@ -112,7 +125,7 @@ export class CenterOutbox {
         throw new CenterError('Repair is limited to completing the media manifest',{status:409,code:'request_conflict'});
       try{const receipt=await this.client.submission(entry.requestId);if(receipt)throw new CenterError('Center already accepted the original request; submit a new revision',{status:409,code:'request_conflict'});}
       catch(error){if(error.status!==404)throw error;}
-      entry.packet=next;entry.payloadHash=protocol.hash(next);entry.state='pending';delete entry.error;
+      entry.packet=next;entry.payloadHash=entry.storeOnly===true?protocol.hash({storeOnly:true,packet:next}):protocol.hash(next);entry.state='pending';delete entry.error;
       entry.updatedAt=new Date().toISOString();await atomic(path,entry);return entry;
     },{timeout:1000});
   }
