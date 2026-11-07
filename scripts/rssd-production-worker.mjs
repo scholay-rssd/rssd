@@ -15,6 +15,7 @@ import {imageCreditContext,validateReusedImageCredits} from './rssd-image-credit
 import {verifyStoredVisualReview} from './rssd-image-visual-review.mjs';
 import {imageTranslationInstructions,orderedOriginalImages} from './rssd-image-translation-prompt.mjs';
 import {prepareVerifiedBibliography,applyVerifiedBibliography,verifyVerifiedBibliography,VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS} from './rssd-verified-bibliography.mjs';
+import {assertBoundSourceCurrent,requireTranslateClaim,requireTranslatePacket} from './rssd-translate-continuation.mjs';
 
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};
 const save=writeCenterJson;
@@ -217,24 +218,32 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
       await client.heartbeat({state:'blocked',agentId,message:String(error.message).slice(0,2000)}).catch(()=>{});
       await save(join(directory,'failure.json'),{message:error.message,at:new Date().toISOString()});throw error;
     }
-    const workId=claim.payload.workId||claim.payload.source?.workId||'work-'+protocol.hash(claim.id).slice(0,32);
+    const translateSource=claim.kind==='translate'?requireTranslateClaim(claim):null;
+    const workId=translateSource?.workId||claim.payload.workId||claim.payload.source?.workId||'work-'+protocol.hash(claim.id).slice(0,32);
     const contextFile=join(directory,'context.json');
     let context=await read(contextFile);
     if(!context){
       let work=null;try{work=await client.work(workId);}catch(error){if(error.status!==404)throw error;}
       const deliveryInstructions=platformProductionInstructions(claim);
       context={work,writingPolicy:deliveryInstructions?{...writingPolicy,instructions:writingPolicy.instructions+deliveryInstructions,deliverySchemaVersion:1}:writingPolicy,baseRevisions:Object.fromEntries((work?.editions||[]).map(e=>[e.locale,e.revision]))};
-      if(claim.payload.source){const source=claim.payload.source;context.source=await client.request('/works/'+encodeURIComponent(source.workId)+'/editions/'+source.locale+'/'+source.revision);}
+      if(claim.payload.source){const source=claim.payload.source;context.source=await client.request('/works/'+encodeURIComponent(source.workId)+'/editions/'+source.locale+'/'+source.revision);if(translateSource)assertBoundSourceCurrent(claim,context.work,context.source);}
       await save(contextFile,context);
     }
     // Compatibility with claims created before common policy snapshots existed.
     if(!context.writingPolicy){context.writingPolicy=writingPolicy;await save(contextFile,context);}
+    if(translateSource){
+      let liveWork=context.work,liveSource=context.source;
+      try{liveWork=await client.work(workId);liveSource=await client.request('/works/'+encodeURIComponent(translateSource.workId)+'/editions/'+translateSource.locale+'/'+translateSource.revision);}
+      catch(error){if(error.status&&error.status<500&&![408,429].includes(error.status))throw error;}
+      assertBoundSourceCurrent(claim,liveWork,liveSource);
+    }
     await save(activeFile,{origin:client.origin,claim});
     const heartbeat=()=>client.heartbeat({state:'running',agentId,message:claim.title}).catch(()=>{});
     await heartbeat();const timer=setInterval(heartbeat,30000);timer.unref?.();
     try{
       const results=[];
-      const locales=[...claim.payload.requiredLocales].sort((a,b)=>a===b?0:a==='zh-CN'?-1:1);
+      const locales=[...claim.payload.requiredLocales].filter(locale=>!translateSource||locale!==translateSource.locale).sort((a,b)=>a===b?0:a==='zh-CN'?-1:1);
+      if(translateSource&&!locales.length)throw Error('Translate claim has no target locale after excluding the Chinese source');
       for(const locale of locales){
         if(claim.payload.submittedLocales?.includes(locale))continue;
         if(signal?.aborted)throw Error('Work was paused on this device');
@@ -268,6 +277,7 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
           packet=protocol.submission({requestId:randomUUID(),workId,workspaceId:claim.workspaceId,sectionId:claim.sectionId,
             demandId:claim.id,claimToken:claim.claimToken,baseRevisions:{[locale]:context.baseRevisions[locale]||0},
             editions:[{...output,locale,translationOf}]});
+          if(translateSource){if(locale===translateSource.locale)throw Error('Translation must not rewrite the source edition');requireTranslatePacket(packet,claim);}
           // Durable packet exists before the first request is made.
           await save(packetFile,packet);
           if(scoped){const evidence=await sourceStage.restore({claim,slot:sourceSlot,directory,signal});await requireSourceProof(join(directory,locale+'.result-source-binding.json'),evidence,await read(resultFile));await save(join(directory,locale+'.packet-source-binding.json'),sourceProof(evidence,packet));}
@@ -281,6 +291,7 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
           }
         }
         if(requiredModel)requirePilotPacket(packet);
+        if(translateSource)requireTranslatePacket(packet,claim);
         if(scoped){await attest(packet,claim);await attestOutbox(claim);await ready('before_submission');}
         await outbox.enqueue(packet);if(scoped){await attestOutbox(claim);await attest(packet,claim);await ready('before_submission');}else await outbox.flush();
         const result=await outbox.flushOne(packet.requestId,{retry:resume});results.push(result);

@@ -14,6 +14,7 @@ import {readConfiguredLabels} from './runtime/labels-source.mjs';
 import {assertAutomaticTopicScope,automaticTopicTick} from './rssd-topic-auto.mjs';
 import {preparedReferencePreview,submitPreparedReferenceRevision} from '../../scripts/rssd-prepared-reference-revision.mjs';
 import {completeStoredEdition} from '../../scripts/rssd-device-media.mjs';
+import {enqueueTranslateContinuation} from '../../scripts/rssd-translate-continuation.mjs';
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw e;}};
 
 export async function centerDesktopCall(method,params={},home=centerHome()){
@@ -99,6 +100,11 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
     const result=await client.createDemand(input);
     if(result?.id!==input.id||result.workspaceId!==input.workspaceId||result.sectionId!==input.sectionId||protocol.canonical(result.payload)!==protocol.canonical(input))throw Error('选题回执与原请求不符，请按原 ID 核对');
     return {id:input.id,workspaceId:input.workspaceId,sectionId:input.sectionId,title:input.title,state:result.state,payload:input};
+  }
+  if(method==='enqueue_translate'){
+    const allowed=new Set(['workId','revision']);
+    if(!params||typeof params!=='object'||Array.isArray(params)||Object.keys(params).some(key=>!allowed.has(key)))throw Error('补译参数无效');
+    return enqueueTranslateContinuation({client,workId:params.workId,revision:params.revision});
   }
   if(method==='works')return client.works({workspaceId:params.workspaceId,search:params.search,limit:params.limit,offset:params.offset});
   if(method==='work')return client.work(params.workId);

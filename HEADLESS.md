@@ -14,6 +14,14 @@ its `SHA256SUMS.txt`, extract it to an empty directory, and install with:
 ~/.local/share/rssd/headless/rssd center work --agent codex --workspace example --once
 ```
 
+English continuation of an existing Chinese work is documented in
+`docs/rssd-translate-continuation.md`. After center PR 9 is deployed:
+
+```sh
+rssd center enqueue-translate --work <existingWorkId>
+rssd center work --agent codex --workspace <workspaceId> --section <sectionId> --id <demandId> --once
+```
+
 Omit `--once` only when explicitly starting ongoing work. Use `--section` to
 limit scope and `--resume` to resume a blocked claim. A quota failure retains
 the task and generated result; it does not switch subscriptions or reassign
