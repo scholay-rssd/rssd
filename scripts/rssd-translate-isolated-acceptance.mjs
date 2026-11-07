@@ -22,11 +22,12 @@ const AUTH_NAME=/(^|\/)(\.codex|\.cursor|auth\.json|credentials|id_rsa|token)(\/
 function fail(message){throw Object.assign(Error(message),{code:'isolated_acceptance_refused'});}
 function sha(value){return createHash('sha256').update(value).digest('hex');}
 export function parseIsolatedArgs(argv=process.argv.slice(2)){
-  const flags={probe:false,run:false,accepted:false,agent:'codex',timeoutMs:30*60000,home:'',codexPath:''};
+  const flags={probe:false,run:false,handshake:false,accepted:false,agent:'codex',timeoutMs:30*60000,home:'',codexPath:''};
   for(let i=0;i<argv.length;i++){
     const arg=argv[i];
     if(arg==='--probe')flags.probe=true;
     else if(arg==='--run')flags.run=true;
+    else if(arg==='--handshake')flags.handshake=true;
     else if(arg==='--i-accept-isolated-provider')flags.accepted=true;
     else if(arg==='--agent')flags.agent=argv[++i];
     else if(arg==='--timeout-ms')flags.timeoutMs=Number(argv[++i]);
@@ -34,7 +35,7 @@ export function parseIsolatedArgs(argv=process.argv.slice(2)){
     else if(arg==='--codex-path')flags.codexPath=argv[++i];
     else fail('Unknown argument: '+arg);
   }
-  if(flags.run)flags.probe=false;else flags.probe=true;
+  if(flags.run||flags.handshake)flags.probe=false;else flags.probe=true;
   return flags;
 }
 export function assertIsolatedGuards({agent,codexPath,accepted,run,env=process.env}={}){
@@ -55,13 +56,27 @@ export async function isolatedSkillSnapshot({claim,directory,writingPolicy}){
   await writeCenterJson(join(directory,'writing-skills.json'),snapshot);
   return snapshot;
 }
-export function isolatedProducer(registry,timeoutMs){
-  return input=>produceCenterEdition(input,{registry,skillSnapshot:isolatedSkillSnapshot,timeoutMs});
+export function isolatedProducer(registry,timeoutMs,extra={}){
+  return input=>produceCenterEdition({...input,...extra},{registry,skillSnapshot:isolatedSkillSnapshot,timeoutMs});
 }
-export function adapterLaunchOk(launch){
+function requireRunnableProbe(probe){
+  if(!probe.adapterPresent)fail(probe.adapterError||('Official ACP adapter '+ISOLATED_ADAPTER+' is missing; unpack the bundle runtime, do not substitute a fake ACP or call `codex` directly'));
+  if(!probe.cliOk)fail('Installed Codex CLI is not on PATH. This VM is not the runner. Shared computer should already have codex 0.163.0.');
+  if(!probe.codexPathBound)fail('Codex ACP adapter was not bound to the installed CLI via CODEX_PATH; it must not fall back to a bundled @openai/codex. This is a launch-config issue, not evidence of login or quota failure.');
+}
+export function adapterPresent(launch){
   const args=launch?.args||[];
   const text=[launch?.command,...args].join(' ');
   return typeof launch?.command==='string'&&args.some(arg=>String(arg).includes('codex-acp'))&&!/\bcodex\b/.test(String(launch.command).split(/[\\/]/).pop()||'')&&!text.includes(' exec');
+}
+export function codexPathBound(launch){
+  const bound=launch?.env?.CODEX_PATH;
+  return typeof bound==='string'&&isAbsolute(bound)&&!AUTH_NAME.test(bound);
+}
+export function adapterLaunchOk(launch){return adapterPresent(launch)&&codexPathBound(launch);}
+export function publicLaunch(launch){
+  if(!launch)return null;
+  return {command:launch.command,args:launch.args,codexPathBound:codexPathBound(launch)};
 }
 async function cliVersion(command='codex'){
   const resolved=executableCommand(command);
@@ -93,6 +108,7 @@ export async function probeIsolatedAcceptance({home,codexPath}={}){
   return {
     home,fixture,workId:ISOLATED_WORK_ID,source:{workId:ISOLATED_WORK_ID,locale:'zh-CN',revision:fixture.source.revision,hash:fixture.source.hash},
     writingPolicy:ARTICLE_WRITING_POLICY,queued,launch,adapterError,cli:cli&&{command:cli.command,args:cli.args},cliVersion:version,
+    adapterPresent:adapterPresent(launch),codexPathBound:codexPathBound(launch),
     adapterOk:adapterLaunchOk(launch),cliOk:!!cli,producer:'produceCenterEdition',adapter:ISOLATED_ADAPTER,
     centerHead:TRANSLATE_CONTRACT.centerHead,fixtureOrigin:fixture.client.origin,
   };
@@ -101,8 +117,7 @@ export async function runIsolatedAcceptance({home,codexPath,timeoutMs,signal}={}
   process.env.RSSD_ISOLATED_ACCEPTANCE='1';
   process.env.SCHOLAY_AGENT_HOME=home;
   const probe=await probeIsolatedAcceptance({home,codexPath});
-  if(!probe.adapterOk)fail(probe.adapterError||('Official ACP adapter '+ISOLATED_ADAPTER+' is missing; unpack the bundle runtime, do not substitute a fake ACP or call `codex` directly'));
-  if(!probe.cliOk)fail('Installed Codex CLI is not on PATH. This VM is not the runner. Shared computer should already have codex 0.163.0.');
+  requireRunnableProbe(probe);
   const registry=new AgentRegistry(join(home,'agents.json'));
   const turn=await runProductionTurn({
     client:probe.fixture.client,home,agentId:'codex',workspaceIds:[ISOLATED_WORKSPACE],sectionIds:[ISOLATED_SECTION],
@@ -118,23 +133,28 @@ async function evidenceFiles(home){
   const outboxDir=join(home,'outbox');
   let outbox=[];
   try{outbox=(await readdir(outboxDir)).filter(name=>name.endsWith('.json')).map(name=>join(outboxDir,name));}catch{outbox=[];}
-  return {job,claim:job&&join(job,'claim.json'),prompt:job&&join(job,'en.prompt.txt'),output:job&&join(job,'en.agent-output.txt'),result:job&&join(job,'en.result.json'),packet:job&&join(job,'en.packet.json'),outbox};
+  return {job,claim:job&&join(job,'claim.json'),prompt:job&&join(job,'en.prompt.txt'),output:job&&join(job,'en.agent-output.txt'),result:job&&join(job,'en.result.json'),packet:job&&join(job,'en.packet.json'),failure:job&&join(job,'failure.json'),outbox};
 }
 
-async function writeEvidence(home,probe,turn){
+export async function writeIsolatedEvidence(home,probe={},turn=null,extra={}){
   const files=await evidenceFiles(home);
-  let packet=null,prompt='';
+  let packet=null,prompt='',failure=null;
   if(files.packet)try{packet=JSON.parse(await readFile(files.packet,'utf8'));}catch{}
   if(files.prompt)try{prompt=await readFile(files.prompt,'utf8');}catch{}
+  if(files.failure)try{failure=JSON.parse(await readFile(files.failure,'utf8'));}catch{}
+  const error=extra.error;
   const evidence={
-    authorization:'t575',mode:turn?'run':'probe',producer:'produceCenterEdition',adapter:ISOLATED_ADAPTER,
-    workId:ISOLATED_WORK_ID,source:probe.source,writingPolicy:probe.writingPolicy,centerHead:probe.centerHead,
-    fixtureOrigin:probe.fixtureOrigin,liveCenter:false,queuedId:probe.queued.id,launch:probe.launch&&{command:probe.launch.command,args:probe.launch.args},
-    adapterOk:probe.adapterOk,cliVersion:probe.cliVersion,adapterError:probe.adapterError||null,
+    authorization:'t575',mode:extra.handshake?'handshake':error?'failed':turn?'run':'probe',producer:'produceCenterEdition',adapter:ISOLATED_ADAPTER,
+    workId:ISOLATED_WORK_ID,source:probe.source||null,writingPolicy:probe.writingPolicy||null,centerHead:probe.centerHead||TRANSLATE_CONTRACT.centerHead,
+    fixtureOrigin:probe.fixtureOrigin||null,liveCenter:false,queuedId:probe.queued?.id||null,launch:publicLaunch(probe.launch),
+    adapterPresent:probe.adapterPresent===true,codexPathBound:probe.codexPathBound===true,
+    adapterOk:probe.adapterOk===true,cliVersion:probe.cliVersion||null,adapterError:probe.adapterError||null,cliOk:probe.cliOk===true,
     translationOf:packet?.editions?.[0]?.translationOf||null,locales:packet?.editions?.map(edition=>edition.locale)||[],
-    promptHasPolicy:prompt.includes(ARTICLE_WRITING_POLICY),promptHasSourceMark:prompt.includes(ISOLATED_SOURCE_MARK),
+    promptHasPolicy:!!prompt&&prompt.includes(ARTICLE_WRITING_POLICY),promptHasSourceMark:!!prompt&&prompt.includes(ISOLATED_SOURCE_MARK),
     turn:turn&&{state:turn.state,workId:turn.workId,demandId:turn.demandId,requestId:turn.submissions?.[0]?.requestId,receipt:turn.submissions?.[0]?.receipt?.status||null},
-    files,notProductionWorks:true,
+    handshake:extra.handshake||null,
+    failure:error||failure?{message:error?.message||failure?.message||null,code:error?.code||null,diagnostics:error?.diagnostics||failure?.diagnostics||null}:null,
+    files,notProductionWorks:true,credentialsPacked:false,
   };
   await writeCenterJson(join(home,'evidence.json'),evidence);
   return evidence;
@@ -148,21 +168,42 @@ async function main(){
   const controller=new AbortController();
   const stop=()=>controller.abort();
   process.once('SIGINT',stop);process.once('SIGTERM',stop);
+  let probe=null;
   try{
     if(flags.run){
-      const {probe,turn}=await runIsolatedAcceptance({home,codexPath:flags.codexPath,timeoutMs:flags.timeoutMs,signal:controller.signal});
-      const evidence=await writeEvidence(home,probe,turn);
-      console.log(JSON.stringify({ok:turn.state==='accepted',home,evidence},null,2));
-      if(turn.state!=='accepted')process.exitCode=1;
+      const result=await runIsolatedAcceptance({home,codexPath:flags.codexPath,timeoutMs:flags.timeoutMs,signal:controller.signal});
+      probe=result.probe;
+      const evidence=await writeIsolatedEvidence(home,probe,result.turn);
+      console.log(JSON.stringify({ok:result.turn.state==='accepted',home,evidence},null,2));
+      if(result.turn.state!=='accepted')process.exitCode=1;
       return;
     }
-    const probe=await probeIsolatedAcceptance({home,codexPath:flags.codexPath});
-    const evidence=await writeEvidence(home,probe,null);
-    console.log(JSON.stringify({ok:probe.adapterOk,home,probe:{adapterOk:probe.adapterOk,cliOk:probe.cliOk,cliVersion:probe.cliVersion,adapterError:probe.adapterError,queuedId:probe.queued.id,source:probe.source,launch:evidence.launch},blockers:[!probe.adapterOk&&(probe.adapterError||'adapter missing'),!probe.cliOk&&'codex CLI not on PATH'].filter(Boolean)},null,2));
-    if(!probe.adapterOk)process.exitCode=2;
+    if(flags.handshake){
+      probe=await probeIsolatedAcceptance({home,codexPath:flags.codexPath});
+      requireRunnableProbe(probe);
+      const registry=new AgentRegistry(join(home,'agents.json'));
+      const directory=join(home,'handshake');
+      await mkdir(directory,{recursive:true,mode:0o700});
+      const handshake=await produceCenterEdition({
+        directory,agentId:'codex',locale:'en',handshakeOnly:true,signal:controller.signal,
+        claim:{id:'t575-handshake',generation:1,title:'ACP initialize only',workspaceId:ISOLATED_WORKSPACE,sectionId:ISOLATED_SECTION,payload:{brief:'handshake',policy:{}}},
+        writingPolicy:{version:ARTICLE_WRITING_POLICY,instructions:'ACP initialize only; do not write an edition.'},
+      },{registry,skillSnapshot:isolatedSkillSnapshot,timeoutMs:Math.min(flags.timeoutMs,20000)});
+      const evidence=await writeIsolatedEvidence(home,probe,null,{handshake});
+      console.log(JSON.stringify({ok:handshake.handshake===true,home,evidence},null,2));
+      return;
+    }
+    probe=await probeIsolatedAcceptance({home,codexPath:flags.codexPath});
+    const evidence=await writeIsolatedEvidence(home,probe);
+    console.log(JSON.stringify({ok:probe.adapterPresent,home,probe:{adapterPresent:probe.adapterPresent,adapterOk:probe.adapterOk,cliOk:probe.cliOk,codexPathBound:probe.codexPathBound,cliVersion:probe.cliVersion,adapterError:probe.adapterError,queuedId:probe.queued.id,source:probe.source,launch:evidence.launch},blockers:[!probe.adapterPresent&&(probe.adapterError||'adapter missing'),!probe.cliOk&&'codex CLI not on PATH',probe.cliOk&&!probe.codexPathBound&&'CODEX_PATH not bound to installed CLI'].filter(Boolean)},null,2));
+    if(!probe.adapterPresent)process.exitCode=2;
+  }catch(error){
+    const evidence=await writeIsolatedEvidence(home,probe||{},null,{error});
+    console.log(JSON.stringify({ok:false,home,evidence},null,2));
+    process.exitCode=1;
   }finally{
     process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);
   }
 }
 
-if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1])main().catch(error=>{console.error(error.message);process.exitCode=1;});
+if(process.argv[1]&&fileURLToPath(import.meta.url)===process.argv[1])main();

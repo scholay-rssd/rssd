@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {parseCenterEdition,produceCenterEdition} from '../desktop/scripts/agent/center-producer.mjs';
+import {formatAcpProcessExit,parseCenterEdition,produceCenterEdition,redactAcpText} from '../desktop/scripts/agent/center-producer.mjs';
+import {AgentRegistry,packageCommand} from '../desktop/scripts/agent/agent-registry.mjs';
 import {editorialContract} from '../scripts/rssd-editorial-contract.mjs';
 const mountedSkills={snapshotHash:'a'.repeat(64),skills:[{id:'site-writing',version:'fixture-v1',contentHash:'b'.repeat(64),content:'Fixture domain rules'}]};
 const fakeSkillSnapshot=async()=>mountedSkills;
@@ -61,4 +62,70 @@ test('pilot model mismatch stops before sending the writing prompt',async t=>{
  await assert.rejects(produceCenterEdition({directory,agentId:'codex',expectedModel:'gpt-6.1-terra',locale:'zh-CN',claim:{title:'Test',payload:{brief:'',policy:{}}}},{registry:{launch:async()=>({command:process.execPath,args:[script],env:{RSSD_CENTER_TOKEN:'sensitive'}})},skillSnapshot:fakeSkillSnapshot,timeoutMs:10000,pilotEnvironment:async(env,{cwd})=>{assert.equal(env.RSSD_CENTER_TOKEN,undefined);assert.equal(cwd,directory);checked=true;return env;}}),/未确认使用 gpt-6.1-terra/);
  assert.equal(checked,true);
  await assert.rejects(readFile(marker),{code:'ENOENT'});
+});
+
+test('AgentRegistry binds CODEX_PATH to the native CLI instead of a bundled @openai/codex',async t=>{
+  const adapter=packageCommand('@agentclientprotocol/codex-acp','codex-acp');
+  if(!adapter){t.skip('official Codex ACP adapter is not installed in this checkout');return;}
+  const home=await mkdtemp(join(tmpdir(),'rssd-codex-path-'));t.after(()=>rm(home,{recursive:true,force:true}));
+  const cli=join(home,'codex');
+  await writeFile(cli,'#!/bin/sh\nexit 0\n',{mode:0o755});
+  const registry=new AgentRegistry(join(home,'agents.json'));
+  await writeFile(join(home,'agents.json'),JSON.stringify({version:1,agents:[{id:'codex',enabled:true,command:cli}]}));
+  const launch=await registry.launch('codex');
+  assert.equal(launch.command,process.execPath);
+  assert.match(launch.args.join(' '),/codex-acp/);
+  assert.equal(launch.env.CODEX_PATH,cli);
+  assert.equal(launch.args.includes(cli),false);
+});
+
+test('ACP process diagnostics redact secrets and do not blame login or quota',()=>{
+ assert.match(redactAcpText('token=super-secret Bearer abc.def'),/token=<redacted>/);
+ assert.doesNotMatch(redactAcpText('token=super-secret'),/super-secret/);
+ const message=formatAcpProcessExit({phase:'initialize',exitCode:1,stdoutBytes:0,stderr:"Cannot find module '@openai/codex/bin/codex.js'"});
+ assert.match(message,/phase=initialize/);
+ assert.match(message,/exitCode=1/);
+ assert.match(message,/@openai\/codex\/bin\/codex\.js/);
+ assert.doesNotMatch(message,/授权|额度/);
+});
+
+test('an ACP RPC error after the child dies keeps redacted diagnostics and does not blame login or quota',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'rssd-acp-rpc-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+ const script=join(directory,'rpc-exit.cjs');
+ await writeFile(script,`
+ const {createInterface}=require('node:readline');
+ process.stderr.write("dummy-codex argv=app-server\\ntoken=super-secret\\n");
+ createInterface({input:process.stdin}).on('line',line=>{
+  const m=JSON.parse(line);
+  if(m.method==='initialize')process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,error:{message:'Codex process has exited with code 1:\\\\ndummy-codex argv=app-server\\\\ntoken=super-secret'}})+'\\n');
+ });
+ `);
+ let error;
+ try{
+  await produceCenterEdition({directory,agentId:'codex',locale:'en',handshakeOnly:true,claim:{title:'Synthetic',payload:{brief:'',policy:{}}},writingPolicy:{version:'v',instructions:'i'}},{registry:{launch:async()=>({command:process.execPath,args:[script],env:{CODEX_PATH:'/tmp/rssd-dummy-codex/codex'}})},skillSnapshot:fakeSkillSnapshot,timeoutMs:5000});
+ }catch(caught){error=caught;}
+ assert.equal(error?.code,'acp_rpc');
+ assert.equal(error.diagnostics.phase,'initialize');
+ assert.match(error.diagnostics.stderr,/dummy-codex argv=app-server/);
+ assert.match(error.message,/token=<redacted>/);
+ assert.doesNotMatch(error.message,/super-secret/);
+ assert.doesNotMatch(error.message,/授权|额度/);
+});
+
+test('a child that exits before ACP handshake keeps stderr and exitCode without a quota diagnosis',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'rssd-acp-exit-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+ const script=join(directory,'die.cjs');
+ await writeFile(script,'process.stderr.write("Cannot find module \'@openai/codex/bin/codex.js\'\\ntoken=super-secret\\n");process.exit(1);\n');
+ let error;
+ try{
+  await produceCenterEdition({directory,agentId:'codex',locale:'en',claim:{title:'Synthetic',payload:{brief:'',policy:{}}},writingPolicy:{version:'v',instructions:'i'}},{registry:{launch:async()=>({command:process.execPath,args:[script],env:{}})},skillSnapshot:fakeSkillSnapshot,timeoutMs:5000});
+ }catch(caught){error=caught;}
+ assert.equal(error?.code,'acp_exited');
+ assert.equal(error.diagnostics.exitCode,1);
+ assert.match(error.diagnostics.phase,/^(spawn|initialize)$/);
+ assert.equal(error.diagnostics.stdoutBytes,0);
+ assert.match(error.message,/@openai\/codex\/bin\/codex\.js/);
+ assert.match(error.message,/token=<redacted>/);
+ assert.doesNotMatch(error.message,/super-secret/);
+ assert.doesNotMatch(error.message,/授权|额度/);
 });

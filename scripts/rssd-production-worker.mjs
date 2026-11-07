@@ -216,7 +216,7 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
     if(scoped)try{await sourceStage.restore({claim,slot:sourceSlot,directory,signal});}catch(error){
       await client.changeDemand(claim.id,{action:'blocked',claimToken:claim.claimToken,message:String(error.message).slice(0,2000)}).catch(()=>{});
       await client.heartbeat({state:'blocked',agentId,message:String(error.message).slice(0,2000)}).catch(()=>{});
-      await save(join(directory,'failure.json'),{message:error.message,at:new Date().toISOString()});throw error;
+      await save(join(directory,'failure.json'),{message:error.message,at:new Date().toISOString(),...(error.diagnostics?{diagnostics:error.diagnostics}:{})});throw error;
     }
     const translateSource=claim.kind==='translate'?requireTranslateClaim(claim):null;
     const workId=translateSource?.workId||claim.payload.workId||claim.payload.source?.workId||'work-'+protocol.hash(claim.id).slice(0,32);
@@ -306,7 +306,7 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
     }catch(error){
       await client.changeDemand(claim.id,{action:'blocked',claimToken:claim.claimToken,message:String(error.message).slice(0,2000)}).catch(()=>{});
       await client.heartbeat({state:'blocked',agentId,message:String(error.message).slice(0,2000)}).catch(()=>{});
-      await save(join(directory,'failure.json'),{message:error.message,at:new Date().toISOString()});
+      await save(join(directory,'failure.json'),{message:error.message,at:new Date().toISOString(),...(error.diagnostics?{diagnostics:error.diagnostics}:{})});
       throw error;
     }finally{clearInterval(timer);}
   },{timeout:100});

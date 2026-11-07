@@ -14,6 +14,24 @@ import protocol from '../../../contracts/rssd-v1.cjs';
 import {CENTER_IMAGE_PLAN_OUTPUT,freezeImagePlan,bindImagePlan} from '../../../scripts/rssd-image-plan.mjs';
 import {writeCenterJson} from '../../../scripts/rssd-center-client.mjs';
 
+export function redactAcpText(text){
+  return String(text||'')
+    .replace(/(authorization|api[_-]?key|token|password|secret|credential)[=:\s]+[^\s,;]+/ig,'$1=<redacted>')
+    .replace(/Bearer\s+[A-Za-z0-9._\-+=/]+/g,'Bearer <redacted>')
+    .replace(/\bsk-[A-Za-z0-9._\-]+/g,'<redacted>')
+    .replace(/(\/(?:\.codex|\.cursor)\/)[^\s]+/g,'$1<redacted>')
+    .slice(-4000);
+}
+export function formatAcpProcessExit({phase,exitCode,signal,stdoutBytes=0,stderr='',spawnError}={}){
+  const parts=['智能体进程已退出',`phase=${phase||'unknown'}`];
+  if(exitCode!=null)parts.push('exitCode='+exitCode);
+  if(signal)parts.push('signal='+signal);
+  parts.push('stdoutBytes='+stdoutBytes);
+  if(spawnError)parts.push('spawn='+redactAcpText(spawnError));
+  const detail=redactAcpText(stderr).replace(/\s+/g,' ').trim();
+  if(detail)parts.push('stderr='+detail.slice(0,800));
+  return parts.join('; ');
+}
 export function parseCenterResult(text){
   // Some ACP agents send progress and diagnostics as message chunks before
   // the final JSON. Retain the full stream on disk and accept only one complete
@@ -51,7 +69,7 @@ export function centerWritingPrompt({claim,locale,source,writingPolicy,writingSk
   imagePlan?CENTER_IMAGE_PLAN_OUTPUT:CENTER_NOTEBOOK_OUTPUT,
  ].join('\n\n');
 }
-export async function produceCenterEdition({claim,locale,workId,source,directory,agentId,expectedModel,signal,onEvent=()=>{},writingSkillScope,imagePlanRequired=false,verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash,imageTranslationInstructions,verifiedBibliographyInstructions,writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}},{registry=new AgentRegistry(),timeoutMs=30*60000,pilotEnvironment=pilotCodexEnvironment,skillSnapshot=centerSkillSnapshot,imageStage}={}){
+export async function produceCenterEdition({claim,locale,workId,source,directory,agentId,expectedModel,signal,onEvent=()=>{},writingSkillScope,imagePlanRequired=false,verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash,imageTranslationInstructions,verifiedBibliographyInstructions,handshakeOnly=false,writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}},{registry=new AgentRegistry(),timeoutMs=30*60000,pilotEnvironment=pilotCodexEnvironment,skillSnapshot=centerSkillSnapshot,imageStage}={}){
   if(expectedModel&&(expectedModel!=='gpt-6.1-terra'||agentId!=='codex'))throw Error('自动试点需要 Codex 和 gpt-6.1-terra');
   if([verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash].some(x=>x!==undefined)&&(typeof verifiedSourcePrompt!=='string'||!verifiedSourcePrompt||![verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash].every(x=>/^[a-f0-9]{64}$/.test(x||''))))throw Error('来源快照或正文材料无效');
   const writingSkills=await skillSnapshot({claim,directory,writingPolicy,writingSkillScope});
@@ -85,18 +103,27 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
   delete env.RSSD_CENTER_TOKEN;delete env.SCHOLAY_TODAY_TOKEN;delete env.SCHOLAY_TODAY_TOKEN_FILE;
   if(expectedModel)env=await pilotEnvironment(env,{cwd:directory});
   const child=spawn(launch.command,launch.args,{cwd:directory,env,windowsHide:true,stdio:['pipe','pipe','pipe']});
-  const pending=new Map();let sequence=0,sessionId,output='',closed=false,terminalError=null;
+  const pending=new Map();let sequence=0,sessionId,output='',closed=false,terminalError=null,phase='spawn',exitCode=null,exitSignal=null,stderr='',stdoutBytes=0;
+  const diagnostics=()=>({phase,exitCode,signal:exitSignal,stdoutBytes,stderr:redactAcpText(stderr)});
+  const processExitError=spawnError=>{
+    const error=Error(formatAcpProcessExit({...diagnostics(),spawnError:spawnError?.message}));
+    error.code='acp_exited';error.diagnostics=diagnostics();
+    return error;
+  };
   const send=value=>{if(!closed&&child.stdin.writable)child.stdin.write(JSON.stringify(value)+'\n');};
-  const fail=error=>{terminalError=error;for(const item of pending.values()){clearTimeout(item.timer);item.reject(error);}pending.clear();};
+  const fail=error=>{if(!terminalError)terminalError=error;for(const item of pending.values()){clearTimeout(item.timer);item.reject(terminalError);}pending.clear();};
   const request=(method,params)=>new Promise((resolve,reject)=>{
     if(terminalError)return reject(terminalError);
-    const id=++sequence,timer=setTimeout(()=>{pending.delete(id);reject(Error('智能体执行超时，已有输出保留在设备上'));},timeoutMs);
+    const id=++sequence,timer=setTimeout(()=>{pending.delete(id);const error=Error('智能体执行超时，已有输出保留在设备上');error.code='acp_timeout';error.diagnostics=diagnostics();reject(error);},timeoutMs);
     pending.set(id,{resolve,reject,timer});send({jsonrpc:'2.0',id,method,params});
   });
-  child.on('error',error=>fail(error));child.on('exit',()=>{closed=true;fail(Error('智能体进程已退出，请检查设备上的授权和额度'));});
-  child.stdin.on('error',error=>fail(error));child.stderr.resume();
+  child.on('error',error=>fail(processExitError(error)));
+  child.on('exit',(code,signal)=>{closed=true;exitCode=code;exitSignal=signal;setImmediate(()=>fail(processExitError()));});
+  child.stdin.on('error',error=>fail(processExitError(error)));
+  child.stderr.setEncoding('utf8');child.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-8000);});
   const lines=createInterface({input:child.stdout,crlfDelay:Infinity});
   lines.on('line',line=>{
+    stdoutBytes+=Buffer.byteLength(line)+1;
     let message;try{message=JSON.parse(line);}catch{return;}
     if(message.method==='session/update'){
       if(message.params?.sessionId!==sessionId)return;
@@ -111,20 +138,29 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
     }
     if(message.method&&message.id!==undefined){send({jsonrpc:'2.0',id:message.id,error:{code:-32601,message:'This producer only accepts article output and read-only research'}});return;}
     const item=pending.get(message.id);if(!item)return;pending.delete(message.id);clearTimeout(item.timer);
-    if(message.error)item.reject(Error(message.error.message||'智能体请求失败'));else item.resolve(message.result);
+    if(message.error){
+      const error=Error(redactAcpText(message.error.message||'智能体请求失败'));
+      error.code='acp_rpc';error.diagnostics=diagnostics();
+      item.reject(error);
+    }else item.resolve(message.result);
   });
   const cancel=()=>{if(sessionId)send({jsonrpc:'2.0',method:'session/cancel',params:{sessionId}});fail(Error('生产已暂停，已有结果保留'));};
   signal?.addEventListener('abort',cancel,{once:true});
   try{
     if(signal?.aborted)throw Error('生产已暂停');
-    await request('initialize',{protocolVersion:1,clientInfo:{name:'rssd',version:'1.0.0'},clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false}});
+    phase='initialize';
+    const initialized=await request('initialize',{protocolVersion:1,clientInfo:{name:'rssd',version:'1.0.0'},clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false}});
+    if(handshakeOnly)return {handshake:true,protocolVersion:initialized?.protocolVersion??null,agentInfo:initialized?.agentInfo||null,diagnostics:diagnostics()};
+    phase='session/new';
     const session=await request('session/new',{cwd:directory,mcpServers:[]});sessionId=session.sessionId;
     modelId=session.models?.currentModelId||null;modelName=session.models?.availableModels?.find(m=>m.modelId===modelId)?.name||null;
     if(!sessionId)throw Error('智能体没有创建有效会话');
     if(expectedModel&&(expectedModel!=='gpt-6.1-terra'||!/^gpt-6\.1-terra(?:\[(?:low|medium|high|xhigh|max|ultra)\])?$/.test(modelId||'')))throw Error('当前智能体会话未确认使用 gpt-6.1-terra，已停止写作');
+    phase='session/prompt';
     const prompt=centerWritingPrompt({claim,locale,source,writingPolicy,writingSkills,imagePlan,verifiedSourcePrompt,imageTranslationInstructions,verifiedBibliographyInstructions});
     await writeFile(join(directory,locale+'.prompt.txt'),prompt,{mode:0o600});
     const result=await request('session/prompt',{sessionId,prompt:[{type:'text',text:prompt}]});
+    phase='complete';
     if(result.stopReason==='cancelled')throw Error('智能体已停止');
     const signature={runId,agentId,agentName:launch.agent?.name||agentId,startedAt,completedAt:new Date().toISOString(),action:claim.kind||'write',status:'completed',modelId,modelName,writingSkillSnapshotHash:writingSkills.snapshotHash,writingSkills:writingSkills.skills.map(({id,version,contentHash})=>({id,version,contentHash}))};
     if(!imagePlan)return parseCenterEdition(output,{source,locale,sectionId:claim.sectionId,signature});

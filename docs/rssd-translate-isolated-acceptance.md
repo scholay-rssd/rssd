@@ -28,9 +28,36 @@ codex --version         # expected 0.163.0 on the shared computer
 node scripts/rssd-translate-isolated-acceptance.mjs --probe
 ```
 
-`--probe` must print `adapterOk: true` and a `codex-acp` launch path. `cliOk: true` with `cliVersion` containing `0.163.0`. If `adapterOk` is false, stop: the official adapter is missing. Do not install a substitute ACP and do not call `codex` directly.
+`--probe` must print `adapterPresent: true`, `cliOk: true`, `codexPathBound: true`, a `codex-acp` launch path, and `cliVersion` containing `0.163.0`. `codexPathBound` means the adapter will spawn the installed CLI via `CODEX_PATH`, not a bundled `@openai/codex` (this tarball does not ship that package). If `adapterPresent` is false, stop: the official adapter is missing. Do not install a substitute ACP and do not call `codex` directly.
 
-This cloud VM has no `codex` CLI; `--probe` here is expected to report `cliOk: false`. That is not the shared computer.
+Previous blocked run (2026-11-07 09:01:50 Asia/Shanghai): probe looked fine, then `produceCenterEdition` spawned the adapter **without** `CODEX_PATH`. The adapter `require`d `@openai/codex/bin/codex.js`, exited 1 in 368ms with 0 stdout. stderr was discarded and the generic message blamed login/quota. That attribution was wrong.
+
+This cloud VM has no `codex` CLI; `--probe` here is expected to report `cliOk: false` and `codexPathBound: false`. That is not the shared computer.
+
+## Read-only handshake (optional, no edition, no Center submit)
+
+```sh
+cd /tmp/rssd-t575
+node scripts/rssd-translate-isolated-acceptance.mjs --handshake --agent codex
+```
+
+This still calls `produceCenterEdition` (`handshakeOnly`), sends ACP `initialize`, then stops. It does not `session/prompt`, does not write an English edition, and does not submit. Evidence is `evidence.json` with `mode: handshake` or `mode: failed` plus `failure.diagnostics` (`phase`, `exitCode`, `signal`, `stdoutBytes`, redacted `stderr`). A process exit or adapter RPC error is **not** classified as login/quota unless those words appear in redacted stderr. This cloud VM has no real `codex` CLI; a dummy-CLI handshake here can only prove the adapter spawned `app-server` and recorded diagnostics. That is not a billed-provider success.
+
+## Owner-run read-only probes (optional, no production write)
+
+Do not read `~/.codex`, `auth.json`, tokens, or env dumps. Do not change login.
+
+```sh
+node --version          # expected v24.x
+codex --version         # expected 0.163.0
+which -a codex          # native CLI path only; do not cat auth files
+cd /tmp/rssd-t575
+node scripts/rssd-translate-isolated-acceptance.mjs --probe
+# expect adapterPresent, cliOk, and codexPathBound all true
+node scripts/rssd-translate-isolated-acceptance.mjs --handshake --agent codex
+```
+
+`--handshake` is still `produceCenterEdition`. If initialize completes, stop and inspect `evidence.json` (`mode: handshake`). If it fails, `failure.diagnostics.stderr` should show the adapter/CLI spawn result, not a generic 授权/额度 line.
 
 ## One authorized provider turn
 
@@ -59,8 +86,9 @@ node scripts/rssd-translate-isolated-acceptance.mjs --run --i-accept-isolated-pr
 | Path | Must show |
 | --- | --- |
 | `agents.json` | `{id:codex, command:codex}` only |
-| `evidence.json` | `producer: produceCenterEdition`, `adapterOk`, `liveCenter: false`, labeled `workId`, `translationOf` |
+| `evidence.json` | `producer: produceCenterEdition`, `codexPathBound: true`, `liveCenter: false`, labeled `workId`; on failure also `failure.diagnostics` |
 | `jobs/<id>/claim.json` | `kind=translate`, fixture demand |
+| `jobs/<id>/failure.json` | Present only on a blocked turn; includes `diagnostics`, not env/tokens |
 | `jobs/<id>/en.prompt.txt` | `private-notes-first-pass-v2` and the isolated source mark |
 | `jobs/<id>/en.agent-output.txt` | Real Codex ACP stream (not the injected fixture sentence) |
 | `jobs/<id>/en.result.json` | English edition |
@@ -72,6 +100,8 @@ node scripts/rssd-translate-isolated-acceptance.mjs --run --i-accept-isolated-pr
 ## Blockers (accurate, no substitutes)
 
 - Missing `@agentclientprotocol/codex-acp` in `desktop/runtime/node_modules`: unpack this tarball, do not invent an ACP.
+- `codexPathBound: false` while `cliOk: true`: launch-config bug; do not treat as login/quota.
+- Adapter stderr `Cannot find module '@openai/codex/bin/codex.js'`: `CODEX_PATH` was not bound; this pack does not include `@openai/codex`.
 - `codex` not on `PATH`: use the shared computer's 0.163.0 install; do not install a CLI in the cloud VM.
-- Login/quota errors from Codex: reuse the existing login; t575 does not authorize a new account.
 - Public image URLs in the model output: isolated mode refuses the fetch (`RSSD_ISOLATED_ACCEPTANCE=1`).
+- Do not read `~/.codex`, token files, or env dumps. If a later run's redacted stderr actually contains login/quota words, report those bytes; do not infer them from a generic exit.

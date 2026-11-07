@@ -81,8 +81,9 @@ async function main(){
     producer:'desktop/scripts/agent/center-producer.mjs',producerExport:'produceCenterEdition',
     adapter:adapterSpec,writingPolicy:'private-notes-first-pass-v2',
     workId:'work-t575-isolated-acceptance',liveCenter:false,credentialsPacked:false,
-    files:inventory,
+    files:inventory,codexPathRequired:true,bundledOpenaiCodex:false,
   };
+  if(inventory.some(file=>file.path.split('/').includes('@openai')&&file.path.includes('codex')))throw Error('isolated pack must not include @openai/codex; bind CODEX_PATH to the installed CLI');
   await writeFile(join(staging,'MANIFEST.json'),JSON.stringify(manifest,null,2)+'\n');
   const artifactDir='/opt/cursor/artifacts';
   await mkdir(artifactDir,{recursive:true});
