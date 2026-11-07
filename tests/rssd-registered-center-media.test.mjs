@@ -297,6 +297,11 @@ test('tampered, truncated, replayed, or incomplete evidence is unrecoverable and
   await writeFile(join(directory,'en.agent-output.txt'),output,{mode:0o600});
   await writeFile(file,'{"kind":"center-generation-evidence","version":1',{mode:0o600});
   await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs()}),{code:GENERATION_UNRECOVERABLE});
+  await rm(file,{force:true});
+  await writeFile(join(directory,'en.agent-output.txt'),output,{mode:0o600});
+  await writeFile(join(directory,'en.image-plan.json'),JSON.stringify({version:1,draft:{notebook:{version:2}}})+'\n');
+  const deferred=await recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs()});
+  assert.equal(deferred.recovered,false);assert.equal(deferred.edition,null);
 });
 
 test('existing result.json and packet.json resume without re-running the labeled mock producer',async t=>{

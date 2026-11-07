@@ -76,7 +76,10 @@ export async function recoverPersistedCenterEdition({directory,locale,source,ori
   const raw=await readText(join(directory,locale+'.agent-output.txt'));
   const evidence=await readJson(join(directory,locale+'.generation-evidence.json'));
   if(!raw)return {edition:null,recovered:false};
-  if(!evidence)fail('保留的模型输出缺少设备记录的生成证明，不能从正文伪造签名，也不得重跑模型');
+  if(!evidence){
+    if(await readText(join(directory,locale+'.image-plan.json'))!=null)return {edition:null,recovered:false};
+    fail('保留的模型输出缺少设备记录的生成证明，不能从正文伪造签名，也不得重跑模型');
+  }
   if(evidence.kind!==GENERATION_EVIDENCE_KIND||evidence.notFromAgentBody!==true||evidence.version!==1)fail('生成证明格式无效，不能恢复');
   if(evidence.outputSha256!==protocol.hash(raw))fail('保留的模型输出与生成证明不一致，不能恢复');
   if(!authenticGenerationSignature(evidence.signature,{agentId}))fail('生成证明的签名不真实，不能从正文补签名或重跑模型');
