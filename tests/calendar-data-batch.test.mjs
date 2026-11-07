@@ -18,6 +18,8 @@ import {
   assertCenterEditorial,assertPublisherUsesCenter,publishPlanned,summarizePlan,runCommand
 } from '../scripts/calendar-data-batch.mjs';
 
+const academicWorkspace={id:'academic',siteId:'scholay-today',writable:true,sections:[{id:'calendar',enabled:true,writable:true},{id:'history',enabled:true,writable:true}]};
+
 const root=dirname(fileURLToPath(import.meta.url));
 const campusFile=join(root,'fixtures/calendar-data-batch/campus.json');
 const historyFile=join(root,'fixtures/calendar-data-batch/history.json');
@@ -113,7 +115,8 @@ test('Center editorial is required and the legacy writer is refused',async()=>{
   await assert.rejects(assertCenterEditorial({center:{active:async()=>false}}),/RSSD Center editorial/);
   await assert.rejects(assertPublisherUsesCenter({connection:async()=>({configured:true,origin:SITE.origin,centerManaged:false})}),/不是 Center editorial/);
   await assert.rejects(assertPublisherUsesCenter({connection:async()=>({configured:false,message:'missing'})}),/missing/);
-  const ok=await assertCenterEditorial({center:{active:async()=>true,verify:async()=>({workspace:{id:'academic',siteId:'scholay-today',writable:true}})}});
+  await assert.rejects(assertCenterEditorial({center:{active:async()=>true,verify:async()=>({workspace:{id:'academic',siteId:'scholay-today',writable:true}})}}),/可写栏目/);
+  const ok=await assertCenterEditorial({center:{active:async()=>true,verify:async()=>({workspace:academicWorkspace})}});
   assert.equal(ok.workspace.siteId,'scholay-today');
 });
 
@@ -151,7 +154,7 @@ async function publisherFixture(t,{fail}={}){
     }
   };
   let currentItem=null;
-  const center={active:async()=>true,verify:async()=>({workspace:{id:'academic',siteId:'scholay-today',writable:true}})};
+  const center={active:async()=>true,verify:async()=>({workspace:academicWorkspace})};
   return {workspace,statePath,calls,publisher,center,fetcher,setItem:item=>{currentItem=item;},fail};
 }
 

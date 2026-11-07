@@ -29,8 +29,12 @@ Not used, and refused by this entry:
 
 Operator files stay outside this public repository (private overlay or a run directory). Do not commit receipts, tokens or live snapshots.
 
+`plan` / `validate` / `--dry-run` are operator-local and read public JSON only. They can run from this branch checkout without merging to `main` and without deploying site, theme, or receiver code. `plan` exits `1` when the summary contains `conflict` or `invalid` rows so those holds are visible; that is not a write.
+
+Authorized `publish` is also an operator-local CLI. It talks to already-deployed Center editorial and the already-deployed site receiver, which appends by new record id and does not replace the year/history arrays. No production code rollout of receiver/theme is required for this batch. Merging the PR is for the official `main` checkout, not a website deploy. Do not run `publish` until a human authorizes production writes.
+
 ```sh
-# 1. Dry-run against the live public clusters (default).
+# 1. Dry-run against the live public clusters (default). Safe on this branch.
 node scripts/calendar-data-batch.mjs plan \
   --campus /secure/path/yearOfficialCampusSeeds.json \
   --history /secure/path/history-entries.json
@@ -39,7 +43,7 @@ node scripts/calendar-data-batch.mjs plan \
 #    queued items are additive, conflicts/invalid dates are not published.
 
 # 3. After Center device login for workspace academic / site scholay-today,
-#    and after this branch is reviewed and deployed to the operator machine:
+#    and only after production writes are explicitly authorized:
 node scripts/calendar-data-batch.mjs publish \
   --campus /secure/path/yearOfficialCampusSeeds.json \
   --history /secure/path/history-entries.json \
@@ -47,7 +51,7 @@ node scripts/calendar-data-batch.mjs publish \
   --authorize-publish
 ```
 
-`plan` / `validate` read public JSON only. `publish` without `--authorize-publish` is a plan. `--dry-run` never calls Center. Authorized `publish` always re-reads live `calendar-index.json`; local `--live-year` / `--live-history` files cannot substitute for the public clusters.
+`publish` without `--authorize-publish` is a plan. `--dry-run` never calls Center. Authorized `publish` always re-reads live `calendar-index.json`; local `--live-year` / `--live-history` files cannot substitute for the public clusters. Today's Center `storeOnlyTranslate` / `translateContinuation` contracts are unrelated; this entry must not use `rssd_submit`, `store-en`, or `enqueue-translate`.
 
 Live baseline guards: by default the public year list must have ≥1000 rows and history ≥400 rows. That blocks an empty or 100-row local history mirror from being treated as the public cluster. Tests may pass `--skip-live-min`. Same-day similar titles are `conflict` and stay unpublished until an operator reviews them; they are not updates.
 
@@ -62,7 +66,7 @@ Identity:
 Required for the publish step, not for plan/validate:
 
 - RSSD Center device connection for the academic workspace (desktop Settings or `rssd center login`). See `docs/center-login.md`.
-- The Center workspace must be writable (`writable: true`) and bound to `scholay-today`.
+- The Center workspace must be writable (`writable: true`), bound to `scholay-today`, and have writable `calendar` / `history` sections.
 - Do not put device tokens, `SCHOLAY_TODAY_TOKEN`, or `/manage/api` credentials in command arguments, the repository, or receipts copied into tickets.
 
 This agent / PR does not perform production Center login, merge, or deploy.
@@ -95,9 +99,9 @@ Do not treat a local overlay calendar (desktop `yearOfficialCampusSeeds.json` / 
 
 This PR only adds the supported entry, tests and docs. The prepared 504 campus additions + 100 history entries become publicly verified only after a live plan (counts move: already-public rows and same-day conflicts are held) and:
 
-1. Review and merge of this PR (do not merge from the implementing agent unless asked).
-2. Operator machine updated to the merged revision.
-3. Center device authorization for `academic` / `site-scholay-today`.
+1. Human review. Merge is optional for operator-local CLI; required before treating this as the `main` script. Do not merge from the implementing agent unless asked.
+2. Operator machine has this revision (branch checkout is enough for CLI; production receiver/theme deploy is not).
+3. Center device authorization for `academic` / `site-scholay-today` (editorial publish, not MCP claim/submit).
 4. `plan` against **live** `calendar-index.json` (counts move; do not reuse an old baseline).
-5. Authorized `publish` of queued items only.
-6. Independent public readback of index, clusters and item URLs.
+5. Explicit authorization for production writes, then `publish` of queued items only.
+6. Independent public readback of index, clusters and item URLs. Existing public year/history rows must still be present.

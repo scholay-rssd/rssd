@@ -50,6 +50,11 @@ export async function liveCollections(origin=SITE.origin,fetcher=fetch){
   return {index,year,history};
 }
 
+export function editorialSectionOpen(workspace,sectionId){
+  const section=(workspace?.sections||[]).find(item=>item.id===sectionId);
+  return Boolean(section&&section.enabled!==false&&section.writable!==false);
+}
+
 export async function assertCenterEditorial({site=SITE,center,fetcher=fetch,centerDirectory}={}){
   const transport=center||createEditorialCenterTransport({site,directory:centerDirectory,fetcher});
   if(!(await transport.active())){
@@ -59,6 +64,9 @@ export async function assertCenterEditorial({site=SITE,center,fetcher=fetch,cent
   const workspace=verified.workspace||verified;
   if(workspace.siteId&&workspace.siteId!==site.id)throw Object.assign(Error('中心工作空间站点与今日学术不匹配'),{statusCode:403,code:'site_mismatch'});
   if(workspace.writable===false)throw Object.assign(Error('中心工作空间当前不可写'),{statusCode:409,code:'migration_staged'});
+  if(!editorialSectionOpen(workspace,'calendar')||!editorialSectionOpen(workspace,'history')){
+    throw Object.assign(Error('中心工作空间未开放今日学术或昔日学术可写栏目'),{statusCode:403,code:'section_not_writable'});
+  }
   return {transport,workspace};
 }
 
