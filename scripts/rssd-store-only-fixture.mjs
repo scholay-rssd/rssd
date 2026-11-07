@@ -26,6 +26,10 @@ export function readStoreOnlyProfiles(base=root){
   return profiles;
 }
 
+export function isGitWorkTree(base=root){
+  return spawnSync('git',['rev-parse','--is-inside-work-tree'],{cwd:base,encoding:'utf8'}).stdout.trim()==='true';
+}
+
 export function sitesGitlinkSha(base=root){
   const result=spawnSync('git',['ls-tree','HEAD',STORE_ONLY_SITES_SUBMODULE],{cwd:base,encoding:'utf8'});
   if(result.status!==0)fail('Cannot read the sites gitlink from HEAD','sites_submodule');
@@ -37,5 +41,5 @@ export function sitesGitlinkSha(base=root){
 export function requireStoreOnlyFixtureTree(base=root){
   requireNode24();
   const profiles=readStoreOnlyProfiles(base);
-  return {root:base,profiles,sitesGitlink:sitesGitlinkSha(base),profilesPath:storeOnlyProfilesPath(base)};
+  return {root:base,profiles,sitesGitlink:isGitWorkTree(base)?sitesGitlinkSha(base):null,profilesPath:storeOnlyProfilesPath(base)};
 }
