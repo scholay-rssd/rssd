@@ -7,6 +7,7 @@
   },
   "scripts": {
     "test": "node --test --test-concurrency=4 tests/*.test.mjs",
+    "fixture:store-only": "node scripts/archive-store-only-fixture.mjs",
     "check": "node scripts/check-syntax.mjs",
     "build:seo": "node scripts/build-seo.mjs",
     "admin": "node admin/server.mjs",

@@ -74,6 +74,18 @@ test('platform delivery instructions are frozen with the original claim across a
  f.task.payload.destinations=[{destinationId:'changed',kind:'postiz',platform:'facebook',locale:'en'}];
  await runProductionTurn({...f,agentId:'example',workspaceIds:['research'],resume:true,producer:async({writingPolicy})=>{assert.deepEqual(writingPolicy,original);return {title:'Complete work',bodyMarkdown:'Body'};}});
 });
+test('ACP process-exit diagnostics are stored on the blocked job without a login or quota diagnosis',async t=>{
+  const f=await fixture(t);
+  const error=Object.assign(Error("智能体进程已退出; phase=initialize; exitCode=1; stdoutBytes=0; stderr=Cannot find module '@openai/codex/bin/codex.js'"),{code:'acp_exited',diagnostics:{phase:'initialize',exitCode:1,signal:null,stdoutBytes:0,stderr:"Cannot find module '@openai/codex/bin/codex.js'"}});
+  await assert.rejects(runProductionTurn({...f,agentId:'codex',workspaceIds:['research'],producer:async()=>{throw error;}}),/phase=initialize/);
+  const failure=JSON.parse(await readFile(join(f.home,'jobs',protocol.hash(f.task.id+':'+f.task.generation),'failure.json'),'utf8'));
+  assert.equal(failure.diagnostics.exitCode,1);
+  assert.equal(failure.diagnostics.phase,'initialize');
+  assert.match(failure.diagnostics.stderr,/@openai\/codex\/bin\/codex\.js/);
+  assert.doesNotMatch(JSON.stringify(failure),/授权|额度/);
+  assert.equal(JSON.stringify(failure).includes('CODEX_PATH'),false);
+});
+
 test('quota failure blocks the existing claim; explicit resume does not regenerate accepted Chinese',async t=>{
   const f=await fixture(t);let chineseCalls=0;
   await assert.rejects(runProductionTurn({...f,agentId:'example',workspaceIds:['research'],producer:async({locale})=>{
