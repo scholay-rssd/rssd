@@ -15,4 +15,4 @@ jobs:
         with:
           node-version: "24"
       - run: npm ci --no-audit --no-fund
-      - run: node --test tests/rssd-protocol.test.mjs tests/rssd-center-client.test.mjs tests/rssd-production-worker.test.mjs tests/rssd-translate-continuation.test.mjs tests/rssd-store-only-translate.test.mjs tests/rssd-translate-isolated-acceptance.test.mjs
+      - run: node --test tests/rssd-protocol.test.mjs tests/rssd-center-client.test.mjs tests/rssd-production-worker.test.mjs tests/rssd-translate-continuation.test.mjs tests/rssd-store-only-translate.test.mjs tests/rssd-store-only-fixture.test.mjs tests/rssd-translate-isolated-acceptance.test.mjs

@@ -16,6 +16,9 @@ import {centerCommand,CENTER_WORK_PRODUCER} from '../desktop/scripts/agent/headl
 import {produceCenterEdition} from '../desktop/scripts/agent/center-producer.mjs';
 import {CenterError,CenterOutbox,writeCenterJson} from '../scripts/rssd-center-client.mjs';
 import protocol from '../contracts/rssd-v1.cjs';
+import {requireStoreOnlyFixtureTree} from '../scripts/rssd-store-only-fixture.mjs';
+
+requireStoreOnlyFixtureTree();
 
 const bothContracts={translateContinuation:translateContinuationContract(),storeOnlyTranslate:storeOnlyTranslateContract()};
 const storeCenter=(opts={})=>createTranslateCenterFixture({contracts:bothContracts,...opts});
