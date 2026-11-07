@@ -25,7 +25,10 @@ export async function prepareEditionMedia({edition,home,directory,client,workspa
   if(internal){const prior=media.get(internal[1]);media.set(internal[1],{id:internal[1],alt:image.alt||prior?.alt||''});continue;}
   let asset=mapping[image.src];
   if(asset&&(asset.origin!==client.origin||asset.workspaceId!==workspaceId))throw Error('Cached image belongs to a different center or workspace');
-  if(!asset){const bytes=await fetchBytes(image.src,{maxBytes:m.MAX_BYTES});asset=await stageMedia({directory:join(home,'media'),origin:client.origin,workspaceId,bytes,name:image.alt||'article-image'});mapping[image.src]=asset;await save(mappingFile,mapping);}
+  if(!asset){
+   if(process.env.RSSD_ISOLATED_ACCEPTANCE==='1')throw Error('Isolated acceptance refuses public image fetch');
+   const bytes=await fetchBytes(image.src,{maxBytes:m.MAX_BYTES});asset=await stageMedia({directory:join(home,'media'),origin:client.origin,workspaceId,bytes,name:image.alt||'article-image'});mapping[image.src]=asset;await save(mappingFile,mapping);
+  }
   media.set(asset.id,{id:asset.id,alt:image.alt||''});bodyMarkdown=bodyMarkdown.replaceAll(image.src,asset.url);
  }
  const metadata=structuredClone(edition.metadata||{});
