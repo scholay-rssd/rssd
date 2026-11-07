@@ -5,12 +5,19 @@
 //   node scripts/calendar-data-batch.mjs plan     --campus <seeds.json> --history <entries.json>
 //   node scripts/calendar-data-batch.mjs publish  --campus <seeds.json> --history <entries.json>
 //                                        --workspace <dir> --authorize-publish
+//                                        [--gap 0] [--limit N] [--state <file>]
 //
 // Additive, identity-aware and idempotent. Existing public year/history rows are
 // skipped, never replaced. Publication uses RSSD Center editorial via
 // scripts/website-publication.mjs. The retired /manage/api writer, scripts/publish.sh
 // and local incomplete history mirrors are refused. Query the original requestKey
 // after an unknown outcome; do not mint a second request.
+//
+// --gap default 75 is a client courtesy sleep copied from history-batch, not a
+// Center, receiver, or site rate. 0 is allowed: the writer still waits for each
+// item's public readback (~one serialized receiver build) before the next
+// submit. SIGINT/SIGTERM finish the current item, then stop before the next
+// key. Resume the same --workspace/--state; published keys are skipped.
 import {readFile,writeFile,readdir,mkdir,rename} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
@@ -24,6 +31,22 @@ import {readBack as historyReadBack} from './history-batch.mjs';
 import {loadJsonList,planBatch,assertLiveBaseline,yearReadBackProblems} from './calendar-data-records.mjs';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+export async function interruptibleWait(ms,wait=sleep,shouldStop){
+  if(!Number.isFinite(ms)||ms<=0)return 'ok';
+  if(typeof shouldStop!=='function'){await wait(ms);return 'ok';}
+  const deadline=Date.now()+ms;
+  while(Date.now()<deadline){
+    if(shouldStop())return 'stopped';
+    await wait(Math.min(1000,Math.max(0,deadline-Date.now())));
+  }
+  return shouldStop()?'stopped':'ok';
+}
+export function installStopSignals(log=console.log){
+  let stopping=false;
+  const on=()=>{if(stopping)return;stopping=true;log('stop_at_boundary','will stop after the current confirmed item');};
+  process.on('SIGINT',on);process.on('SIGTERM',on);
+  return {shouldStop:()=>stopping,dispose:()=>{process.off('SIGINT',on);process.off('SIGTERM',on);}};
+}
 const fieldHash=fields=>createHash('sha256').update(JSON.stringify(fields)).digest('hex');
 const shanghaiDay=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
 const optionalJson=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw e;}};
@@ -119,7 +142,7 @@ export async function publishPlanned(plan,options={}){
   return withFileLock(statePath+'.lock',()=>runPlanned(plan,{...options,workspace,statePath}));
 }
 
-async function runPlanned(plan,{workspace,statePath,gapMs=75000,pauseMs=600000,limit=Infinity,log=console.log,publisher,center,fetcher=fetch,wait=sleep,centerDirectory}={}){
+async function runPlanned(plan,{workspace,statePath,gapMs=75000,pauseMs=600000,limit=Infinity,log=console.log,publisher,center,fetcher=fetch,wait=sleep,centerDirectory,shouldStop}={}){
   const root=await ensureWorkspace(resolve(workspace));
   await assertCenterEditorial({center,fetcher,centerDirectory});
   const {createDraft,readDraft}=await import('./editorial-workspace.mjs');
@@ -132,18 +155,26 @@ async function runPlanned(plan,{workspace,statePath,gapMs=75000,pauseMs=600000,l
   state.workspace=root;state.siteId=SITE.id;state.kind='calendar-data-batch';
   const save=()=>atomicJson(statePath,state);
   await save();
+  log('pacing','gap_ms='+gapMs,'pause_ms='+pauseMs,'limit='+(Number.isFinite(limit)?limit:'none'));
   let done=0,first=true;
   for(const item of plan.items){
     if(typeof item?.key!=='string'||!item.key.trim()||item.key.length>200||['__proto__','constructor','prototype'].includes(item.key))throw Error('条目 key 无效');
+    const existing=state.entries[item.key];
+    if(existing?.status==='published'||existing?.status==='skipped_already_public')continue;
+    if(item.status==='skipped_already_public'||item.status==='invalid'||item.status==='conflict'){
+      const row=state.entries[item.key]={kind:item.kind,sectionId:item.sectionId,status:item.status,reason:item.match?.reason,publicId:item.match?.item?.id,errors:item.errors};
+      await save();log(item.key,item.status,item.errors?.join('; ')||item.match?.reason||row.reason);continue;
+    }
+    if(existing?.status==='unconfirmed'||existing?.status==='unknown'){log(item.key,'held_unknown_outcome','保留原 requestKey，不重复提交');continue;}
+    if(done>=limit){log('stop_at_boundary','limit',done);break;}
+    if(shouldStop?.()){log('stop_at_boundary',item.key,'not_started');break;}
     const s=state.entries[item.key]||={kind:item.kind,sectionId:item.sectionId};
-    if(s.status==='published'||s.status==='skipped_already_public')continue;
-    if(item.status==='skipped_already_public'){s.status='skipped_already_public';s.reason=item.match?.reason;s.publicId=item.match?.item?.id;await save();log(item.key,'skipped_already_public',s.reason);continue;}
-    if(item.status==='invalid'||item.status==='conflict'){s.status=item.status;s.errors=item.errors;s.reason=item.match?.reason;await save();log(item.key,item.status,item.errors?.join('; ')||item.match?.reason);continue;}
-    if(s.status==='unconfirmed'||s.status==='unknown'){log(item.key,'held_unknown_outcome','保留原 requestKey，不重复提交');continue;}
-    if(done>=limit)break;
     const priorReceipt=s.id?await optionalJson(join(publicationDirectory(root),s.id,'receipt.json')):null;
     if(!item.fields||!item.markdown){s.status='invalid';s.errors=['缺少已校验字段'];await save();continue;}
-    if(!first)await wait(gapMs);
+    if(!first){
+      const paced=await interruptibleWait(gapMs,wait,shouldStop);
+      if(paced==='stopped'||shouldStop?.()){log('stop_at_boundary','after_confirmed_item');break;}
+    }
     first=false;
     s.id||=('record-'+randomUUID());await save();
     const id=s.id,dir=join(publicationDirectory(root),id);
@@ -184,7 +215,10 @@ async function runPlanned(plan,{workspace,statePath,gapMs=75000,pauseMs=600000,l
     }catch(e){
       s.status=e.statusCode===401||e.statusCode===403?'auth_failed':'error';
       s.error=e.message;s.code=e.code;await save();log(item.key,s.status,e.message);
-      if(e.statusCode>=500||e.statusCode===429)await wait(pauseMs);
+      if(e.statusCode>=500||e.statusCode===429){
+        const halted=await interruptibleWait(pauseMs,wait,shouldStop);
+        if(halted==='stopped'){log('stop_at_boundary',item.key,'after_backoff');break;}
+      }
     }
   }
   state.summary={...summarizePlan(plan),published:Object.values(state.entries).filter(x=>x.status==='published').length};
@@ -232,7 +266,12 @@ async function main(argv){
     log:(...a)=>console.log(new Date().toISOString(),...a)
   };
   if(command==='publish'&&!options.dryRun&&!options.workspace)throw Error('publish 需要 --workspace（批量稿件目录，不放在仓库里）');
-  const result=await runCommand(command==='publish'&&options.dryRun&&!argv.includes('--authorize-publish')?'plan':command,options);
+  const stop=command==='publish'&&!options.dryRun?installStopSignals(options.log):null;
+  if(stop)options.shouldStop=stop.shouldStop;
+  let result;
+  try{
+    result=await runCommand(command==='publish'&&options.dryRun&&!argv.includes('--authorize-publish')?'plan':command,options);
+  }finally{stop?.dispose();}
   const out={command:result.command,summary:result.summary,dryRun:result.dryRun||command!=='publish'};
   if(result.state?.entries){
     const counts={};for(const s of Object.values(result.state.entries))counts[s.status]=(counts[s.status]||0)+1;

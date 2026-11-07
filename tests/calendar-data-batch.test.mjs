@@ -15,7 +15,7 @@ import {
   assertLiveBaseline,matchLiveYear,yearReadBackProblems,yearCluster,historyCluster,CAMPUS_CLUSTER
 } from '../scripts/calendar-data-records.mjs';
 import {
-  assertCenterEditorial,assertPublisherUsesCenter,publishPlanned,summarizePlan,runCommand
+  assertCenterEditorial,assertPublisherUsesCenter,publishPlanned,summarizePlan,runCommand,interruptibleWait
 } from '../scripts/calendar-data-batch.mjs';
 
 const academicWorkspace={id:'academic',siteId:'scholay-today',writable:true,sections:[{id:'calendar',enabled:true,writable:true},{id:'history',enabled:true,writable:true}]};
@@ -227,6 +227,46 @@ test('partial failure publishes the successful item and keeps the failed one for
   const statuses=Object.fromEntries(Object.entries(state.entries).map(([k,v])=>[k,v.status]));
   assert.equal(statuses['campus-981358'],'published');
   assert.equal(statuses['campus-981359'],'error');
+});
+
+test('gap 0 stays sequential and does not insert the 75s courtesy sleep',async t=>{
+  const f=await publisherFixture(t);
+  const plan=planBatch({campus:addedCampus,history:[],liveYear:[],liveHistory:[]});
+  const queued=plan.items.filter(i=>i.status==='queued');
+  const waits=[];
+  let index=0;
+  const publisher={...f.publisher,status:async id=>{const item=queued[Math.min(index,queued.length-1)];f.setItem(item);index++;return f.publisher.status(id);}};
+  const state=await publishPlanned(plan,{workspace:f.workspace,statePath:f.statePath,publisher,center:f.center,fetcher:f.fetcher,authorizePublish:true,gapMs:0,pauseMs:0,wait:async ms=>waits.push(ms),log(){}});
+  assert.equal(Object.values(state.entries).filter(s=>s.status==='published').length,2);
+  assert.equal(waits.includes(75000),false);
+  assert.equal(f.calls.publish,2);
+});
+
+test('stop after a confirmed item does not start the next key; resume reuses the same ids',async t=>{
+  const f=await publisherFixture(t);
+  const plan=planBatch({campus:addedCampus,history:[],liveYear:[],liveHistory:[]});
+  const queued=plan.items.filter(i=>i.status==='queued');
+  assert.equal(queued.length,2);
+  let stop=false,index=0;
+  const publisher={...f.publisher,status:async id=>{const item=queued[Math.min(index,queued.length-1)];f.setItem(item);index++;return f.publisher.status(id);}};
+  const first=await publishPlanned(plan,{workspace:f.workspace,statePath:f.statePath,publisher,center:f.center,fetcher:f.fetcher,authorizePublish:true,gapMs:0,pauseMs:0,shouldStop:()=>stop,log:(key,status)=>{if(status==='published')stop=true;}});
+  assert.equal(first.entries['campus-981358'].status,'published');
+  assert.equal(first.entries['campus-981359'],undefined);
+  assert.equal(f.calls.publish,1);
+  const firstId=first.entries['campus-981358'].id;
+  stop=false;index=1;
+  const resumed=await publishPlanned(plan,{workspace:f.workspace,statePath:f.statePath,publisher,center:f.center,fetcher:f.fetcher,authorizePublish:true,gapMs:0,pauseMs:0,log(){}});
+  assert.equal(resumed.entries['campus-981358'].id,firstId);
+  assert.equal(resumed.entries['campus-981358'].status,'published');
+  assert.equal(resumed.entries['campus-981359'].status,'published');
+  assert.equal(f.calls.publish,2);
+});
+
+test('interruptible courtesy wait returns stopped without starting work',async()=>{
+  const calls=[];
+  const result=await interruptibleWait(5000,async ms=>calls.push(ms),()=>true);
+  assert.equal(result,'stopped');
+  assert.equal(calls.length,0);
 });
 
 test('replay after an uncertain transport reuses the original receipt',async t=>{

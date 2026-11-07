@@ -61,6 +61,36 @@ Identity:
 - History: skip when live `title+dateKey+year` match. Same-day similar titles are `conflict`.
 - Replay uses the frozen packet and original `requestKey`. An `unknown` / `unconfirmed` row is held; it is not submitted again.
 
+## Pacing (site calendar only)
+
+`--gap` default **75 seconds** is a **client courtesy sleep** copied from `scripts/history-batch.mjs`. It is not a Center editorial rate, not a receiver contract, and not a 今日学术 site quota. Academic Center destinations for this workspace are the site only (`site-scholay-today`); Postiz/DEV.to cooldowns (300–360s after a social 429) do not apply here and must not be used.
+
+The receiver (`receiver/server.mjs`) holds `build.lock` and runs **one host-wide build at a time**. `claim()` takes one queued request; `snapshotForPackets` then rebuilds from all already-published packets plus that one new packet. Replay of the same `requestId` returns the original receipt without another build (`docs/receiver-deployment.md`). Measured submit→public (~78s) is that serialized build, not `--gap`.
+
+**Sanctioned configuration for sequential idempotent publication:** `--gap 0`. The writer still waits until the current item is `published` (or held/failed) before minting the next key. That removes the extra 75s sleep; it does not overlap writers and does not skip readback. `--pause 600` remains the backoff only after HTTP 429/5xx.
+
+There is **no supported website-editorial multi-record packet**. Grouping N calendar items into one receiver job would be a new Center/receiver feature (partial failure vs one `requestKey`, identity/resume, and a full-snapshot rebuild still ~78s once). Do not invent it for this batch. Do not pipeline the next `publish` while the previous build is still running unless a later review accepts extra in-flight unknown states.
+
+## Pause and resume
+
+Do not SIGKILL. The running process should finish the current item.
+
+- **Current tested CLI (no stop handler):** wait until the item logs `published` / `unconfirmed` / `error` / `auth_failed`, then SIGTERM during the courtesy `--gap` sleep. File locks with a dead pid are stale and resume can take them.
+- **This revision:** SIGINT/SIGTERM sets `stop_at_boundary`, finishes the in-flight item, and does not start the next key. `--limit N` also stops after N newly published items in this process.
+- **Resume:** same `--workspace` and `--state`, same campus/history files. Published and `skipped_already_public` keys are skipped. `unconfirmed`/`unknown` keep the original `requestKey` and are not submitted again. `error` after a saved receipt is status-only recovery, not a second request.
+
+```sh
+# After a confirmed-item stop, same state, no courtesy sleep:
+node scripts/calendar-data-batch.mjs publish \
+  --campus /secure/path/yearOfficialCampusSeeds.json \
+  --history /secure/path/history-entries.json \
+  --workspace /secure/path/calendar-batch-workspace \
+  --authorize-publish \
+  --gap 0
+```
+
+If a supervisor respawns the old argv, stop that job and start one process with `--gap 0`; do not run a second writer against the same `--state`.
+
 ## Credentials and access
 
 Required for the publish step, not for plan/validate:
