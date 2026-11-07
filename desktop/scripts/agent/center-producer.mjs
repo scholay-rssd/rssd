@@ -167,7 +167,7 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
     if(!imagePlan){
       if(origin&&claim?.workspaceId){
         const {persistGenerationEvidence}=await import('../../../scripts/rssd-center-generation-evidence.mjs');
-        await persistGenerationEvidence({directory,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature,source,agentId});
+        await persistGenerationEvidence({directory,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature,source,agentId,demandId:claim.id,generation:claim.generation,workerId:claim.workerId||claim.payload?.storeOnlyWorkerId});
       }
       return parseCenterEdition(output,{source,locale,sectionId:claim.sectionId,signature,origin,workspaceId:claim.workspaceId});
     }

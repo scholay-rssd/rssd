@@ -27,6 +27,8 @@ export async function prepareEditionMedia({edition,home,directory,client,workspa
   if(internal){
     const allowed=source?registeredSourceMediaIds(source):null;
     if(allowed&&!allowed.has(internal.id))throw Object.assign(Error('Image is not registered on the bound source edition'),{code:'media_ref_invalid'});
+    const local=await json(join(home,'media',key(client.origin,workspaceId,internal.id)+'.json'));
+    if(local&&(local.id!==internal.id||local.workspaceId!==workspaceId||local.origin!==client.origin))throw Object.assign(Error('Cached image belongs to a different center or workspace'),{code:'media_conflict'});
     const prior=media.get(internal.id);media.set(internal.id,{id:internal.id,alt:image.alt||prior?.alt||''});continue;
   }
   if(looksLikeCenterMediaPath(image.src))throw Object.assign(Error('Center media URL is not on the trusted origin or is an illegal path'),{code:'media_ref_invalid'});

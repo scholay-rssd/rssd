@@ -299,7 +299,7 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
           const resultFile=join(directory,locale+'.result.json');
           let output=await read(resultFile);
           if(!output){
-            const recovered=await recoverPersistedCenterEdition({directory,locale,source,origin:client.origin,workspaceId:claim.workspaceId,sectionId:claim.sectionId,agentId});
+            const recovered=await recoverPersistedCenterEdition({directory,locale,source,origin:client.origin,workspaceId:claim.workspaceId,sectionId:claim.sectionId,agentId,demandId:claim.id,generation:claim.generation,workerId:claim.workerId||client.workerId||claim.payload?.storeOnlyWorkerId,sourceHash:claim.payload?.sourceHash});
             if(recovered?.edition){
               output=recovered.edition;
               await save(resultFile,output);

@@ -39,6 +39,8 @@ function notebookWithImages(title,urls){
 function deviceSignature(agentId='codex'){
   return {runId:'run-synthetic-media',agentId,agentName:agentId,startedAt:'2026-11-07T00:00:00.000Z',completedAt:'2026-11-07T00:00:01.000Z',action:'translate',status:'completed',modelId:'labeled-mock',modelName:'labeled mock producer'};
 }
+const TASK={demandId:'demand-synthetic-media',generation:1,workerId:'device-a'};
+function evidenceArgs(extra={}){return {origin:ORIGIN,workspaceId:WORKSPACE,sectionId:'forums',agentId:'codex',...TASK,...extra};}
 function storeCenter(){return createTranslateCenterFixture({contracts:bothContracts});}
 function withRegisteredMedia(client,assets){
   const stored=new Map(assets.map(asset=>[asset.id,asset]));
@@ -89,6 +91,7 @@ test('source-bound notebook accepts registered relative WebP URLs and rejects un
   const unregistered='media-'+'d'.repeat(48);
   assert.throws(()=>notebookEdition({notebook:notebookWithImages('Synthetic English title',[relativeRaw(unregistered),relative[1]]),summary:'Summary'},{locale:'en',origin:ORIGIN,source:{payload:chinese}}),/请先导入图片/);
   assert.throws(()=>notebookEdition({notebook:notebookWithImages('Synthetic English title',[absoluteRaw(first.id,'https://evil.example'),relative[1]]),summary:'Summary'},{locale:'en',origin:ORIGIN,source:{payload:chinese}}),/请先导入图片/);
+  assert.throws(()=>notebookEdition({notebook:notebookWithImages('Synthetic English title',['https://images.example/public.webp',relative[1]]),summary:'Summary'},{locale:'en',origin:ORIGIN,source:{payload:chinese}}),/请先导入图片/);
 });
 
 test('prepareEditionMedia inherits registered relative refs with zero re-upload and rejects foreign Center-shaped URLs',async t=>{
@@ -125,20 +128,21 @@ test('generation evidence is device-recorded, ignores forged body signatures, an
   notebook.modelSignatures=[{agentId:'forged-from-body'}];
   const output=JSON.stringify({notebook,summary:'Summary'});
   await writeFile(join(directory,'en.agent-output.txt'),output,{mode:0o600});
-  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source,origin:ORIGIN,workspaceId:WORKSPACE,sectionId:'forums',agentId:'codex'}),{code:GENERATION_UNRECOVERABLE});
+  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs()}),{code:GENERATION_UNRECOVERABLE});
   assert.equal(authenticGenerationSignature({agentId:'codex',status:'completed'}),false);
   const signature=deviceSignature();
-  const evidence=await persistGenerationEvidence({directory,locale:'en',sectionId:'forums',origin:ORIGIN,workspaceId:WORKSPACE,output,signature,source,agentId:'codex'});
+  const evidence=await persistGenerationEvidence({directory,locale:'en',output,signature,source,...evidenceArgs()});
   assert.equal(evidence.notFromAgentBody,true);
   assert.deepEqual(evidence.sourceBind,sourceBindFrom(source));
+  assert.deepEqual(evidence.taskBind,TASK);
   assert.equal(evidence.sourceBind.workId,'work-synthetic-media');
   assert.equal(evidence.sourceBind.revision,2);
   assert.match(evidence.sourceBind.hash,/^[a-f0-9]{64}$/);
-  const recovered=await recoverPersistedCenterEdition({directory,locale:'en',source,origin:ORIGIN,workspaceId:WORKSPACE,sectionId:'forums',agentId:'codex'});
+  const recovered=await recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs(),sourceHash:evidence.sourceBind.hash});
   assert.equal(recovered.recovered,true);
   assert.equal(recovered.edition.metadata.notebook.modelSignatures.at(-1).agentId,'codex');
   assert.equal(recovered.edition.metadata.notebook.modelSignatures.some(item=>item.agentId==='forged-from-body'),false);
-  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source:{...source,revision:3},origin:ORIGIN,workspaceId:WORKSPACE,sectionId:'forums',agentId:'codex'}),/原稿绑定/);
+  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source:{...source,revision:3},...evidenceArgs()}),/原稿绑定/);
 });
 
 test('labeled mock producer: store-only inherits two registered enter WebP refs with zero publications and no re-upload',async t=>{
@@ -192,7 +196,7 @@ test('same-task resume recovers persisted evidence without re-running the labele
     notebookJson.modelSignatures=[{agentId:'forged-from-body'}];
     const output=JSON.stringify({notebook:notebookJson,summary:'Summary'});
     await writeFile(join(directory,locale+'.agent-output.txt'),output,{mode:0o600});
-    await persistGenerationEvidence({directory,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature:deviceSignature(),source,agentId:'codex'});
+    await persistGenerationEvidence({directory,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature:deviceSignature(),source,agentId:'codex',demandId:claim.id,generation:claim.generation,workerId:claim.workerId||claim.payload?.storeOnlyWorkerId});
     throw Error('crash after evidence before result.json');
   };
   await assert.rejects(runProductionTurn({client,home,agentId:'codex',workspaceIds:[WORKSPACE],sectionIds:['forums'],demandId:queued.id,storeOnly:true,producer:labeledMockProducer}),/crash after evidence/);
@@ -240,3 +244,117 @@ test('parseCenterEdition with origin accepts the diagnostic relative shape that 
   const edition=parseCenterEdition(raw,{locale:'en',origin:ORIGIN,workspaceId:WORKSPACE});
   assert.equal(edition.media[0].id,id);
 });
+
+test('trusted Center origin comes from the client, not from model metadata or image hosts',()=>{
+  const id='media-'+'a'.repeat(48);
+  const raw=JSON.stringify({
+    notebook:notebookWithImages('Synthetic English title',[relativeRaw(id)]),
+    summary:'Summary',
+    metadata:{origin:'https://evil.example',centerOrigin:'https://evil.example'},
+  });
+  const edition=parseCenterEdition(raw,{locale:'en',origin:ORIGIN,workspaceId:WORKSPACE});
+  assert.match(edition.bodyMarkdown,new RegExp(ORIGIN.replace(/[.]/g,'\\.')));
+  assert.doesNotMatch(edition.bodyMarkdown,/evil\.example/);
+  assert.throws(()=>parseCenterEdition(JSON.stringify({notebook:notebookWithImages('Synthetic English title',[absoluteRaw(id,'https://evil.example')]),summary:'Summary'}),{locale:'en',origin:ORIGIN}),/请先导入图片/);
+});
+
+test('cross-workspace registered WebP IDs are not inherited on an enter source bind',async t=>{
+  const home=await temp(t);
+  const enter=await stageMedia({directory:join(home,'media'),origin:ORIGIN,workspaceId:WORKSPACE,bytes:await webpPixel('#467f65'),name:'enter.webp'});
+  const other=await stageMedia({directory:join(home,'media'),origin:ORIGIN,workspaceId:WORKSPACE,bytes:await webpPixel('#2b6cb0'),name:'enter-two.webp'});
+  const pets=await stageMedia({directory:join(home,'media'),origin:ORIGIN,workspaceId:'pets',bytes:await webpPixel('#b54433'),name:'pets.webp'});
+  const chinese=notebookEdition({notebook:notebookWithImages('合成中文标题',[relativeRaw(enter.id),relativeRaw(other.id)]),summary:'摘要'},{locale:'zh-CN',origin:ORIGIN,workspaceId:WORKSPACE});
+  assert.throws(()=>notebookEdition({notebook:notebookWithImages('Synthetic English title',[relativeRaw(pets.id),relativeRaw(other.id)]),summary:'Summary'},{locale:'en',origin:ORIGIN,source:{payload:chinese}}),/请先导入图片/);
+  const english=notebookEdition({notebook:notebookWithImages('Synthetic English title',[relativeRaw(enter.id),relativeRaw(other.id)]),summary:'Summary'},{locale:'en',origin:ORIGIN,source:{payload:chinese}});
+  await assert.rejects(prepareEditionMedia({
+    edition:{...english,bodyMarkdown:english.bodyMarkdown.replaceAll(enter.id,pets.id),media:[]},
+    home,directory:join(home,'job'),client:{origin:ORIGIN},workspaceId:WORKSPACE,source:chinese,
+    fetchBytes:async()=>{throw Error('must not fetch');},
+  }),{code:'media_ref_invalid'});
+});
+
+test('tampered, truncated, replayed, or incomplete evidence is unrecoverable and does not re-run the model',async t=>{
+  const home=await temp(t),directory=join(home,'job');
+  await mkdir(directory,{recursive:true,mode:0o700});
+  const id='media-'+'a'.repeat(48),other='media-'+'b'.repeat(48);
+  const source={workId:'work-synthetic-media',locale:'zh-CN',revision:2,payload:{locale:'zh-CN',title:'合成中文标题',bodyMarkdown:'![Figure 1]('+absoluteRaw(id)+')\n\n![Figure 2]('+absoluteRaw(other)+')',media:[{id,alt:'Figure 1'},{id:other,alt:'Figure 2'}]}};
+  const output=JSON.stringify({notebook:notebookWithImages('Synthetic English title',[relativeRaw(id),relativeRaw(other)]),summary:'Summary'});
+  const signature=deviceSignature();
+  await writeFile(join(directory,'en.agent-output.txt'),output,{mode:0o600});
+  const evidence=await persistGenerationEvidence({directory,locale:'en',output,signature,source,...evidenceArgs()});
+  const file=join(directory,'en.generation-evidence.json');
+  const mutate=async patch=>{await writeFile(file,JSON.stringify({...evidence,...patch},null,2)+'\n');};
+  await mutate({outputSha256:protocol.hash('tampered')});
+  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs()}),{code:GENERATION_UNRECOVERABLE});
+  await mutate({taskBind:{...TASK,demandId:'demand-other-job'}});
+  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs()}),{code:GENERATION_UNRECOVERABLE});
+  await writeFile(file,JSON.stringify(evidence,null,2)+'\n');
+  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs(),demandId:'demand-other-job'}),{code:GENERATION_UNRECOVERABLE});
+  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs(),generation:2}),{code:GENERATION_UNRECOVERABLE});
+  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs(),workerId:'device-b'}),{code:GENERATION_UNRECOVERABLE});
+  await writeFile(join(directory,'en.agent-output.txt'),output.slice(0,40),{mode:0o600});
+  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs()}),{code:GENERATION_UNRECOVERABLE});
+  await writeFile(join(directory,'en.agent-output.txt'),output,{mode:0o600});
+  await writeFile(file,'{"kind":"center-generation-evidence","version":1',{mode:0o600});
+  await assert.rejects(recoverPersistedCenterEdition({directory,locale:'en',source,...evidenceArgs()}),{code:GENERATION_UNRECOVERABLE});
+});
+
+test('existing result.json and packet.json resume without re-running the labeled mock producer',async t=>{
+  const home=await temp(t);
+  const first=await stageMedia({directory:join(home,'media'),origin:ORIGIN,workspaceId:WORKSPACE,bytes:await webpPixel('#467f65'),name:'one.webp'});
+  const second=await stageMedia({directory:join(home,'media'),origin:ORIGIN,workspaceId:WORKSPACE,bytes:await webpPixel('#b54433'),name:'two.webp'});
+  const relative=[relativeRaw(first.id),relativeRaw(second.id)];
+  const center=storeCenter();
+  const work=center.addWork({id:'work-synthetic-result',workspaceId:WORKSPACE,sectionId:'forums',title:'合成中文标题'});
+  const chineseEdition=notebookEdition({notebook:notebookWithImages('合成中文标题',relative),summary:'摘要'},{locale:'zh-CN',origin:ORIGIN,workspaceId:WORKSPACE});
+  center.putEdition(center.works.get(work.id),{locale:'zh-CN',revision:2,payload:{...chineseEdition,locale:'zh-CN'}});
+  const client=withRegisteredMedia(center.client('device-a'),[first,second]);
+  const queued=await enqueueStoreOnlyTranslate({client,workId:work.id,revision:2});
+  let produced=0;
+  const labeledMockProducer=async({locale,source,origin,directory})=>{
+    produced++;
+    const edition=notebookEdition({notebook:notebookWithImages('Synthetic English title',relative),summary:'Summary'},{locale:'en',origin,workspaceId:WORKSPACE,source,signature:deviceSignature()});
+    await writeFile(join(directory,locale+'.result.json'),JSON.stringify(edition));
+    throw Error('crash after result.json before packet');
+  };
+  await assert.rejects(runProductionTurn({client,home,agentId:'codex',workspaceIds:[WORKSPACE],sectionIds:['forums'],demandId:queued.id,storeOnly:true,producer:labeledMockProducer}),/crash after result/);
+  assert.equal(produced,1);
+  const recovered=await runProductionTurn({client,home,agentId:'codex',workspaceIds:[WORKSPACE],sectionIds:['forums'],demandId:queued.id,storeOnly:true,resume:true,producer:async()=>{produced++;throw Error('must not re-run labeled mock producer');}});
+  assert.equal(produced,1);
+  assert.equal(recovered.state,'accepted');
+  assert.deepEqual(recovered.submissions[0].receipt.publicationIds,[]);
+  const again=await runProductionTurn({client,home,agentId:'codex',workspaceIds:[WORKSPACE],sectionIds:['forums'],demandId:queued.id,storeOnly:true,resume:true,producer:async()=>{produced++;throw Error('must not re-run labeled mock producer');}});
+  assert.equal(produced,1);
+  assert.equal(again.state,'accepted');
+  assert.deepEqual(again.submissions[0].receipt.publicationIds,[]);
+});
+
+test('worker resume after evidence tamper or cross-job replay does not re-run the model',async t=>{
+  const home=await temp(t);
+  const first=await stageMedia({directory:join(home,'media'),origin:ORIGIN,workspaceId:WORKSPACE,bytes:await webpPixel('#467f65'),name:'one.webp'});
+  const second=await stageMedia({directory:join(home,'media'),origin:ORIGIN,workspaceId:WORKSPACE,bytes:await webpPixel('#b54433'),name:'two.webp'});
+  const relative=[relativeRaw(first.id),relativeRaw(second.id)];
+  const center=storeCenter();
+  const work=center.addWork({id:'work-synthetic-tamper',workspaceId:WORKSPACE,sectionId:'forums',title:'合成中文标题'});
+  const chineseEdition=notebookEdition({notebook:notebookWithImages('合成中文标题',relative),summary:'摘要'},{locale:'zh-CN',origin:ORIGIN,workspaceId:WORKSPACE});
+  center.putEdition(center.works.get(work.id),{locale:'zh-CN',revision:2,payload:{...chineseEdition,locale:'zh-CN'}});
+  const client=withRegisteredMedia(center.client('device-a'),[first,second]);
+  const queued=await enqueueStoreOnlyTranslate({client,workId:work.id,revision:2});
+  let produced=0;
+  await assert.rejects(runProductionTurn({client,home,agentId:'codex',workspaceIds:[WORKSPACE],sectionIds:['forums'],demandId:queued.id,storeOnly:true,producer:async({directory,locale,source,origin,claim})=>{
+    produced++;
+    const output=JSON.stringify({notebook:notebookWithImages('Synthetic English title',relative),summary:'Summary'});
+    await writeFile(join(directory,locale+'.agent-output.txt'),output,{mode:0o600});
+    await persistGenerationEvidence({directory,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature:deviceSignature(),source,agentId:'codex',demandId:claim.id,generation:claim.generation,workerId:claim.workerId||claim.payload?.storeOnlyWorkerId});
+    throw Error('crash after evidence');
+  }}),/crash after evidence/);
+  assert.equal(produced,1);
+  const job=join(home,'jobs',(await readdir(join(home,'jobs')))[0]);
+  const file=join(job,'en.generation-evidence.json');
+  const evidence=JSON.parse(await readFile(file,'utf8'));
+  evidence.outputSha256=protocol.hash('cross-job-or-tamper');
+  await writeFile(file,JSON.stringify(evidence,null,2)+'\n');
+  await assert.rejects(runProductionTurn({client,home,agentId:'codex',workspaceIds:[WORKSPACE],sectionIds:['forums'],demandId:queued.id,storeOnly:true,resume:true,producer:async()=>{produced++;throw Error('must not re-run labeled mock producer');}}),{code:GENERATION_UNRECOVERABLE});
+  assert.equal(produced,1);
+});
+
