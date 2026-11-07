@@ -153,7 +153,15 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
     const flushScoped=async original=>{for(const entry of await outbox.list())if(entry.state==='pending'){await attest(entry.packet,original);await ready('before_submission');await outbox.flushOne(entry.requestId);}};
     if(requiredModel)for(const entry of await outbox.list())if(['pending','needs_attention'].includes(entry.state))requirePilotPacket(entry.packet);
     if(scoped){await ready('before_recovery');for(const entry of await outbox.list())if(['pending','needs_attention'].includes(entry.state))requireScopedPacket(entry.packet,scoped);}
-    else await outbox.flush();
+    else if(!storeOnly) await outbox.flush();
+    else{
+      for(const entry of await outbox.list()){
+        if(entry.storeOnly!==true||demandId&&entry.packet.demandId!==demandId)continue;
+        try{await client.submission(entry.requestId);}catch(error){if(error.status===404)continue;throw error;}
+        const flushed=await outbox.flushOne(entry.requestId,{lookupOnly:true});
+        if(flushed.state==='accepted')assertStoreOnlyReceipt(flushed.receipt,entry.packet,{workerId:client.workerId});
+      }
+    }
     let claim,offline=false;
     try{claim=await client.activeClaim();}
     catch(error){
@@ -195,11 +203,20 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
       }
     }
     if(!claim){
+      if(storeOnly){
+        const done=(await outbox.list()).filter(entry=>entry.state==='accepted'&&entry.storeOnly===true&&(!demandId||entry.packet.demandId===demandId)&&entry.receipt?.demandState==='completed');
+        if(done.length){
+          for(const entry of done)assertStoreOnlyReceipt(entry.receipt,entry.packet,{workerId:client.workerId});
+          await clearCompletedClaim(home,client.origin,await outbox.list());
+          return {state:'accepted',demandId:demandId||done[0].packet.demandId,workId:done[0].packet.workId,submissions:done.map(entry=>({requestId:entry.requestId,state:entry.state,receipt:entry.receipt}))};
+        }
+      }
       // A flush can leave a request unresolved (or requiring attention).
       // Preserve the original packet and do not claim another demand until
       // its receipt is reconciled. An already active claim may still resume.
       const unresolved=(await outbox.list()).filter(entry=>entry.state!=='accepted');
-      if(unresolved.length){
+      const blocking=storeOnly&&demandId?[]:unresolved;
+      if(blocking.length){
         await client.heartbeat({state:'blocked',agentId,message:'原提交尚未确认，已保留并停止领取'}).catch(()=>{});
         return {state:'pending',message:'原提交尚未确认，已保留并停止领取'};
       }
@@ -210,6 +227,10 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
     // Save a newly acquired identity before any later validation or network
     // operation, so an ineligible claim can still be released or recovered.
     await save(activeFile,{origin:client.origin,claim});
+    if(claim.payload?.storeOnly===true){
+      if(!storeOnly)throw Object.assign(Error('Store-only demand requires --store-only / storeOnly:true'),{code:'store_only_required',status:403});
+      await requireStoreOnlyContract(client);
+    }else if(storeOnly)throw Object.assign(Error('Claim is not store-only'),{code:'not_store_only',status:409});
     if(!workspaceIds.includes(claim.workspaceId)||sectionIds.length&&!sectionIds.includes(claim.sectionId))throw Error('The active demand is outside the selected scope; resume that scope or release it explicitly');
     if(scoped)try{requireScopedClaim(claim,scoped);}catch(error){try{await client.changeDemand(claim.id,{action:'blocked',claimToken:claim.claimToken,message:error.message});}catch{}throw error;}
     if(requiredModel&&(claim.kind!=='write'||claim.payload.requiredLocales?.length!==1||claim.payload.requiredLocales[0]!=='zh-CN')){
@@ -224,11 +245,6 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
       await client.heartbeat({state:'blocked',agentId,message:String(error.message).slice(0,2000)}).catch(()=>{});
       await save(join(directory,'failure.json'),{message:error.message,at:new Date().toISOString(),...(error.diagnostics?{diagnostics:error.diagnostics}:{})});throw error;
     }
-    if(claim.payload?.storeOnly===true){
-      if(!storeOnly)throw Object.assign(Error('Store-only demand requires --store-only / storeOnly:true'),{code:'store_only_required',status:403});
-      await requireStoreOnlyContract(client);
-      if(claim.payload.storeOnly!==true)throw Object.assign(Error('Claim did not freeze store-only intent'),{code:'not_store_only',status:409});
-    }else if(storeOnly)throw Object.assign(Error('Claim is not store-only'),{code:'not_store_only',status:409});
     const translateSource=claim.kind==='translate'?requireTranslateClaim(claim):null;
     const workId=translateSource?.workId||claim.payload.workId||claim.payload.source?.workId||'work-'+protocol.hash(claim.id).slice(0,32);
     const contextFile=join(directory,'context.json');
@@ -304,7 +320,7 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
         if(requiredModel)requirePilotPacket(packet);
         if(translateSource)requireTranslatePacket(packet,claim);
         if(scoped){await attest(packet,claim);await attestOutbox(claim);await ready('before_submission');}
-        await outbox.enqueue(packet,{storeOnly:storeOnly===true});if(scoped){await attestOutbox(claim);await attest(packet,claim);await ready('before_submission');}else if(!storeOnly) await outbox.flush();
+        await outbox.enqueue(packet,{storeOnly:storeOnly===true||claim.payload?.storeOnly===true});if(scoped){await attestOutbox(claim);await attest(packet,claim);await ready('before_submission');}else if(!storeOnly) await outbox.flush();
         else await outbox.flushOne(packet.requestId);
         const result=await outbox.flushOne(packet.requestId,{retry:resume});
         if(storeOnly&&result.state==='accepted')assertStoreOnlyReceipt(result.receipt,packet,{workerId:client.workerId||claim.payload?.storeOnlyWorkerId});

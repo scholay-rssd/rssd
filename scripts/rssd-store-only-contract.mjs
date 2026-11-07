@@ -1,4 +1,5 @@
 import {CenterError} from './rssd-center-client.mjs';
+import protocol from '../contracts/rssd-v1.cjs';
 
 export const STORE_ONLY_CONTRACT={
   centerHead:'f38d8e6b98393265ee9306902ec4c91404c363a8',
@@ -34,9 +35,16 @@ export async function requireStoreOnlyContract(client){
 }
 export function assertStoreOnlyReceipt(receipt,packet,{workerId}={}){
   if(!receipt||receipt.status!=='accepted'||receipt.storeOnly!==true)fail('Center receipt is not store-only; not treated as success','not_store_only',409);
+  if(receipt.demandState!=='completed')fail('Store-only receipt is not a completed demand; not treated as success','not_store_only',409);
   if(!Array.isArray(receipt.publicationIds)||receipt.publicationIds.length)fail('Store-only receipt included publications; not treated as success','not_store_only',409);
   if(typeof receipt.storeOnlyWorkerId!=='string'||!receipt.storeOnlyWorkerId)fail('Store-only receipt omitted creating-device bind; not treated as success','not_store_only',409);
   if(workerId!=null&&receipt.storeOnlyWorkerId!==workerId)fail('Store-only receipt is bound to a different device; not treated as success','not_store_only',409);
-  if(packet&&(receipt.requestId!==packet.requestId||receipt.workId!==packet.workId||receipt.workspaceId!==packet.workspaceId))fail('Store-only receipt does not match the original request','receipt_mismatch',409);
+  if(!Array.isArray(receipt.editions)||receipt.editions.length!==1||receipt.editions[0].locale!=='en')fail('Store-only receipt must bind exactly one English edition','not_store_only',409);
+  if(packet){
+    if(receipt.requestId!==packet.requestId||receipt.workId!==packet.workId||receipt.workspaceId!==packet.workspaceId)fail('Store-only receipt does not match the original request','receipt_mismatch',409);
+    if(!Array.isArray(packet.editions)||packet.editions.length!==1||packet.editions[0].locale!=='en')fail('Store-only packet must submit only English','not_store_only',409);
+    const received=receipt.editions[0];
+    if(received.hash!==protocol.hash(packet.editions[0])||received.revision!==(packet.baseRevisions?.en||0)+1)fail('Store-only receipt does not match the English edition','receipt_mismatch',409);
+  }
   return receipt;
 }

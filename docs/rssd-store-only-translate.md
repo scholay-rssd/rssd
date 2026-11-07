@@ -63,7 +63,9 @@ Accepted store-only receipt:
 {"status":"accepted","storeOnly":true,"storeOnlyWorkerId":"<creating-worker>","publicationIds":[],"demandState":"completed","editions":[{"locale":"en","revision":1,"hash":"<hex>"}]}
 ```
 
-Same `requestId` on the creating device replays the original result. Other devices querying or replaying that `requestId` get `404 not_found` and never the result (including never a `request_conflict` body). A receipt missing `storeOnly:true`, `storeOnlyWorkerId`, or listing publication ids is `not_store_only` and **must not** be treated as success.
+Same `requestId` on the creating device replays the original result. Other devices querying or replaying that `requestId` get `404 not_found` and never the result (including never a `request_conflict` body). A receipt is accepted only when it has `storeOnly:true`, `storeOnlyWorkerId` of this device, `publicationIds:[]`, `demandState:completed`, the original `requestId`/`workId`/`workspaceId`, and exactly one English edition matching the packet hash. Anything else is `not_store_only` or `receipt_mismatch` and **must not** mark the outbox `accepted` or clear the packet.
+
+`--store-only` cannot be stripped to downgrade a persisted outbox or a store-only demand. `submit`/`recover` infer intent from the outbox hash, `active-claim.json`, and the demand payload. Rewriting the outbox as ordinary publish is `not_store_only`. `work` without `--store-only` cannot produce a store-only claim. Missing eleven-token overview refuses before claim, producer, or submit. Store-only work does not drain ordinary outbox packets.
 
 While the store-only demand is queued/claimed/blocked, drafts or submissions to the same work that omit that demand (bypass `demandId`) are `409 store_only_conflict`.
 

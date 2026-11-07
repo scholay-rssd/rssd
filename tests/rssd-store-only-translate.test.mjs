@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {mkdtemp,readdir,readFile,rm} from 'node:fs/promises';
+import {mkdtemp,readdir,readFile,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {ARTICLE_WRITING_POLICY} from '../contracts/article-writing-policy.mjs';
@@ -172,21 +172,42 @@ test('omitted store-only flags, tampered receipts, and missing contract do not c
   const client=center.client('device-a');
   const queued=await enqueueStoreOnlyTranslate({client,workId:work.id});
   await assert.rejects(runProductionTurn({client,home,agentId:'codex',workspaceIds:['enter'],storeOnly:true,producer}),{code:'store_only_required'});
-  await assert.rejects(runProductionTurn({client,home,agentId:'codex',workspaceIds:['enter'],demandId:queued.id,producer:async()=>{throw Error('must not produce');}}),{code:'store_only_required'});
+  let produced=0;
+  await assert.rejects(runProductionTurn({client,home,agentId:'codex',workspaceIds:['enter'],demandId:queued.id,producer:async()=>{produced++;throw Error('must not produce');}}),{code:'store_only_required'});
+  assert.equal(produced,0);
+  const claimed=await client.claim(storeOnlyClaimBody({demandId:queued.id,workspaceIds:['enter']}));
+  await assert.rejects(runProductionTurn({client,home,agentId:'codex',workspaceIds:['enter'],demandId:queued.id,producer:async()=>{produced++;throw Error('must not produce');}}),{code:'store_only_required'});
+  assert.equal(produced,0);
+  await client.changeDemand(queued.id,{action:'release',claimToken:claimed.claimToken});
+  const lyingWork=center.addWork({id:'work-store-lying'});
+  const lyingQueued=await enqueueStoreOnlyTranslate({client,workId:lyingWork.id});
   const lying={...client,submit:async packet=>{
     const real=await client.submit(packet);
-    return {...real,storeOnly:true,storeOnlyWorkerId:'device-other',publicationIds:[]};
+    return {...real,storeOnly:true,storeOnlyWorkerId:'device-other',publicationIds:[],demandState:'completed'};
   }};
-  await assert.rejects(runProductionTurn({client:lying,home,agentId:'codex',workspaceIds:['enter'],demandId:queued.id,storeOnly:true,producer}),{code:'not_store_only'});
+  await assert.rejects(runProductionTurn({client:lying,home,agentId:'codex',workspaceIds:['enter'],demandId:lyingQueued.id,storeOnly:true,producer}),{code:'not_store_only'});
+  const incompleteHome=await mkdtemp(join(tmpdir(),'rssd-store-incomplete-'));t.after(()=>rm(incompleteHome,{recursive:true,force:true}));
+  const incompleteWork=center.addWork({id:'work-store-incomplete'});
+  const incompleteQueued=await enqueueStoreOnlyTranslate({client,workId:incompleteWork.id});
+  const incomplete={...client,submit:async packet=>{
+    const real=await client.submit(packet);
+    return {...real,demandState:'claimed'};
+  }};
+  await assert.rejects(runProductionTurn({client:incomplete,home:incompleteHome,agentId:'codex',workspaceIds:['enter'],demandId:incompleteQueued.id,storeOnly:true,producer}),{code:'not_store_only'});
+  const jobDirs=await readdir(join(incompleteHome,'jobs'));
+  assert.equal(JSON.parse(await readFile(join(incompleteHome,'jobs',jobDirs[0],'en.packet.json'),'utf8')).editions[0].locale,'en');
+  const outboxName=(await readdir(join(incompleteHome,'outbox'))).find(name=>name.endsWith('.json'));
+  const retained=JSON.parse(await readFile(join(incompleteHome,'outbox',outboxName),'utf8'));
+  assert.notEqual(retained.state,'accepted');assert.equal(retained.storeOnly,true);
   const boxed=new CenterOutbox({directory:join(home,'outbox-missing'),client:{...client,overview:async()=>({contracts:{translateContinuation:translateContinuationContract()}})}});
   const packet=protocol.submission({
     requestId:'req-store-recover',workId:work.id,workspaceId:'enter',sectionId:'forums',demandId:queued.id,claimToken:'unused',
     baseRevisions:{en:0},editions:[{locale:'en',title:'English',bodyMarkdown:'Body',translationOf:{workId:work.id,locale:'zh-CN',revision:1}}],
   });
-  await boxed.enqueue(packet,{storeOnly:true});
-  const blocked=await boxed.flushOne('req-store-recover');
-  assert.equal(blocked.state,'needs_attention');assert.equal(blocked.error.code,'contract_unavailable');
-  assert.notEqual(blocked.state,'accepted');
+  await assert.rejects(boxed.enqueue(packet,{storeOnly:true}),{code:'contract_unavailable'});
+  const noContractClient={...client,overview:async()=>({contracts:{translateContinuation:translateContinuationContract()}}),claim:async()=>{throw Error('must not claim without the eleven-token pack');},submit:async()=>{throw Error('must not submit without the eleven-token pack');}};
+  await assert.rejects(runProductionTurn({client:noContractClient,home,agentId:'codex',workspaceIds:['enter'],demandId:queued.id,storeOnly:true,producer:async()=>{produced++;throw Error('must not produce');}}),{code:'contract_unavailable'});
+  assert.equal(produced,0);
 });
 
 test('lost store-only submit keeps the same requestId and intent; ordinary outbox still publishes',async t=>{
@@ -204,7 +225,8 @@ test('lost store-only submit keeps the same requestId and intent; ordinary outbo
   assert.equal(again.requestId,recovered.submissions[0].requestId);assert.equal(again.storeOnly,true);
   assert.equal(again.storeOnlyWorkerId,'device-a');assert.deepEqual(again.publicationIds,[]);
   const replay=await runProductionTurn({client:flaky,home,agentId:'codex',workspaceIds:['enter'],demandId:queued.id,storeOnly:true,producer:async()=>{throw Error('must not regenerate');}});
-  assert.equal(posts,1);assert.equal(replay.state,'idle');
+  assert.equal(posts,1);assert.equal(replay.state,'accepted');
+  assert.equal(replay.submissions[0].requestId,recovered.submissions[0].requestId);
   const ordinaryHome=await mkdtemp(join(tmpdir(),'rssd-ordinary-outbox-'));t.after(()=>rm(ordinaryHome,{recursive:true,force:true}));
   const publishWork=center.addWork({id:'work-ordinary-outbox'});
   const publisher=center.client('publisher-b');
@@ -231,6 +253,96 @@ test('store-only submit refuses later Chinese movement without rewriting zh-CN',
   assert.equal(liveZh.revision,zh.revision+1);assert.notEqual(liveZh.hash,zh.hash);
   assert.equal(liveZh.payload.bodyMarkdown.includes('中文已更新'),true);
   assert.equal((await client.work(work.id)).editions.some(row=>row.locale==='en'),false);
+});
+
+test('submit/recover without --store-only keep persisted store-only intent and cannot be rewritten into ordinary publish',async t=>{
+  const home=await mkdtemp(join(tmpdir(),'rssd-store-flag-'));t.after(()=>rm(home,{recursive:true,force:true}));
+  const center=storeCenter({dispatchEnabled:true});
+  const work=center.addWork({id:'work-store-flag'});
+  const client=center.client('device-a');
+  const queued=await enqueueStoreOnlyTranslate({client,workId:work.id});
+  const claimed=await client.claim(storeOnlyClaimBody({demandId:queued.id,workspaceIds:['enter']}));
+  await writeCenterJson(join(home,'active-claim.json'),{origin:client.origin,claim:claimed});
+  const packet=protocol.submission({
+    requestId:'req-store-noflag',workId:work.id,workspaceId:'enter',sectionId:'forums',demandId:queued.id,claimToken:claimed.claimToken,
+    baseRevisions:{en:0},editions:[{locale:'en',title:'English',bodyMarkdown:'Inferred store-only submit.',translationOf:{workId:work.id,locale:'zh-CN',revision:1}}],
+  });
+  const box=new CenterOutbox({directory:join(home,'outbox'),client});
+  const queuedOutbox=await box.enqueue(packet);
+  assert.equal(queuedOutbox.storeOnly,true);
+  const recovered=await box.flushOne(packet.requestId);
+  assert.equal(recovered.state,'accepted');assert.equal(recovered.receipt.storeOnly,true);
+  assert.equal(recovered.receipt.demandState,'completed');assert.deepEqual(recovered.receipt.publicationIds,[]);
+  assert.equal(center.publications.length,0);
+  const steal=center.addWork({id:'work-store-strip'});
+  const stealQueued=await enqueueStoreOnlyTranslate({client,workId:steal.id});
+  const stealClaim=await client.claim(storeOnlyClaimBody({demandId:stealQueued.id,workspaceIds:['enter']}));
+  const stealPacket=protocol.submission({
+    requestId:'req-store-strip',workId:steal.id,workspaceId:'enter',sectionId:'forums',demandId:stealQueued.id,claimToken:stealClaim.claimToken,
+    baseRevisions:{en:0},editions:[{locale:'en',title:'English',bodyMarkdown:'Must not become ordinary publish.',translationOf:{workId:steal.id,locale:'zh-CN',revision:1}}],
+  });
+  const stealBox=new CenterOutbox({directory:join(home,'outbox-strip'),client});
+  await stealBox.enqueue(stealPacket,{storeOnly:true});
+  const stealPath=stealBox.path(stealPacket.requestId);
+  const stolen=JSON.parse(await readFile(stealPath,'utf8'));
+  delete stolen.storeOnly;
+  stolen.payloadHash=protocol.hash(stolen.packet);
+  await writeFile(stealPath,JSON.stringify(stolen,null,2)+'\n');
+  const stripped=await stealBox.flushOne(stealPacket.requestId);
+  assert.equal(stripped.state,'needs_attention');assert.equal(stripped.error.code,'not_store_only');
+  assert.notEqual(stripped.state,'accepted');assert.equal(center.publications.filter(row=>row.workId===steal.id).length,0);
+});
+
+test('store-only work does not drain ordinary outbox; ordinary recover still publishes',async t=>{
+  const home=await mkdtemp(join(tmpdir(),'rssd-store-mix-'));t.after(()=>rm(home,{recursive:true,force:true}));
+  const center=storeCenter({dispatchEnabled:true});
+  const storeWork=center.addWork({id:'work-store-mix'});
+  const publishWork=center.addWork({id:'work-ordinary-mix'});
+  const storeClient=center.client('device-a');
+  const publisher=center.client('publisher-mix');
+  const stored=await enqueueStoreOnlyTranslate({client:storeClient,workId:storeWork.id});
+  const ordinary=await enqueueTranslateContinuation({client:publisher,workId:publishWork.id});
+  const ordinaryClaim=await publisher.claim({demandId:ordinary.id,workspaceIds:['enter']});
+  const ordinaryBox=new CenterOutbox({directory:join(home,'outbox'),client:publisher});
+  await ordinaryBox.enqueue(protocol.submission({
+    requestId:'req-ordinary-mix',workId:publishWork.id,workspaceId:'enter',sectionId:'forums',demandId:ordinary.id,claimToken:ordinaryClaim.claimToken,
+    baseRevisions:{en:0},editions:[{locale:'en',title:'Published mix',bodyMarkdown:'Ordinary outbox may publish.',translationOf:{workId:publishWork.id,locale:'zh-CN',revision:1}}],
+  }));
+  const storeResult=await runProductionTurn({client:storeClient,home,agentId:'codex',workspaceIds:['enter'],demandId:stored.id,storeOnly:true,producer});
+  assert.equal(storeResult.state,'accepted');assert.equal(center.publications.filter(row=>row.workId===storeWork.id).length,0);
+  const leftover=JSON.parse(await readFile(join(home,'outbox',protocol.hash(protocol.id('req-ordinary-mix'))+'.json'),'utf8'));
+  assert.equal(leftover.state,'pending');assert.notEqual(leftover.storeOnly,true);
+  const flushed=await ordinaryBox.flushOne('req-ordinary-mix');
+  assert.equal(flushed.state,'accepted');assert.ok(flushed.receipt.publicationIds.length>=1);
+});
+
+test('expired store-only packet keeps its requestId; successor claim writes English once with a new lease',async t=>{
+  const home=await mkdtemp(join(tmpdir(),'rssd-store-lease-packet-'));t.after(()=>rm(home,{recursive:true,force:true}));
+  let clock=1_700_000_000_000;
+  const center=storeCenter({now:()=>clock});
+  const work=center.addWork({id:'work-store-lease-packet'});
+  const owner=center.client('device-a');
+  const queued=await enqueueStoreOnlyTranslate({client:owner,workId:work.id});
+  const first=await runProductionTurn({
+    client:{...owner,submit:async packet=>{throw new CenterError('offline before accept',{status:0});}},
+    home,agentId:'codex',workspaceIds:['enter'],demandId:queued.id,storeOnly:true,producer,
+  });
+  assert.equal(first.state,'pending');
+  const outboxName=(await readdir(join(home,'outbox'))).find(name=>name.endsWith('.json'));
+  const original=JSON.parse(await readFile(join(home,'outbox',outboxName),'utf8'));
+  const originalRequestId=original.requestId;
+  clock+=CLAIM_TTL_MS+1000;
+  const stale=await new CenterOutbox({directory:join(home,'outbox'),client:owner}).flushOne(originalRequestId);
+  assert.equal(stale.state,'needs_attention');assert.equal(stale.error.code,'claim_revoked');
+  assert.notEqual(stale.state,'accepted');
+  const successor=await runProductionTurn({client:owner,home,agentId:'codex',workspaceIds:['enter'],demandId:queued.id,storeOnly:true,producer});
+  assert.equal(successor.state,'accepted');
+  assert.notEqual(successor.submissions[0].requestId,originalRequestId);
+  assert.equal(successor.submissions[0].receipt.storeOnly,true);
+  assert.equal(successor.submissions[0].receipt.demandState,'completed');
+  const live=await owner.work(work.id);
+  assert.equal(live.editions.filter(row=>row.locale==='en').length,1);
+  assert.equal(JSON.parse(await readFile(join(home,'outbox',outboxName),'utf8')).state,'needs_attention');
 });
 
 test('ordinary and store-only existing never cross intents; same id is conflict not existing',async()=>{

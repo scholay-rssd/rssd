@@ -54,17 +54,35 @@ async function atomic(path,value){
   await rename(temporary,path);
 }
 async function json(path){return JSON.parse(await readFile(path,'utf8'));}
+async function inferStoreOnlyIntent(directory,packet,client){
+  if(!packet?.demandId)return false;
+  try{
+    const active=await json(join(directory,'../active-claim.json'));
+    if(active?.claim?.id===packet.demandId&&active.claim.payload?.storeOnly===true)return true;
+  }catch(error){if(error.code!=='ENOENT')throw error;}
+  if(typeof client?.demands!=='function')return false;
+  try{
+    const rows=await client.demands({workspaceId:packet.workspaceId,limit:100});
+    const row=Array.isArray(rows)?rows.find(item=>item.id===packet.demandId):null;
+    return row?.payload?.storeOnly===true;
+  }catch{return false;}
+}
 export class CenterOutbox {
   constructor({directory,client}){this.directory=directory;this.client=client;}
   path(requestId){return join(this.directory,protocol.hash(protocol.id(requestId))+'.json');}
   async enqueue(input,{storeOnly=false}={}){
     const packet=protocol.submission(input),path=this.path(packet.requestId);
-    const payloadHash=storeOnly?protocol.hash({storeOnly:true,packet}):protocol.hash(packet);
+    const inferred=storeOnly===true||await inferStoreOnlyIntent(this.directory,packet,this.client);
+    if(inferred){
+      const {requireStoreOnlyContract}=await import('./rssd-store-only-contract.mjs');
+      await requireStoreOnlyContract(this.client);
+    }
+    const payloadHash=inferred?protocol.hash({storeOnly:true,packet}):protocol.hash(packet);
     return withFileLock(path+'.lock',async()=>{
-      try{const old=await json(path);this.verify(old);if(old.payloadHash!==payloadHash||Boolean(old.storeOnly)!==Boolean(storeOnly))throw new CenterError('Request identity already contains different content',{status:409,code:'request_conflict'});return old;}
+      try{const old=await json(path);this.verify(old);if(old.payloadHash!==payloadHash||Boolean(old.storeOnly)!==Boolean(inferred))throw new CenterError('Request identity already contains different content',{status:409,code:'request_conflict'});return old;}
       catch(error){if(error.code!=='ENOENT')throw error;}
       const entry={version:1,origin:this.client.origin,requestId:packet.requestId,payloadHash,packet,
-        state:'pending',attempts:0,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),...(storeOnly?{storeOnly:true}:{})};
+        state:'pending',attempts:0,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),...(inferred?{storeOnly:true}:{})};
       await atomic(path,entry);return entry;
     });
   }
@@ -86,9 +104,11 @@ export class CenterOutbox {
       if(entry.state==='accepted'||entry.state==='needs_attention'&&!retry)return entry;
       entry.attempts++;entry.updatedAt=new Date().toISOString();await atomic(path,entry);
       try{
-        if(entry.storeOnly===true){
+        const inferred=entry.storeOnly===true||await inferStoreOnlyIntent(this.directory,entry.packet,this.client);
+        if(inferred){
           const {requireStoreOnlyContract}=await import('./rssd-store-only-contract.mjs');
           await requireStoreOnlyContract(this.client);
+          if(entry.storeOnly!==true)throw new CenterError('Store-only demand cannot be flushed as ordinary publish; outbox intent is missing',{status:409,code:'not_store_only'});
         }
         let receipt;
         try{receipt=await this.client.submission(entry.requestId);}
@@ -99,11 +119,10 @@ export class CenterOutbox {
           const received=receipt.editions.find(item=>item.locale===edition.locale);
           return received?.hash!==protocol.hash(edition)||received?.revision!==entry.packet.baseRevisions[edition.locale]+1;
         }))throw new CenterError('Center receipt does not match the edition content',{code:'receipt_mismatch'});
-        if(entry.storeOnly===true){
-          if(receipt.storeOnly!==true||typeof receipt.storeOnlyWorkerId!=='string'||!receipt.storeOnlyWorkerId||!Array.isArray(receipt.publicationIds)||receipt.publicationIds.length)
-            throw new CenterError('Store-only receipt is missing storeOnly:true, storeOnlyWorkerId, or included publications; not treated as success',{status:409,code:'not_store_only'});
-          if(this.client.workerId&&receipt.storeOnlyWorkerId!==this.client.workerId)
-            throw new CenterError('Store-only receipt is bound to a different device; not treated as success',{status:409,code:'not_store_only'});
+        if(inferred||receipt.storeOnly===true){
+          const {assertStoreOnlyReceipt}=await import('./rssd-store-only-contract.mjs');
+          if(entry.storeOnly!==true)throw new CenterError('Store-only demand cannot be flushed as ordinary publish; outbox intent is missing',{status:409,code:'not_store_only'});
+          assertStoreOnlyReceipt(receipt,entry.packet,{workerId:this.client.workerId});
         }
         entry.state='accepted';entry.receipt=receipt;delete entry.error;
       }catch(error){
@@ -141,11 +160,14 @@ export function hasCompletedClaimReceipt(active,origin,entries,workerId){
   const matching=entries.filter(entry=>entry.origin===origin&&entry.packet?.demandId===claim.id&&
     entry.packet.claimToken===claim.claimToken&&entry.packet.workspaceId===claim.workspaceId&&entry.packet.sectionId===claim.sectionId);
   if(!matching.length||matching.some(entry=>entry.state!=='accepted'))return false;
-  return matching.some(({packet,requestId,receipt})=>receipt?.status==='accepted'&&receipt.demandState==='completed'&&
-    receipt.requestId===requestId&&receipt.workId===packet.workId&&receipt.workspaceId===packet.workspaceId&&
-    Array.isArray(receipt.editions)&&receipt.editions.length===packet.editions.length&&packet.editions.length>0&&
-    packet.editions.every(edition=>{const received=receipt.editions.find(item=>item.locale===edition.locale);
-      return received?.hash===protocol.hash(edition)&&received.revision===packet.baseRevisions[edition.locale]+1;}));
+  return matching.some(({packet,requestId,receipt})=>{
+    if(receipt?.status!=='accepted'||receipt.demandState!=='completed'||receipt.requestId!==requestId||receipt.workId!==packet.workId||receipt.workspaceId!==packet.workspaceId||
+      !Array.isArray(receipt.editions)||receipt.editions.length!==packet.editions.length||!packet.editions.length||
+      packet.editions.some(edition=>{const received=receipt.editions.find(item=>item.locale===edition.locale);
+        return received?.hash!==protocol.hash(edition)||received.revision!==packet.baseRevisions[edition.locale]+1;}))return false;
+    if(claim.payload?.storeOnly===true&&(receipt.storeOnly!==true||typeof receipt.storeOnlyWorkerId!=='string'||!receipt.storeOnlyWorkerId||!Array.isArray(receipt.publicationIds)||receipt.publicationIds.length))return false;
+    return true;
+  });
 }
 // The caller holds worker.lock so a newly claimed task cannot be overwritten.
 export async function clearCompletedClaim(home,origin,entries,workerId){
