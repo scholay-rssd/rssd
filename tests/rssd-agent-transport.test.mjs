@@ -43,7 +43,7 @@ test('the production adapter negotiates ACP, freezes policy and denies mutation 
  assert.equal(edition.metadata.notebook.blockNotes.body.notes.verification,'Private verification');
  assert.equal(edition.metadata.notebook.modelSignatures[0].agentId,'fixture');
  assert.equal(edition.metadata.notebook.modelSignatures[0].modelId,null);
- const prompt=await readFile(join(directory,'en.prompt.txt'),'utf8');assert.match(prompt,/frozen-v1/);assert.match(prompt,/Frozen common rules/);assert.match(prompt,/Frozen section rules/);assert.match(prompt,/技术文档/);assert.match(prompt,/保留法域与现行有效日期/);assert.match(prompt,/本次只生成 en 一种语言/);assert.match(prompt,/Fixture domain rules/);assert.match(prompt,/Fixture frozen per-image suffix/);assert.equal(edition.metadata.notebook.modelSignatures[0].writingSkillSnapshotHash,mountedSkills.snapshotHash);
+ const prompt=await readFile(join(directory,'en.prompt.txt'),'utf8');assert.match(prompt,/frozen-v1/);assert.match(prompt,/Frozen common rules/);assert.match(prompt,/Frozen section rules/);assert.match(prompt,/技术文档/);assert.match(prompt,/保留法域与现行有效日期/);assert.match(prompt,/本次只生成 en 一种语言/);assert.match(prompt,/Fixture domain rules/);assert.match(prompt,/Fixture frozen per-image suffix/);assert.match(prompt,/不超过 120 字/);assert.match(prompt,/合法原作标题不得截断/);assert.equal(edition.metadata.notebook.modelSignatures[0].writingSkillSnapshotHash,mountedSkills.snapshotHash);
  assert.match(await readFile(join(directory,'en.agent-output.txt'),'utf8'),/Full researched body/);
 });
 

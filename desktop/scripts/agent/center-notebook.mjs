@@ -8,6 +8,7 @@ import protocol from '../../../contracts/rssd-v1.cjs';
 
 export const CENTER_NOTEBOOK_OUTPUT=`只返回一个 JSON 对象（不要围栏或解释），使用现有 notebook v2 结构，不直接生成 bodyMarkdown。程序从公开内容行生成 Markdown，内部备注始终私有。本接口通过一次 JSON 交稿，不提供 task_read/task_update 工具；把同一次写作的正文与备注放在下面结构中即可。
 {"notebook":{"version":2,"kind":"article","title":"文章标题","skills":[],"fields":{},"groups":[],"blocks":[{"id":"intro","type":"paragraph","state":"ready","text":"完整正文段落","sourceIds":[]}],"sources":[],"blockNotes":{},"internalNotes":{}},"summary":"面向读者的摘要","metadata":{}}
+notebook.title 须为不超过 120 字的字符串（现有文章板校验，不是写作协议）。合法原作标题不得截断凑长度。
 blocks 保持完整正文和顺序，可用 paragraph、markdown、heading（含 level 1–3）、image（text 为真实公开图片 URL 或原稿已有中心图片 URL，填写 alt）、annotation（role=caption/endnote）。caption.targetId 指向图片。所有正式行 state=ready；不能用占位、摘要替代全文。列表、表格、代码可放在 markdown 行。
 sources 每条包含 id、title、url、summary、acquiredVia（rss/web/record）、reviewed=false；正文行 sourceIds 引用实际来源 ID。blockNotes[行ID].notes 和 internalNotes 使用写作协议规定的五类字段。不要填写 modelSignatures、meta 或运行记录，由服务记录真实智能体与会话信息。
 metadata.platformContent 按本单平台要求填写；没有中心媒体 ID 时不要伪造 media，已有图片保持真实链接。`;

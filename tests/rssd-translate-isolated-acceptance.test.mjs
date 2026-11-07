@@ -4,10 +4,10 @@ import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {prepareEditionMedia} from '../scripts/rssd-device-media.mjs';
-import {produceCenterEdition} from '../desktop/scripts/agent/center-producer.mjs';
+import {parseCenterEdition,produceCenterEdition} from '../desktop/scripts/agent/center-producer.mjs';
 import {
-  ISOLATED_SOURCE_MARK,ISOLATED_WORK_ID,adapterLaunchOk,assertIsolatedGuards,createIsolatedFixture,
-  isolatedProducer,isolatedSkillSnapshot,parseIsolatedArgs,probeIsolatedAcceptance,writeIsolatedEvidence,
+  ISOLATED_SOURCE_MARK,ISOLATED_TITLE,ISOLATED_WORK_ID,adapterLaunchOk,assertIsolatedGuards,createIsolatedFixture,
+  isolatedProducer,isolatedSkillSnapshot,parseIsolatedArgs,persistPublicProbe,probeIsolatedAcceptance,writeIsolatedEvidence,
 } from '../scripts/rssd-translate-isolated-acceptance.mjs';
 import {enqueueTranslateContinuation} from '../scripts/rssd-translate-continuation.mjs';
 import {ARTICLE_WRITING_POLICY} from '../contracts/article-writing-policy.mjs';
@@ -28,7 +28,11 @@ test('isolated fixture source is labeled and is not a production Enter work',asy
   assert.equal(fixture.work.id,ISOLATED_WORK_ID);
   assert.equal(fixture.work.workspaceId,'enter');
   assert.equal(fixture.work.sectionId,'forums');
-  assert.match(fixture.work.editions[0].payload.title,new RegExp(ISOLATED_SOURCE_MARK.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
+  assert.equal(fixture.work.editions[0].payload.title,ISOLATED_TITLE);
+  assert.ok(ISOLATED_TITLE.length<=120);
+  assert.equal(ISOLATED_SOURCE_MARK.length,121);
+  assert.notEqual(ISOLATED_TITLE,ISOLATED_SOURCE_MARK);
+  assert.match(fixture.work.editions[0].payload.bodyMarkdown,new RegExp(ISOLATED_SOURCE_MARK.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
   assert.equal(fixture.work.editions.some(edition=>edition.locale==='en'),false);
   assert.equal(fixture.client.origin,'https://center.example');
   const queued=await enqueueTranslateContinuation({client:fixture.client,workId:ISOLATED_WORK_ID});
@@ -99,6 +103,45 @@ test('failed runs still write evidence with diagnostics and without env or token
   assert.equal(evidence.launch,null);
   assert.equal(JSON.stringify(evidence).includes('CODEX_PATH'),false);
   assert.doesNotMatch(JSON.stringify(evidence),/授权|额度/);
+});
+
+test('failed-run evidence keeps the successful probe instead of defaulting adapterPresent and source to empty',async t=>{
+  const home=await mkdtemp(join(tmpdir(),'rssd-t575-stage-'));t.after(()=>rm(home,{recursive:true,force:true}));
+  await persistPublicProbe(home,{
+    source:{workId:ISOLATED_WORK_ID,locale:'zh-CN',revision:1,hash:'a'.repeat(64)},
+    writingPolicy:ARTICLE_WRITING_POLICY,
+    fixtureOrigin:'https://center.example',
+    queued:{id:'demand-keep-probe'},
+    launch:{command:process.execPath,args:['/bundle/desktop/runtime/node_modules/@agentclientprotocol/codex-acp/dist/index.js'],env:{CODEX_PATH:'/usr/bin/codex'}},
+    adapterPresent:true,cliOk:true,codexPathBound:true,adapterOk:true,cliVersion:'codex-cli 0.163.0',
+  });
+  const error=Error('title：标题字段须为不超过 120 字的文字');
+  const evidence=await writeIsolatedEvidence(home,{},null,{error});
+  assert.equal(evidence.mode,'failed');
+  assert.equal(evidence.adapterPresent,true);
+  assert.equal(evidence.cliOk,true);
+  assert.equal(evidence.codexPathBound,true);
+  assert.equal(evidence.source.workId,ISOLATED_WORK_ID);
+  assert.equal(evidence.writingPolicy,ARTICLE_WRITING_POLICY);
+  assert.equal(evidence.queuedId,'demand-keep-probe');
+  assert.equal(evidence.failure.message,'title：标题字段须为不超过 120 字的文字');
+  assert.doesNotMatch(JSON.stringify(evidence),/授权|额度/);
+});
+
+const CAPTURED_T575_TITLE_OUTPUT='{"notebook":{"version":2,"kind":"article","title":"T575 isolated acceptance fixture. Not an Enter production work. Does not complete any of the 93 missing English editions.","skills":[],"fields":{},"groups":[],"blocks":[{"id":"intro","type":"paragraph","state":"ready","text":"This Chinese text is for isolated acceptance testing. It is not an existing Enter Academic work and cannot be counted as completing any of the 93 missing translations.","sourceIds":[]}],"sources":[],"blockNotes":{},"internalNotes":{"verification":"Translated from the supplied zh-CN revision 1. The source contains no references or media."}},"summary":"An isolated acceptance fixture that does not count toward the 93 missing English editions.","metadata":{}}';
+
+test('captured real Codex title of 121 characters fails notebook validation and is not truncated',()=>{
+  const title=JSON.parse(CAPTURED_T575_TITLE_OUTPUT).notebook.title;
+  assert.equal(title,ISOLATED_SOURCE_MARK);
+  assert.equal(title.length,121);
+  assert.throws(()=>parseCenterEdition(CAPTURED_T575_TITLE_OUTPUT),/标题字段须为不超过 120 字的文字/);
+  assert.equal(parseCenterEdition(CAPTURED_T575_TITLE_OUTPUT.replace(title,ISOLATED_TITLE)).title,ISOLATED_TITLE);
+});
+
+test('notebook title accepts 120 characters and rejects 121 without relaxing the validator',()=>{
+  const notebook=title=>({notebook:{version:2,kind:'article',title,skills:[],fields:{},groups:[],blocks:[{id:'intro',type:'paragraph',state:'ready',text:'Body',sourceIds:[]}],sources:[],blockNotes:{},internalNotes:{}},summary:'s',metadata:{}});
+  assert.equal(parseCenterEdition(JSON.stringify(notebook('a'.repeat(120)))).title.length,120);
+  assert.throws(()=>parseCenterEdition(JSON.stringify(notebook('a'.repeat(121)))),/标题字段须为不超过 120 字的文字/);
 });
 
 test('probe uses the fixture center and isolated agents.json without substituting a fake ACP',async t=>{

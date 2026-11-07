@@ -32,6 +32,8 @@ node scripts/rssd-translate-isolated-acceptance.mjs --probe
 
 Previous blocked run (2026-11-07 09:01:50 Asia/Shanghai): probe looked fine, then `produceCenterEdition` spawned the adapter **without** `CODEX_PATH`. The adapter `require`d `@openai/codex/bin/codex.js`, exited 1 in 368ms with 0 stdout. stderr was discarded and the generic message blamed login/quota. That attribution was wrong.
 
+Second shared-computer run (2026-11-07 09:17:05–09:17:14 Asia/Shanghai): probe `adapterPresent`/`cliOk`/`codexPathBound` true, handshake exit 0, then one real `produceCenterEdition` wrote 736 bytes of English and failed local notebook validation: `title：标题字段须为不超过 120 字的文字`. The model copied the fixture source title (`ISOLATED_SOURCE_MARK`, 121 characters). The 120-character notebook check was not relaxed. The fixture work title is now the short `T575 isolated acceptance fixture`; the isolation mark stays in the body. Failure evidence must keep the successful probe (`probe.json`); it must not default `adapterPresent`/`codexPathBound` to false.
+
 This cloud VM has no `codex` CLI; `--probe` here is expected to report `cliOk: false` and `codexPathBound: false`. That is not the shared computer.
 
 ## Read-only handshake (optional, no edition, no Center submit)
@@ -86,7 +88,8 @@ node scripts/rssd-translate-isolated-acceptance.mjs --run --i-accept-isolated-pr
 | Path | Must show |
 | --- | --- |
 | `agents.json` | `{id:codex, command:codex}` only |
-| `evidence.json` | `producer: produceCenterEdition`, `codexPathBound: true`, `liveCenter: false`, labeled `workId`; on failure also `failure.diagnostics` |
+| `probe.json` | Public probe snapshot (`adapterPresent`, `codexPathBound`, `source`, `writingPolicy`); failure evidence must reuse this instead of defaulting to false/null |
+| `evidence.json` | `producer: produceCenterEdition`, `codexPathBound: true`, `liveCenter: false`, labeled `workId`; on failure also `failure` plus the probe snapshot |
 | `jobs/<id>/claim.json` | `kind=translate`, fixture demand |
 | `jobs/<id>/failure.json` | Present only on a blocked turn; includes `diagnostics`, not env/tokens |
 | `jobs/<id>/en.prompt.txt` | `private-notes-first-pass-v2` and the isolated source mark |
