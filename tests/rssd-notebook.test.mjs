@@ -42,6 +42,17 @@ test('center images use real HTTP references while desktop local image validatio
  assert.match(publicImage.bodyMarkdown,/!\[Fixture\]\(https:/);assert.deepEqual(publicImage.media,[]);
  assert.ok(formatErrors(n).some(e=>e.path==='blocks.1.text'));
  n.blocks[1].text='file:///private/image.png';assert.throws(()=>notebookEdition({notebook:n}),/图片/);
+ const origin='https://center.example',mediaId='media-'+'c'.repeat(48);
+ n.blocks[1].text='https://example.com/image.png';
+ const defaultPath=notebookEdition({notebook:n},{origin});
+ assert.match(defaultPath.bodyMarkdown,/!\[Fixture\]\(https:\/\/example.com\/image.png\)/);
+ n.blocks[1].text='/api/rssd/v1/media/'+mediaId+'/raw';
+ assert.throws(()=>notebookEdition({notebook:n}),/请先导入图片/);
+ const relative=notebookEdition({notebook:n},{origin,workspaceId:'enter'});
+ assert.match(relative.bodyMarkdown,new RegExp(mediaId));
+ assert.equal(relative.media[0].id,mediaId);
+ n.blocks[1].text='https://evil.example/api/rssd/v1/media/'+mediaId+'/raw';
+ assert.throws(()=>notebookEdition({notebook:n},{origin}),/请先导入图片/);
 });
 test('translated notebooks keep authorized center media IDs instead of an empty manifest',()=>{
  const mediaId='media-'+'b'.repeat(48),url='https://center.example/api/rssd/v1/media/'+mediaId+'/raw';
