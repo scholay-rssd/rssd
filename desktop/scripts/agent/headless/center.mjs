@@ -6,9 +6,11 @@ import {completeStoredEdition} from '../../../../scripts/rssd-device-media.mjs';
 import {runProductionTurn} from '../../../../scripts/rssd-production-worker.mjs';
 import {produceCenterEdition} from '../center-producer.mjs';
 import {deviceLogin} from '../../../../scripts/rssd-device-login.mjs';
+import {enqueueTranslateContinuation} from '../../../../scripts/rssd-translate-continuation.mjs';
 
 import {centerHome} from '../../runtime/center-home.mjs';
 export {centerHome};
+export const CENTER_WORK_PRODUCER=produceCenterEdition;
 export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify(value))}={}){
   const [command,...args]=argv,home=centerHome();
   const flag=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};
@@ -24,12 +26,18 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
     const result=await saveCenterConnection(home,{origin:args[0],token:(await readFile(tokenFile,'utf8')).trim()});emit(result);return result;
   }
   if(!command||command==='help'||command==='--help'){
-    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id]','claim --workspace id [--section id] [--id demandId]','submit <packet.json>','recover [requestId] [--retry]','retry-website --workspace id --request-key key --job-id id','work --agent id --workspace id [--section id] [--once] [--resume]']});return;
+    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id]','enqueue-translate --work workId [--revision n]','claim --workspace id [--section id] [--id demandId]','submit <packet.json>','recover [requestId] [--retry]','retry-website --workspace id --request-key key --job-id id','work --agent id --workspace id [--section id] [--id demandId] [--once] [--resume]']});return;
   }
   const {client,identity}=await loadCenterConnection(home),outbox=new CenterOutbox({directory:join(home,'outbox'),client});
   if(command==='status'){const entries=await outbox.list();const result={origin:client.origin,identity,outbox:entries.map(e=>({requestId:e.requestId,workId:e.packet.workId,state:e.state,error:e.error,receipt:e.receipt}))};emit(result);return result;}
   if(command==='registry'){const result=await client.registry();emit(result);return result;}
   if(command==='demands'){const result=await client.demands({workspaceId:flag('--workspace')});emit(result);return result;}
+  if(command==='enqueue-translate'){
+    const workId=flag('--work');if(!workId)throw Error('Usage: center enqueue-translate --work <workId> [--revision n]');
+    const revisionFlag=flag('--revision');
+    const result=await enqueueTranslateContinuation({client,workId,...(revisionFlag===undefined?{}:{revision:Number(revisionFlag)})});
+    emit(result);return result;
+  }
   if(command==='claim'){const result=await client.claim({workspaceIds:values('--workspace'),sectionIds:values('--section'),demandId:flag('--id')});emit(result);return result;}
   if(command==='submit'){
     if(!args[0])throw Error('Provide a complete submission JSON file');
@@ -49,7 +57,7 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
   let resume=args.includes('--resume');
   try{
     do{
-      const result=await runProductionTurn({client,home,agentId,workspaceIds,sectionIds:values('--section'),demandId:flag('--id'),resume,signal:controller.signal,producer:produceCenterEdition,onEvent:event=>{if(event.type!=='agent_output')emit(event);}});
+      const result=await runProductionTurn({client,home,agentId,workspaceIds,sectionIds:values('--section'),demandId:flag('--id'),resume,signal:controller.signal,producer:CENTER_WORK_PRODUCER,onEvent:event=>{if(event.type!=='agent_output')emit(event);}});
       resume=false;
       emit(result);if(args.includes('--once')||['blocked','pending'].includes(result.state))return result;
       if(result.state==='idle')await new Promise(resolve=>{const done=()=>{clearTimeout(timer);controller.signal.removeEventListener('abort',done);resolve();};const timer=setTimeout(done,15000);controller.signal.addEventListener('abort',done,{once:true});});

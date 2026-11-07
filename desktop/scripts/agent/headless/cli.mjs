@@ -33,7 +33,7 @@ const scripts={
 };
 if(!cmd||cmd==='-h'||cmd==='--help'||!scripts[cmd]){
  console.log('Usage: npm run headless -- <center|produce|spaces|verify|briefs|queue|recover|agents|flow|jobs|update|writing-policy> ...');
- console.log('  center connect|status|registry|demands|claim|submit|recover|work — shared RSSD center production');
+ console.log('  center connect|status|registry|demands|enqueue-translate|claim|submit|recover|work — shared RSSD center production');
  console.log('  writing-policy — read the current project writing protocol; no initialization or mutations');
  console.log('  jobs <site> list|status <articleId>|resume <articleId>|enqueue <articleId> --confirmed — durable asynchronous publication');
  console.log('  flow <site> configure <policy.json>|enqueue <articleId>|tick|drain|status — opt-in language/link handoff');

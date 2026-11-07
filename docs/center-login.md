@@ -39,6 +39,8 @@ rssd center work --agent codex --workspace example --once --resume
 rssd center recover
 ```
 
+已有中文作品的英文补译：先确认中心已部署 [rssd-center PR 9](https://github.com/scholay-rssd/rssd-center/pull/9) 的 `ffb0886c`（或之后仍带同一 `contracts.translateContinuation` 探测包的 head），overview 为整数 `version >= 1` 且 `guarantees` 含全部七项，再按 [补译衔接](rssd-translate-continuation.md) 对单个 `workId` 执行 `enqueue-translate`，然后用 `center work --agent <本机 Agent Registry 标识> --workspace <id> --id <demandId> --once` 交给中心设备执行器（`produceCenterEdition`）。`--agent` 不是云作业号。不要新建中文作品，也不要用 `cloud-sync`、`rssd produce` 或 `SCHOLAY_CLOUD_EXECUTOR` 冒充启动。本云验收 VM 缺 CLI 只说明该 VM；共享电脑已有的 Codex/Cursor CLI 不由本仓库自动调用。
+
 恢复时使用原认领和原请求，不另建稿件或重新发布。已失效的认领不能继续提交，必须先处理它的恢复或释放状态。
 
 Linux 设备状态位于独立的私有认证目录，可通过 `RSSD_CENTER_HOME` 指定；新建目录权限为 `0700`，凭据文件为 `0600`。安装和更新运行时不会替换设备状态。不要把这个目录放入源码、公开发布目录或共享日志中。

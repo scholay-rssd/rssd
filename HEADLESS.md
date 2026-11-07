@@ -14,8 +14,22 @@ its `SHA256SUMS.txt`, extract it to an empty directory, and install with:
 ~/.local/share/rssd/headless/rssd center work --agent codex --workspace example --once
 ```
 
+English continuation of an existing Chinese work is documented in
+`docs/rssd-translate-continuation.md`. After center PR 9 at `ffb0886c` is
+deployed and overview advertises `contracts.translateContinuation` with
+integer `version >= 1` and all seven guarantees, enqueue then run the
+official Center worker on the Owner-named device. `--agent` selects that
+device's Agent Registry ACP CLI (`codex`, `cursor`, …), not a cloud job
+id and not `SCHOLAY_CLOUD_EXECUTOR`. `rssd produce` and `cloud-sync` are
+not this path.
+
+```sh
+rssd center enqueue-translate --work <existingWorkId>
+rssd center work --agent codex --workspace <workspaceId> --section <sectionId> --id <demandId> --once
+```
+
 Omit `--once` only when explicitly starting ongoing work. Use `--section` to
-limit scope and `--resume` to resume a blocked claim. A quota failure retains
+limit scope and `--resume` to resume this device's blocked claim. A quota failure retains
 the task and generated result; it does not switch subscriptions or reassign
 the claim. `center recover` queries the original submission before retrying.
 
