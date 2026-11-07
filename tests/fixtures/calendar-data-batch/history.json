@@ -1,0 +1,46 @@
+[
+  {
+    "key": "history-1801-01-01-ceres",
+    "title": "皮亚齐发现谷神星",
+    "dateKey": "01-01",
+    "year": 1801,
+    "domain": "天文学史",
+    "eventType": "天体发现",
+    "importance": "A",
+    "preciseToDay": true,
+    "sources": [
+      {
+        "label": "Ceres: Facts - NASA Science",
+        "url": "https://science.nasa.gov/dwarf-planets/ceres/facts/"
+      },
+      {
+        "label": "Ceres (dwarf planet)",
+        "url": "https://en.wikipedia.org/wiki/Ceres_(dwarf_planet)"
+      }
+    ],
+    "factSummary": "1801年1月1日，皮亚齐在巴勒莫观测到后来被命名为谷神星的天体。",
+    "historicalSignificance": "开启小行星研究，并促使天体轨道计算方法发展。"
+  },
+  {
+    "key": "history-2019-01-03-change4",
+    "title": "嫦娥四号在月球背面软着陆",
+    "dateKey": "01-03",
+    "year": 2019,
+    "domain": "天文学史",
+    "eventType": "探测突破",
+    "importance": "A",
+    "preciseToDay": true,
+    "sources": [
+      {
+        "label": "China's Chang'e 4 probe makes historic touchdown",
+        "url": "https://www.theguardian.com/science/2019/jan/03/china-probe-change-4-land-far-side-moon-basin-crater"
+      },
+      {
+        "label": "Chang'e 4",
+        "url": "https://en.wikipedia.org/wiki/Chang%27e_4"
+      }
+    ],
+    "factSummary": "2019年1月3日，嫦娥四号在月球背面软着陆。",
+    "historicalSignificance": "首次实现月球背面软着陆，为后续背面探测提供工程与科学路径。"
+  }
+]
