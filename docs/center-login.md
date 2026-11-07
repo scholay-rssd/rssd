@@ -39,7 +39,7 @@ rssd center work --agent codex --workspace example --once --resume
 rssd center recover
 ```
 
-已有中文作品的英文补译：先确认中心已部署 [rssd-center PR 9](https://github.com/scholay-rssd/rssd-center/pull/9)，再按 [补译衔接](rssd-translate-continuation.md) 对单个 `workId` 执行 `enqueue-translate`，然后用上面的 `center work --id <demandId> --once` 交给原执行器。不要新建中文作品，也不要用 `cloud-sync` 冒充启动。
+已有中文作品的英文补译：先确认中心已部署 [rssd-center PR 9](https://github.com/scholay-rssd/rssd-center/pull/9) 的 `9632f4fd` 或更新 head，再按 [补译衔接](rssd-translate-continuation.md) 对单个 `workId` 执行 `enqueue-translate`，然后用 `center work --agent <本机已授权 ACP> --workspace <id> --id <demandId> --once` 交给中心设备执行器（`produceCenterEdition`）。`--agent` 是本机 Agent Registry 标识，不是云作业号。不要新建中文作品，也不要用 `cloud-sync`、`rssd produce` 或 `SCHOLAY_CLOUD_EXECUTOR` 冒充启动。
 
 恢复时使用原认领和原请求，不另建稿件或重新发布。已失效的认领不能继续提交，必须先处理它的恢复或释放状态。
 

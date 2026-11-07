@@ -3,17 +3,29 @@ import protocol from '../../contracts/rssd-v1.cjs';
 import {CenterError} from '../../scripts/rssd-center-client.mjs';
 
 export const CLAIM_TTL_MS=24*60*60*1000;
+export const CREATE_DEMAND_DESCRIPTION='Create one queued demand; translation of an existing work binds the source revision and hash, skips locales that already exist, and reuses an open task';
 const fail=(message,status=400,code='invalid_request')=>{throw new CenterError(message,{status,code});};
 const localeKey=list=>[...list].sort().join(',');
 const clone=value=>structuredClone(value);
 function publicDemand(row){if(!row)return null;const {claimToken,...rest}=row;return clone(rest);}
+function createWorkLock(){
+  const locks=new Map();
+  return async function withLock(key,fn){
+    const previous=locks.get(key)||Promise.resolve();
+    let release;
+    const held=new Promise(resolve=>{release=resolve;});
+    locks.set(key,previous.then(()=>held,()=>held));
+    await previous.catch(()=>{});
+    try{return await fn();}finally{release();}
+  };
+}
 
-export function createTranslateCenterFixture({now=()=>Date.now()}={}){
+export function createTranslateCenterFixture({now=()=>Date.now(),capabilities}={}){
   const works=new Map(),history=new Map(),demands=new Map(),submissions=new Map(),workers=new Map();
-  const key=workId=>workId;
-  const revisions=(workId,locale)=>(history.get(key(workId))||[]).filter(row=>row.locale===locale).sort((a,b)=>b.revision-a.revision);
+  const withWorkLock=createWorkLock();
+  const revisions=(workId,locale)=>(history.get(workId)||[]).filter(row=>row.locale===locale).sort((a,b)=>b.revision-a.revision);
   const head=(workId,locale)=>revisions(workId,locale)[0]||null;
-  const editionAt=(workId,locale,revision)=>(history.get(key(workId))||[]).find(row=>row.locale===locale&&row.revision===revision)||null;
+  const editionAt=(workId,locale,revision)=>(history.get(workId)||[]).find(row=>row.locale===locale&&row.revision===revision)||null;
   function putEdition(work,{locale,revision,payload,hash}){
     const item={locale,revision,payload,hash:hash||protocol.hash(payload),createdAt:new Date(now()).toISOString()};
     const list=history.get(work.id)||[];list.push(item);history.set(work.id,list);
@@ -42,9 +54,16 @@ export function createTranslateCenterFixture({now=()=>Date.now()}={}){
       const {claimExpiresAt,...payload}=demand.payload;demand.payload={...payload,lastError:'claim_expired'};demand.updatedAt=new Date(now()).toISOString();
     }
   }
-  function createDemand(input){
-    const value=protocol.demand(input);const work=works.get(value.source?.workId);
-    if(!value.source)fail('Fixture demands require a source',400);
+  function reuseOpenTranslate(value,requiredLocales,sourceHash){
+    if(value.kind!=='translate')return null;
+    const open=[...demands.values()].filter(row=>row.kind==='translate'&&['queued','claimed','blocked'].includes(row.state)&&row.payload.source?.workId===value.source.workId);
+    const existing=open.find(row=>row.payload.source?.locale===value.source.locale&&row.payload.source?.revision===value.source.revision&&row.payload.sourceHash===sourceHash&&localeKey(row.payload.requiredLocales||[])===localeKey(requiredLocales));
+    if(existing)return {...publicDemand(existing),status:'existing'};
+    if(open.length)fail('An open translate task already exists for this work; wait for expiry, release or completion before rebinding',409,'open_translate_conflict');
+    return null;
+  }
+  function createDemandLocked(value){
+    const work=works.get(value.source.workId);
     if(!work)fail('Work not found',404,'not_found');
     if(work.workspaceId!==value.workspaceId)fail('Source workspace differs');
     if(work.sectionId!==value.sectionId)fail('Source section differs');
@@ -57,17 +76,23 @@ export function createTranslateCenterFixture({now=()=>Date.now()}={}){
     }
     const present=[...new Set((history.get(value.source.workId)||[]).map(row=>row.locale))];
     if(value.kind==='translate'&&requiredLocales.every(locale=>present.includes(locale)))return {status:'skipped',reason:'locale_present',workId:value.source.workId,workspaceId:value.workspaceId,requiredLocales,existingLocales:present};
+    if(value.kind==='translate'&&(head(value.source.workId,value.source.locale)?.revision||0)!==value.source.revision)fail('Translation source has a newer revision',409,'source_conflict');
     const payload={...value,requiredLocales,sourceHash:edition.hash};
-    const open=[...demands.values()].filter(row=>row.kind===value.kind&&row.workspaceId===value.workspaceId&&['queued','claimed','blocked'].includes(row.state)&&row.payload.source?.workId===value.source.workId);
-    const existing=open.find(row=>row.payload.source?.locale===value.source.locale&&row.payload.source?.revision===value.source.revision&&row.payload.sourceHash===edition.hash&&localeKey(row.payload.requiredLocales||[])===localeKey(requiredLocales));
-    if(existing)return {...publicDemand(existing),status:'existing'};
+    const reuse=reuseOpenTranslate(value,requiredLocales,edition.hash);
+    if(reuse)return reuse;
     if(demands.has(value.id)){
       const old=demands.get(value.id);
       if(old.kind===value.kind&&old.payload.source?.workId===value.source.workId)return {...publicDemand(old),status:'existing'};
       fail('Demand identity already exists',409,'identity_conflict');
     }
+    const openForWork=[...demands.values()].some(row=>row.kind==='translate'&&['queued','claimed','blocked'].includes(row.state)&&row.payload.source?.workId===value.source.workId);
+    if(value.kind==='translate'&&openForWork)fail('An open translate task already exists for this work; wait for expiry, release or completion before rebinding',409,'open_translate_conflict');
     const row={id:value.id,workspaceId:value.workspaceId,sectionId:value.sectionId,kind:value.kind,title:value.title,state:'queued',generation:0,priority:value.priority,payload,workerId:null,claimToken:null,createdAt:new Date(now()).toISOString(),updatedAt:new Date(now()).toISOString()};
     demands.set(row.id,row);return {...publicDemand(row),status:'created'};
+  }
+  async function createDemand(input){
+    const value=protocol.demand(input);if(!value.source)fail('Fixture demands require a source',400);
+    return withWorkLock(value.source.workId,()=>createDemandLocked(value));
   }
   function claim(workerId,input={}){
     expireStale();
@@ -138,26 +163,51 @@ export function createTranslateCenterFixture({now=()=>Date.now()}={}){
     }
     submissions.set(value.requestId,{payloadHash:fingerprint,result});return clone(result);
   }
+  function overview(){
+    return {
+      contractVersion:1,
+      capabilities:capabilities||{goalManagement:false,publicationScheduling:false,demandEditing:true,mcp:true},
+    };
+  }
+  function mcpTools(){
+    return [
+      {name:'rssd_create_demand',description:CREATE_DEMAND_DESCRIPTION},
+      {name:'rssd_claim',description:'Claim one demand for this device; exclusive center claim rules apply'},
+      {name:'rssd_submit',description:'Submit a claimed work with original requestId, claimToken and base revisions; query receipt after timeout'},
+      {name:'rssd_receipt',description:'Recover the original submission before considering retry'},
+    ];
+  }
   function client(workerId='worker-a'){
     workers.set(workerId,{id:workerId});
     const origin='https://center.example';
+    const trace=[];
     return {
-      origin,workerId,
+      origin,workerId,trace,
+      overview:async()=>overview(),
       request:async(path,{method='GET',body}={})=>{
-        if(path==='/mcp'&&method==='POST'&&body?.method==='tools/list')return {jsonrpc:'2.0',id:body.id,result:{tools:[{name:'rssd_create_demand'},{name:'rssd_claim'},{name:'rssd_submit'},{name:'rssd_receipt'}]}};
+        if(path==='/mcp'&&method==='POST'&&body?.method==='tools/list')return {jsonrpc:'2.0',id:body.id,result:{tools:mcpTools()}};
+        if(path==='/coordination/overview')return overview();
         const edition=path.match(/^\/works\/([^/]+)\/editions\/([^/]+)\/(\d+)$/);
         if(edition){const row=editionAt(decodeURIComponent(edition[1]),decodeURIComponent(edition[2]),Number(edition[3]));if(!row)fail('Edition revision not found',404,'not_found');return clone(row);}
         fail('Unknown fixture path',404,'not_found');
       },
       work:async id=>{const work=works.get(id);if(!work)fail('Work not found',404,'not_found');return clone(work);},
       demands:async({workspaceId,limit=100,offset=0}={})=>[...demands.values()].filter(row=>!workspaceId||row.workspaceId===workspaceId).slice(offset,offset+limit).map(publicDemand),
-      createDemand:async body=>createDemand(body),
-      claim:async body=>claim(workerId,body),
+      createDemand:async body=>{trace.push({op:'createDemand',workId:body?.source?.workId,revision:body?.source?.revision,id:body?.id});return createDemand(body);},
+      claim:async body=>{trace.push({op:'claim',demandId:body?.demandId});return claim(workerId,body);},
       activeClaim:async()=>activeClaim(workerId),
       heartbeat:async()=>({ok:true}),
       changeDemand:async(id,body)=>changeDemand(workerId,id,body),
-      submit:async packet=>submit(workerId,packet),
-      submission:async id=>{const row=submissions.get(id);if(!row)fail('Submission not found',404,'not_found');return clone(row.result);},
+      submit:async packet=>{
+        trace.push({op:'submit',requestId:packet.requestId,workId:packet.workId,locales:(packet.editions||[]).map(edition=>edition.locale),translationOf:packet.editions?.[0]?.translationOf});
+        return submit(workerId,packet);
+      },
+      submission:async id=>{
+        const row=submissions.get(id);
+        trace.push({op:'receipt',requestId:id,status:row?.result.status||'missing'});
+        if(!row)fail('Submission not found',404,'not_found');
+        return clone(row.result);
+      },
     };
   }
   return {addWork,bumpChinese,putEdition,createDemand,claim,client,demands,works,submissions,now};

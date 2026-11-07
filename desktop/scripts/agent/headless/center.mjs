@@ -10,6 +10,7 @@ import {enqueueTranslateContinuation} from '../../../../scripts/rssd-translate-c
 
 import {centerHome} from '../../runtime/center-home.mjs';
 export {centerHome};
+export const CENTER_WORK_PRODUCER=produceCenterEdition;
 export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify(value))}={}){
   const [command,...args]=argv,home=centerHome();
   const flag=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};
@@ -56,7 +57,7 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
   let resume=args.includes('--resume');
   try{
     do{
-      const result=await runProductionTurn({client,home,agentId,workspaceIds,sectionIds:values('--section'),demandId:flag('--id'),resume,signal:controller.signal,producer:produceCenterEdition,onEvent:event=>{if(event.type!=='agent_output')emit(event);}});
+      const result=await runProductionTurn({client,home,agentId,workspaceIds,sectionIds:values('--section'),demandId:flag('--id'),resume,signal:controller.signal,producer:CENTER_WORK_PRODUCER,onEvent:event=>{if(event.type!=='agent_output')emit(event);}});
       resume=false;
       emit(result);if(args.includes('--once')||['blocked','pending'].includes(result.state))return result;
       if(result.state==='idle')await new Promise(resolve=>{const done=()=>{clearTimeout(timer);controller.signal.removeEventListener('abort',done);resolve();};const timer=setTimeout(done,15000);controller.signal.addEventListener('abort',done,{once:true});});
