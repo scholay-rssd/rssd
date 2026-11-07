@@ -4,21 +4,21 @@ import {CenterError} from './rssd-center-client.mjs';
 export const TRANSLATE_TARGET_LOCALE='en';
 export const TRANSLATE_SOURCE_LOCALE='zh-CN';
 export const TRANSLATE_CONTRACT={
-  centerHead:'9632f4fd74659eb3a2f90fb114c147c1878a85a4',
-  mcpTool:'rssd_create_demand',
-  descriptionMarkers:[
-    'binds the source revision and hash',
-    'skips locales that already exist',
-    'reuses an open task',
-  ],
-  // Proposed identifier. 9632f4fd overview.capabilities still only has
-  // goalManagement, publicationScheduling, demandEditing, mcp. When Center
-  // adds this key, it must be true before enqueue; absence is not a grant.
-  overviewCapability:'translateContinuation',
+  centerHead:'ffb0886cd18b39a007eebe784e4c08eab11188b0',
+  versionKey:'translateContinuation',
+  requiredVersion:1,
+  guarantees:Object.freeze(['sourceHash','currentHead','uniqueOpenWork','claimLease','englishOnly','sourceChangeReject','receipt']),
 };
 const OPEN=new Set(['queued','claimed','blocked']);
 function fail(message,code='invalid_request',status=400){throw new CenterError(message,{status,code});}
-function mcpTools(value){return value?.result?.tools||value?.tools||[];}
+export function translateContinuationContract(){
+  return {version:TRANSLATE_CONTRACT.requiredVersion,guarantees:[...TRANSLATE_CONTRACT.guarantees]};
+}
+export function supportsTranslateContinuation(overview){
+  const row=overview?.contracts?.translateContinuation;
+  if(!row||typeof row!=='object'||Array.isArray(row)||!Number.isInteger(row.version)||row.version<TRANSLATE_CONTRACT.requiredVersion||!Array.isArray(row.guarantees))return false;
+  return TRANSLATE_CONTRACT.guarantees.every(token=>row.guarantees.includes(token));
+}
 
 export function translateDemandId({workId,revision,targetLocale=TRANSLATE_TARGET_LOCALE}){
   return 'tr-'+protocol.hash({workId,locale:TRANSLATE_SOURCE_LOCALE,revision,targetLocale}).slice(0,40);
@@ -80,23 +80,17 @@ function sameTranslateBind(row,source,sourceHash,requiredLocales){
 async function readOverview(client){
   try{
     if(typeof client.overview==='function')return await client.overview();
+    if(typeof client.request!=='function')fail('Center client cannot probe the translateContinuation contract version','contract_unavailable',409);
     return await client.request('/coordination/overview');
   }catch(error){
-    if(error instanceof CenterError&&[404,405].includes(error.status))return null;
+    if(error instanceof CenterError)fail('Center overview is unavailable; translateContinuation contract version cannot be verified','contract_unavailable',409);
     throw error;
   }
 }
 
 export async function requireTranslateContract(client){
-  if(typeof client.request!=='function')fail('Center client cannot probe the translate contract','contract_unavailable',409);
-  const listed=await client.request('/mcp',{method:'POST',body:{jsonrpc:'2.0',id:'translate-contract',method:'tools/list',params:{}}});
-  const tool=mcpTools(listed).find(row=>row.name===TRANSLATE_CONTRACT.mcpTool);
-  if(!tool)fail('Center has not deployed rssd_create_demand; refuse to enqueue a translate demand','contract_unavailable',409);
-  const description=String(tool.description||'');
-  if(!TRANSLATE_CONTRACT.descriptionMarkers.every(marker=>description.includes(marker)))fail('rssd_create_demand is present but does not advertise the bound-source translate contract; the tool name is not a contract version','contract_unavailable',409);
   const overview=await readOverview(client);
-  const capabilities=overview?.capabilities;
-  if(capabilities&&Object.prototype.hasOwnProperty.call(capabilities,TRANSLATE_CONTRACT.overviewCapability)&&capabilities[TRANSLATE_CONTRACT.overviewCapability]!==true)fail('Center overview does not grant translateContinuation','contract_unavailable',409);
+  if(!supportsTranslateContinuation(overview))fail('Center did not advertise a supported translateContinuation contract; enqueue refused','contract_unavailable',409);
 }
 
 export async function enqueueTranslateContinuation({client,workId,revision}={}){

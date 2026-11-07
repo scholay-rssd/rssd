@@ -5,8 +5,8 @@ import {createServer} from 'node:http';
 import {mkdtemp,readdir,readFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {enqueueTranslateContinuation,requireTranslateContract,translateDemandId,TRANSLATE_CONTRACT} from '../scripts/rssd-translate-continuation.mjs';
-import {createTranslateCenterFixture,CLAIM_TTL_MS,CREATE_DEMAND_DESCRIPTION} from './fixtures/rssd-translate-center.mjs';
+import {enqueueTranslateContinuation,requireTranslateContract,supportsTranslateContinuation,translateContinuationContract,translateDemandId,TRANSLATE_CONTRACT} from '../scripts/rssd-translate-continuation.mjs';
+import {createTranslateCenterFixture,CLAIM_TTL_MS} from './fixtures/rssd-translate-center.mjs';
 import {runProductionTurn} from '../scripts/rssd-production-worker.mjs';
 import {centerDesktopCall} from '../desktop/scripts/rssd-center.mjs';
 import {centerCommand,CENTER_WORK_PRODUCER} from '../desktop/scripts/agent/headless/center.mjs';
@@ -49,27 +49,38 @@ test('enqueue refuses a stale revision, a second open bind after source change, 
   const open=[...center.demands.values()].filter(row=>row.payload?.source?.workId===work.id);
   assert.equal(open.length,1);assert.equal(open[0].id,created.id);
   assert.equal(open[0].payload.source.revision,1);assert.equal(open[0].payload.sourceHash,sourceHash);
-  const listed={...client,request:async()=>({result:{tools:[{name:'rssd_claim'}]}})};
+  const listed={...client,overview:async()=>({contractVersion:1,capabilities:{mcp:true}})};
   await assert.rejects(enqueueTranslateContinuation({client:listed,workId:work.id}),{code:'contract_unavailable'});
 });
 
-test('contract probe refuses a namesake tool and a false translateContinuation flag',async()=>{
-  const center=createTranslateCenterFixture();
-  const work=center.addWork({id:'work-probe'});
-  const client=center.client();
-  const named={...client,request:async(path,options)=>{
-    if(path==='/mcp')return {result:{tools:[{name:'rssd_create_demand',description:'Create one queued demand'}]}};
-    return client.request(path,options);
-  }};
-  await assert.rejects(requireTranslateContract(named),{code:'contract_unavailable'});
-  await assert.rejects(enqueueTranslateContinuation({client:named,workId:work.id}),{code:'contract_unavailable'});
-  const denied=createTranslateCenterFixture({capabilities:{goalManagement:false,publicationScheduling:false,demandEditing:true,mcp:true,translateContinuation:false}}).client();
-  await assert.rejects(requireTranslateContract(denied),{code:'contract_unavailable'});
-  const granted=createTranslateCenterFixture({capabilities:{goalManagement:false,publicationScheduling:false,demandEditing:true,mcp:true,[TRANSLATE_CONTRACT.overviewCapability]:true}});
-  const allowed=granted.addWork({id:'work-granted'});
-  const created=await enqueueTranslateContinuation({client:granted.client(),workId:allowed.id});
+test('contract probe is fail-closed unless overview.contracts.translateContinuation has integer version and all guarantees',async()=>{
+  const safe=translateContinuationContract();
+  assert.deepEqual(safe,{version:1,guarantees:[...TRANSLATE_CONTRACT.guarantees]});
+  const current=createTranslateCenterFixture();
+  const allowed=current.addWork({id:'work-granted'});
+  const overview=await current.client().overview();
+  assert.equal(overview.contractVersion,1);
+  assert.equal(overview.capabilities.publicationScheduling,false);
+  assert.equal(supportsTranslateContinuation(overview),true);
+  const created=await enqueueTranslateContinuation({client:current.client(),workId:allowed.id});
   assert.equal(created.status,'created');
-  assert.equal(CREATE_DEMAND_DESCRIPTION.includes('binds the source revision and hash'),true);
+  const refuse=async contracts=>{
+    const center=createTranslateCenterFixture({contracts});
+    const work=center.addWork({id:'work-probe'});
+    await assert.rejects(requireTranslateContract(center.client()),{code:'contract_unavailable'});
+    await assert.rejects(enqueueTranslateContinuation({client:center.client(),workId:work.id}),{code:'contract_unavailable'});
+  };
+  await refuse({});
+  await refuse({translateContinuation:true});
+  await refuse({translateContinuation:{version:0,guarantees:[...TRANSLATE_CONTRACT.guarantees]}});
+  await refuse({translateContinuation:{version:'1',guarantees:[...TRANSLATE_CONTRACT.guarantees]}});
+  await refuse({translateContinuation:{version:1}});
+  await refuse({translateContinuation:{version:1,guarantees:TRANSLATE_CONTRACT.guarantees.filter(token=>token!=='receipt')}});
+  const topLevelOnly={...current.client(),overview:async()=>({contractVersion:1,capabilities:{goalManagement:false,publicationScheduling:false,demandEditing:true,mcp:true}})};
+  assert.equal(supportsTranslateContinuation(await topLevelOnly.overview()),false);
+  await assert.rejects(requireTranslateContract(topLevelOnly),{code:'contract_unavailable'});
+  const toolOnly={...current.client(),overview:async()=>({contractVersion:1,capabilities:{mcp:true}})};
+  await assert.rejects(enqueueTranslateContinuation({client:toolOnly,workId:allowed.id}),{code:'contract_unavailable'});
 });
 
 test('fixture unique-work constraint reuses one bind and conflicts after Chinese rev2',async()=>{

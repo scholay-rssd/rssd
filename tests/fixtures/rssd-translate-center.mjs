@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import protocol from '../../contracts/rssd-v1.cjs';
 import {CenterError} from '../../scripts/rssd-center-client.mjs';
+import {translateContinuationContract} from '../../scripts/rssd-translate-continuation.mjs';
 
 export const CLAIM_TTL_MS=24*60*60*1000;
 export const CREATE_DEMAND_DESCRIPTION='Create one queued demand; translation of an existing work binds the source revision and hash, skips locales that already exist, and reuses an open task';
@@ -20,7 +21,7 @@ function createWorkLock(){
   };
 }
 
-export function createTranslateCenterFixture({now=()=>Date.now(),capabilities}={}){
+export function createTranslateCenterFixture({now=()=>Date.now(),capabilities,contracts={translateContinuation:translateContinuationContract()}}={}){
   const works=new Map(),history=new Map(),demands=new Map(),submissions=new Map(),workers=new Map();
   const withWorkLock=createWorkLock();
   const revisions=(workId,locale)=>(history.get(workId)||[]).filter(row=>row.locale===locale).sort((a,b)=>b.revision-a.revision);
@@ -166,6 +167,7 @@ export function createTranslateCenterFixture({now=()=>Date.now(),capabilities}={
   function overview(){
     return {
       contractVersion:1,
+      contracts,
       capabilities:capabilities||{goalManagement:false,publicationScheduling:false,demandEditing:true,mcp:true},
     };
   }

@@ -15,11 +15,13 @@ its `SHA256SUMS.txt`, extract it to an empty directory, and install with:
 ```
 
 English continuation of an existing Chinese work is documented in
-`docs/rssd-translate-continuation.md`. After center PR 9 (`9632f4fd` or
-later) is deployed, enqueue then run the official Center worker. `--agent`
-selects this device's Agent Registry ACP CLI (`codex`, `cursor`, …), not a
-cloud job id and not `SCHOLAY_CLOUD_EXECUTOR`. `rssd produce` and `cloud-sync`
-are not this path.
+`docs/rssd-translate-continuation.md`. After center PR 9 at `ffb0886c` is
+deployed and overview advertises `contracts.translateContinuation` with
+integer `version >= 1` and all seven guarantees, enqueue then run the
+official Center worker on the Owner-named device. `--agent` selects that
+device's Agent Registry ACP CLI (`codex`, `cursor`, …), not a cloud job
+id and not `SCHOLAY_CLOUD_EXECUTOR`. `rssd produce` and `cloud-sync` are
+not this path.
 
 ```sh
 rssd center enqueue-translate --work <existingWorkId>
