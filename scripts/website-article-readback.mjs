@@ -7,16 +7,21 @@ import {renderArticle as renderPublicArticle,renderArticleParts as renderPublicP
 function withoutHeadingIds(html){
   return String(html).replace(/<(h[23])(\s[^>]*)?>/gi,(_,name,attrs='')=>'<'+name+attrs.replace(/\sid="[^"]*"/i,'')+'>');
 }
+// Image priority and reserved size are presentation. A publisher and a verifier
+// can differ by one release without treating the article body as changed.
+function withoutPresentation(html){
+  return withoutHeadingIds(html).replace(/\s(?:width|height|loading|decoding|fetchpriority)="[^"]*"/gi,'');
+}
 
 // Pure public-body verification, shared by local publishing and the cloud
 // worker. Importing this helper must not initialize an editorial workspace.
 // Journal themes render the final brand list in a separate endnotes block.
 export function articleBodyOnPage(html,markdown,site){
-  const text=String(markdown).replace(/^# [^\n]+\n+/,''),page=withoutHeadingIds(html);
+  const text=String(markdown).replace(/^# [^\n]+\n+/,''),page=withoutPresentation(html);
   for(const [render,renderParts] of [[renderPublicArticle,renderPublicParts],[renderArticle,renderArticleParts]]){
-    if(page.includes('<div class="article-body">'+withoutHeadingIds(render(text))+'</div>')||page.includes('<div class="article-body">'+withoutHeadingIds(render(text,{site}))+'</div>'))return true;
+    if(page.includes('<div class="article-body">'+withoutPresentation(render(text))+'</div>')||page.includes('<div class="article-body">'+withoutPresentation(render(text,{site}))+'</div>'))return true;
     const parts=renderParts(text,{site});
-    if(parts.endnotes&&page.includes('<div class="article-body">'+withoutHeadingIds(parts.body)+'</div>')&&page.includes('<div class="article-body article-endnotes">'+withoutHeadingIds(parts.endnotes)+'</div>'))return true;
+    if(parts.endnotes&&page.includes('<div class="article-body">'+withoutPresentation(parts.body)+'</div>')&&page.includes('<div class="article-body article-endnotes">'+withoutPresentation(parts.endnotes)+'</div>'))return true;
   }
   return false;
 }
