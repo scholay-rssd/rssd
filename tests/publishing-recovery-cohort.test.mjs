@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,readdir,readFile,rm} from 'node:fs/promises';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
-import {execFile} from 'node:child_process';
+import {execFile,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {atomic,optional,hash,postizTick} from '../scripts/publishing-flow.mjs';
 import {sourceContentSha256,editionArticleId} from '../contracts/language-editions.mjs';
@@ -165,4 +165,22 @@ test('packetIds is an exact optional filter; empty selection stays empty and mal
 test('standalone cohort CLI uses the same immutable authorization and handoff protocol',async t=>{
  const f=await fixture(t),input=join(f.directory,'exact-scope.json');await atomic(input,f.cohort);const run=promisify(execFile),script=join(process.cwd(),'scripts/publishing-recovery-cohort.mjs');
  for(const [command,value,status] of [['authorize',input,'authorized'],['handoff',f.cohort.id,'ready'],['status',f.cohort.id,'valid']]){const {stdout}=await run(process.execPath,[script,command,f.directory,value]);assert.equal(JSON.parse(stdout).status,status);}
+});
+
+test('batch watch CLI first scan can import this module instead of deadlocking on validateBatchManifest',async t=>{
+ const f=await fixture(t),body='recovery-cycle-scan',id=hash(body).slice(0,40);
+ await atomic(join(f.directory,'outbox',id+'.json'),{id,body,bodySha256:hash(body),authorization:'test',source:{siteId:'unrelated',articleId:'unrelated-article'},planId:'a'.repeat(40)});
+ const child=spawn(process.execPath,[join(process.cwd(),'scripts/publishing-batch.mjs'),'watch',f.directory],{stdio:['ignore','pipe','pipe']});
+ const output={stdout:'',stderr:''};child.stdout.on('data',chunk=>{output.stdout+=chunk;});child.stderr.on('data',chunk=>{output.stderr+=chunk;});
+ t.after(()=>{try{child.kill('SIGKILL');}catch{}});
+ await new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>finish(Error('watch CLI first scan did not finish: '+output.stderr+output.stdout)),8000);
+  const finish=error=>{clearTimeout(timer);child.stdout.off('data',onData);child.off('exit',onExit);error?reject(error):resolve();};
+  const onData=()=>{if(output.stdout.includes('\n'))finish();};
+  const onExit=(code,signal)=>finish(Error('watch CLI exited before first scan ('+code+'/'+signal+'): '+output.stderr));
+  child.stdout.on('data',onData);child.on('exit',onExit);onData();
+ });
+ assert.doesNotMatch(output.stderr,/unsettled top-level await/);
+ const line=JSON.parse(output.stdout.trim().split('\n')[0]);
+ assert.equal(line[0]?.status||line.status,'deferred');
 });
