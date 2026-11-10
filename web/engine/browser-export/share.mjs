@@ -36,12 +36,12 @@ if(root){
   try{
    if(action==='copy-article'){
     // Initiate clipboard.write before awaiting network or module loading.
-    const prepared=Promise.all([loadHelpers(),model()]).then(([helper,data])=>helper.portableArticle(data,{signal}));
+    const prepared=Promise.all([loadHelpers(),model()]).then(([helper,data])=>helper.portableArticle(data,{clipboard:true,signal}));
     if(navigator.clipboard?.write&&typeof ClipboardItem!=='undefined'){
      try{await navigator.clipboard.write([new ClipboardItem({'text/html':prepared.then(x=>new Blob([x.html],{type:'text/html'})),'text/plain':prepared.then(x=>new Blob([x.plain],{type:'text/plain'}))})]);}
      catch{await(await loadHelpers()).copyArticle(prepared);}
     }else await(await loadHelpers()).copyArticle(prepared);
-    message(say('文章已复制，可直接粘贴到编辑器','Article copied. Paste it into your editor.'));
+    message(say('文章已复制，可粘贴到公众号编辑器','Article copied. Paste it into the WeChat editor.'));
    }else if(action==='download-article'){
     const helper=await loadHelpers(),data=await model();const output=await helper.portableArticle(data,{embed:true,signal});signal.throwIfAborted();download(new Blob([output.document],{type:'text/html;charset=utf-8'}),'.html');message(say('文章下载已开始，可离线打开','Download started. The article can be opened offline.'));
    }else if(action==='download-pages'){

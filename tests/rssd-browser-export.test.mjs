@@ -9,6 +9,7 @@ import {createRequire} from 'node:module';
 import {profiles} from '../scripts/site-config.mjs';
 import {sectionsForSite} from '../contracts/site-sections.mjs';
 import {exportDesigns,exportTemplate} from '../web/themes/export/registry.mjs';
+import {wechatTagStyle} from '../web/engine/browser-export/wechat-clipboard.mjs';
 import {makeZip,crc32} from '../web/engine/browser-export/zip.mjs';
 import {buildDemoVariant} from '../scripts/build-demo.mjs';
 import {DEMO_VARIANTS} from '../web/demo/variants.mjs';
@@ -30,6 +31,22 @@ test('each configured and migrated site section owns explicitly registered page 
  assert.deepEqual(new Set(registered),catalog);assert.equal(catalog.size,89);assert.equal(ids.size,178);
  for(const siteId of migratedSites)assert.equal(new Set(migratedSections.map(id=>exportDesigns[siteId].sections[id][0])).size,4);
  assert.equal(exportTemplate({siteId:'scholay-today',workspaceId:'academic',sectionId:'briefings',format:'pages'}).layout,'dispatch');
+});
+test('WeChat clipboard styles keep category colour and stay inside a phone column',()=>{
+ const tags=['section','h1','h2','h3','p','img','pre','table','td','a','blockquote','li'];
+ for(const siteId of ['metho','scholay-today','piggytuck','xsiching']){
+  const sectionId=Object.keys(exportDesigns[siteId].sections)[0];
+  const template=exportTemplate({siteId,workspaceId:siteId,sectionId,format:'wechat'});
+  assert.equal(template.titleSize>30||template.width>=720,true);
+  for(const tag of tags){
+   assert.doesNotMatch(wechatTagStyle(tag,template),/max-width|color-mix\(|light-dark\(|width:\s*\d{3,}px/);
+  }
+  assert.match(wechatTagStyle('img',template),/width:100%;height:auto/);
+  assert.match(wechatTagStyle('section',template),/word-break:break-word/);
+  assert.match(wechatTagStyle('pre',template),/word-break:break-all/);
+  assert.match(wechatTagStyle('h1',template),/font-size:22px/);
+  assert.match(wechatTagStyle('a',template)+wechatTagStyle('blockquote',template),new RegExp(template.accent.replace('#','#')));
+ }
 });
 test('browser ZIP preserves numbered files, exact PNG bytes and standard CRC values',async()=>{
  assert.equal(crc32(new TextEncoder().encode('123456789')),0xcbf43926);
@@ -70,7 +87,10 @@ test('article sharing is lazy, preserves complete content and exports standalone
  await page.locator('[data-action=copy-article]').click();await page.waitForFunction(()=>document.querySelector('.rssd-share-status').textContent.includes('已复制'));
  const clipboard=await page.evaluate(async()=>{const item=(await navigator.clipboard.read())[0];return(await item.getType('text/html')).text();});
  assert.doesNotMatch(clipboard,/color\(srgb|light-dark\(|color-mix\(/);
- assert.match(clipboard,/THE FINAL SENTENCE/);assert.match(clipboard,/style=/);assert.match(clipboard,/<img/);assert.match(clipboard,/line_75/);
+ assert.match(clipboard,/THE FINAL SENTENCE/);assert.match(clipboard,/style=/);assert.match(clipboard,/<img[^>]+src="data:image\/(?:jpeg|png);base64,/);assert.match(clipboard,/line_75/);
+ const styles=[...clipboard.matchAll(/style="([^"]*)"/g)].map(match=>match[1]);
+ for(const style of styles)assert.doesNotMatch(style,/max-width|color-mix\(|light-dark\(|width:\s*\d{3,}px/);
+ assert.ok(styles.some(style=>style.includes('width:100%')));assert.ok(styles.some(style=>style.includes('word-break:break-word')));
  const artifacts=resolve(process.env.RSSD_BROWSER_ARTIFACTS||'.local/article-sharing-20261101/browser');await mkdir(artifacts,{recursive:true});
  await page.screenshot({path:join(artifacts,'share-desktop.png')});
  const [htmlDownload]=await Promise.all([page.waitForEvent('download'),page.locator('[data-action=download-article]').click()]);
