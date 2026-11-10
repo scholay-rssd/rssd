@@ -7,7 +7,7 @@ import {invoke} from '../lib/nativeCore';
 import {openUrl} from '@tauri-apps/plugin-opener';
 vi.mock('../lib/nativeCore',()=>({invoke:vi.fn()}));
 vi.mock('@tauri-apps/plugin-opener',()=>({openUrl:vi.fn(async()=>{})}));
-vi.mock('../uiText',()=>({tr:(s:string)=>s}));
+vi.mock('../uiText',()=>({tr:(s:string)=>s,uiLocale:()=>'zh-CN'}));
 let host:HTMLDivElement,root:Root;
 const edition={locale:'zh-CN',revision:2,payload:{locale:'zh-CN',title:'原稿',bodyMarkdown:'原正文'}};
 const work={id:'work-one',workspaceId:'first',sectionId:'news',editions:[edition]};

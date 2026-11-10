@@ -38,3 +38,11 @@ it('retains native Postiz assistant access and forwards production agent selecti
  await act(async()=>Array.from(host.querySelectorAll('button')).find(b=>b.textContent==='打开 Postiz 原生助手')!.click());expect(native).toHaveBeenCalledOnce();
  await act(async()=>{const select=host.querySelector('select')!;select.value='cursor';select.dispatchEvent(new Event('change',{bubbles:true}));});expect(choose).toHaveBeenCalledWith('cursor');
 });
+it('checks an idle assistant every five seconds rather than every second',async()=>{
+ const asked=()=>vi.mocked(invoke).mock.calls.filter(([,args]:any)=>args.method==='assistant_status').length;
+ await act(async()=>root.render(draw(['space-a'])));
+ await act(async()=>vi.advanceTimersByTimeAsync(4000));
+ expect(asked()).toBe(1);
+ await act(async()=>vi.advanceTimersByTimeAsync(1100));
+ expect(asked()).toBe(2);
+});

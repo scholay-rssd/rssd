@@ -6,7 +6,7 @@ import LiveCenter,{mapLiveCenter} from './LiveCenter';
 import {invoke} from '../lib/nativeCore';
 vi.mock('../lib/nativeCore',()=>({invoke:vi.fn()}));
 vi.mock('@tauri-apps/plugin-opener',()=>({openUrl:vi.fn(async()=>{})}));
-vi.mock('../uiText',()=>({tr:(s:string)=>s}));
+vi.mock('../uiText',()=>({tr:(s:string)=>s,uiLocale:()=>'zh-CN'}));
 let host:HTMLDivElement,root:Root;
 const overview={workspaces:[{id:'research',name:'实际工作空间',sections:[{id:'methods',name:'研究方法'}]}],goals:[],counts:[{workspaceId:'research',state:'queued',count:351}],works:[]};
 const demand={id:'actual-demand',workspaceId:'research',sectionId:'methods',title:'中心真实需求',kind:'write',state:'queued',priority:7,generation:4,payload:{brief:'保留原要求',requiredLocales:['en']}};
@@ -51,4 +51,45 @@ it('reads nothing while its workspace is not the one on screen',async()=>{
  vi.mocked(invoke).mockImplementation(async()=>({}));
  await act(async()=>root.render(createElement(LiveCenter,{active:false})));
  expect(vi.mocked(invoke)).not.toHaveBeenCalled();
+});
+const live=(extra:(args:any)=>any=()=>undefined)=>vi.mocked(invoke).mockImplementation(async(_command,args:any)=>{
+ const special=extra(args);if(special!==undefined)return special;
+ if(args.method==='status')return {configured:true,origin:'https://center.example',agents:[]};
+ if(args.method==='overview')return overview;if(args.method==='demands')return [demand];if(args.method==='calendar')return {items:[],hasNext:false};if(args.method==='channels')return {destinations:[],channels:[]};return {};
+});
+const count=(method:string)=>vi.mocked(invoke).mock.calls.filter(([,a]:any)=>a.method===method).length;
+const press=async(match:(button:HTMLButtonElement)=>boolean)=>{await act(async()=>Array.from(host.querySelectorAll('button')).find(match)!.click());};
+it('re-reads only the calendar when the calendar moves',async()=>{
+ live();await act(async()=>root.render(createElement(LiveCenter)));
+ await press(button=>button.textContent==='发布日历');
+ const before={overview:count('overview'),demands:count('demands'),channels:count('channels'),calendar:count('calendar')};
+ await press(button=>button.getAttribute('aria-label')==='下一时段');
+ expect(count('calendar')).toBe(before.calendar+1);
+ expect({overview:count('overview'),demands:count('demands'),channels:count('channels')}).toEqual({overview:before.overview,demands:before.demands,channels:before.channels});
+});
+it('says when the Center holds more tasks than are listed and loads the next page inside the list',async()=>{
+ live(args=>args.method==='demands'?(args.params.offset?[]:Array.from({length:200},(_,i)=>({...demand,id:'demand-'+i}))):undefined);
+ await act(async()=>root.render(createElement(LiveCenter)));
+ await press(button=>button.textContent?.startsWith('需求池')===true);
+ const footer=host.querySelector('main.center-preview .cp-list-footer')!;expect(footer.textContent).toContain('已显示');
+ const overviews=count('overview');
+ await press(button=>button.textContent==='加载更多');
+ expect(vi.mocked(invoke).mock.calls.some(([,a]:any)=>a.method==='demands'&&a.params.offset===200)).toBe(true);
+ expect(count('overview')).toBe(overviews);expect(host.querySelector('.cp-list-footer')).toBeNull();
+});
+it('searches tasks at the Center instead of only among the loaded rows',async()=>{
+ live(args=>args.method==='demands'&&args.params.search==='仅写作要求命中'?[{...demand,id:'found',title:'标题里没有这个词'}]:undefined);
+ await act(async()=>root.render(createElement(LiveCenter)));
+ await press(button=>button.textContent?.startsWith('需求池')===true);
+ const input=host.querySelector<HTMLInputElement>('input[type=search]')!,overviews=count('overview');
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,'仅写作要求命中');input.dispatchEvent(new Event('input',{bubbles:true}));});
+ expect(host.textContent).not.toContain('标题里没有这个词');
+ await act(async()=>{await new Promise(done=>setTimeout(done,350));});
+ expect(host.textContent).toContain('标题里没有这个词');expect(count('overview')).toBe(overviews);
+});
+it('shows what this machine is doing and what it is still holding',async()=>{
+ live(args=>args.method==='status'?{configured:true,origin:'https://center.example',agents:[],worker:{state:'working'},outbox:[{requestId:'r',state:'pending'},{requestId:'done',state:'accepted'}]}:undefined);
+ await act(async()=>root.render(createElement(LiveCenter,{legacy:()=>null})));
+ expect(host.querySelector('.cp-execution')?.textContent).toBe('本机执行 · 工作中1');
+ expect(host.querySelector('.cp-held')?.textContent).toContain('本机待处理稿件 · 1');
 });

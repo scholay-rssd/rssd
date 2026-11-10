@@ -22,3 +22,15 @@ it('a refused disconnect leaves the existing connection and editor in place',asy
  await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='退出中心连接')!.click());
  expect(host.textContent).toContain('Unresolved claim');expect(changed).not.toHaveBeenCalled();expect(host.textContent).toContain('https://center.example');
 });
+it('asks for sign-in status once when connected and keeps asking only while a sign-in can complete',async()=>{
+ vi.useFakeTimers();
+ try{
+  const asked=()=>vi.mocked(invoke).mock.calls.filter(([,args])=>(args as any).method==='auth_status').length;
+  await act(async()=>root.render(createElement(CenterConnection,{status:{configured:true,origin:'https://center.example'},disabled:false,onChanged:async()=>{},beforeChange:async()=>{}})));
+  await act(async()=>vi.advanceTimersByTimeAsync(7000));
+  expect(asked()).toBe(1);
+  await act(async()=>root.render(createElement(CenterConnection,{status:{origin:'https://center.example'},disabled:false,onChanged:async()=>{},beforeChange:async()=>{}})));
+  await act(async()=>vi.advanceTimersByTimeAsync(4100));
+  expect(asked()).toBeGreaterThanOrEqual(3);
+ }finally{vi.useRealTimers();}
+});

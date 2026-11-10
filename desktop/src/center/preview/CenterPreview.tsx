@@ -145,7 +145,7 @@ function TaskDetail({
         </div>
         <dl className="cp-facts">
           <dt>{tr("执行设备")}</dt>
-          <dd>{task.owner || "等待设备认领"}</dd>
+          <dd>{task.owner || tr("等待设备认领")}</dd>
           <dt>{tr("任务编号")}</dt>
           <dd>{task.id}</dd>
           <dt>{tr("计划交稿")}</dt>
@@ -325,6 +325,14 @@ export interface LiveCenterActions {
   calendarRange: (from:string,to:string)=>void;
   /** Works library and local execution, shown as a last tab; receives whether that tab is open. */
   legacy?: (shown:boolean)=>ReactNode;
+  /** What this machine is doing, and anything it is holding that needs a decision. */
+  execution?: {running:boolean;label:string;notes:string[]};
+  /** Ask the Center for tasks matching the text; `appliedSearch` is the text the loaded tasks answer. */
+  search?: (text:string)=>void;
+  appliedSearch?: string;
+  /** Present while the Center holds more tasks than are loaded. */
+  loadMore?: ()=>void;
+  calendarTruncated?: boolean;
 }
 const legacyTab: [PreviewTab, string] = ["legacy", "作品与本机执行"];
 export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
@@ -393,14 +401,29 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
   const publications = data.publications.filter((p) =>
     scope.includes(p.workspaceId),
   );
+  const term = search.trim();
+  useEffect(() => {
+    if (!live?.search) return;
+    const timer = setTimeout(() => live.search!(term), 300);
+    return () => clearTimeout(timer);
+  }, [term]);
+  // Once the Center has answered for this text, its matches (title or brief) are the list.
+  const answered = Boolean(live?.search) && term !== "" && live!.appliedSearch === term;
   const filteredDemands = demands.filter(
     (d) =>
       (state === "all" || d.state === state) &&
-      [d.title, d.section, spaceById[d.workspaceId].name]
-        .join(" ")
-        .toLocaleLowerCase()
-        .includes(search.toLocaleLowerCase()),
+      (answered ||
+        [d.title, d.section, spaceById[d.workspaceId].name]
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(term.toLocaleLowerCase())),
   );
+  const queuedIn = (workspaceId: string) =>
+    data.demandCounts
+      ? data.demandCounts
+          .filter((r) => r.workspaceId === workspaceId && r.state === "queued")
+          .reduce((n, r) => n + r.count, 0)
+      : demands.filter((d) => d.workspaceId === workspaceId && d.state === "queued").length;
   const days = useMemo(
     () =>
       calendarView === "month"
@@ -506,6 +529,17 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
               ))}
             </div>
           </details>
+          {live?.execution && (
+            <button
+              className="cp-execution"
+              title={live.execution.notes.join(" ")}
+              onClick={() => changeTab("legacy")}
+            >
+              {live.execution.running && <span className="cp-dot" />}
+              {tr("本机执行")} · {live.execution.label}
+              {live.execution.notes.length > 0 && <b>{live.execution.notes.length}</b>}
+            </button>
+          )}
           <button className="cp-primary" onClick={() => changeTab("assistant")}>
             <NavigationIcon tab="assistant" />
             {tr("向助手下指令")}
@@ -542,6 +576,12 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
           <strong>{demandCount("all")}</strong>
         </button>
       </div>
+      )}
+      {live?.execution && live.execution.notes.length > 0 && tab !== "legacy" && (
+        <p className="cp-notice cp-held" role="status">
+          <span>{live.execution.notes.join(" ")}</span>
+          <button onClick={() => changeTab("legacy")}>{tr("前往处理")}</button>
+        </p>
       )}
       {notice && (
         <p className="cp-notice" role="status">
@@ -655,13 +695,7 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
                             </div>
                           </td>
                           <td>
-                            {
-                              demands.filter(
-                                (d) =>
-                                  d.workspaceId === s.id &&
-                                  d.state === "queued",
-                              ).length
-                            }
+                            {queuedIn(s.id)}
                           </td>
                           <td>
                             <button
@@ -852,6 +886,16 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
                 />
               )}
             </div>
+            {live?.loadMore && (
+              <p className="cp-list-footer">
+                {term
+                  ? tr("已显示 {{shown}} 条匹配的需求，中心还有更多。", { shown: filteredDemands.length })
+                  : tr("已显示 {{shown}} / {{total}} 条", { shown: filteredDemands.length, total: demandCount(state) })}
+                <button disabled={live.loading} onClick={live.loadMore}>
+                  {tr("加载更多")}
+                </button>
+              </p>
+            )}
           </>
         )}
         {tab === "calendar" && (
@@ -1041,6 +1085,14 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
                 ? tr("展示时区：{{timezone}} · 中心真实数据", { timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
                 : tr("展示时区：Asia/Shanghai · 数据为示例")}</small>
             </div>
+            {live?.calendarTruncated && (
+              <p className="cp-list-footer">
+                {tr("当前显示前 200 条发布记录。")}
+                <button onClick={() => live.manage("calendar")}>
+                  {tr("打开中心分页查看全部")}
+                </button>
+              </p>
+            )}
           </>
         )}
         {tab === "channels" && (
@@ -1274,7 +1326,7 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
           onClose={() => setSelectedDestination(null)}
         >
           <div className="cp-detail-body">
-            <div className="cp-eyebrow">{selectedDestination.platform}</div>
+            <div className="cp-eyebrow">{tr(selectedDestination.platform)}</div>
             <h2>{selectedDestination.name}</h2>
             <dl className="cp-facts">
               <dt>{tr("账号或站点")}</dt>

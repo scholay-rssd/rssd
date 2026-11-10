@@ -297,6 +297,43 @@
 .cp-counts button:hover:not(:disabled) strong {
   color: var(--cp-accent);
 }
+.cp-execution {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.cp-execution b {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--cp-warning);
+  color: var(--panel, #fff);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+.cp-held {
+  border-left-color: var(--cp-warning);
+}
+.cp-held button {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.cp-list-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.cp-list-footer button {
+  font-size: 12px;
+}
 .cp-content {
   animation: cp-enter 0.16s ease-out;
 }

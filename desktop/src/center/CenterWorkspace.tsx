@@ -12,7 +12,8 @@ const call=(method:string,params:Row={},token?:string)=>invoke<any>('rssd_center
 const PAGE_SIZE=50;
 const label=(value:string)=>stateLabel(value,tr);
 /** Works library, manuscript editor and local execution: a tab of the Center shell until these parts move into it. */
-export function LegacyCenter({active,onConnectionChanged}:{active:boolean;onConnectionChanged?:()=>void}){
+export function LegacyCenter({active,onConnectionChanged,onStatus}:{active:boolean;onConnectionChanged?:()=>void;onStatus?:(status:Row)=>void}){
+ const statusSink=useRef(onStatus);statusSink.current=onStatus;
  const [status,setStatus]=useState<Row>({}),[spaces,setSpaces]=useState<Row[]>([]),[space,setSpace]=useState(''),[section,setSection]=useState(''),[agent,setAgent]=useState('');
  const [autoTopics,setAutoTopics]=useState(false);
  const [tab,setTab]=useState<CenterTab>('demands'),[listing,setListing]=useState<{key:string;rows:Row[];hasNext:boolean}>({key:'',rows:[],hasNext:false}),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
@@ -28,7 +29,7 @@ export function LegacyCenter({active,onConnectionChanged}:{active:boolean;onConn
  const current=spaces.find(s=>s.id===space),running=['starting','working','idle','stopping'].includes(status.worker?.state);
  const canAutoTopics=space==='metho'&&section==='methods'&&agent==='codex';
  const writable=current?.writable!==false,editorWritable=spaces.find(s=>s.id===work?.workspaceId)?.writable!==false;
- const local=useCallback(async()=>{const value=await call('status');setStatus(value);setAgent(old=>old||value.agents?.find((a:Row)=>a.available&&a.enabled)?.id||'');},[]);
+ const local=useCallback(async()=>{const value=await call('status');setStatus(value);statusSink.current?.(value);setAgent(old=>old||value.agents?.find((a:Row)=>a.available&&a.enabled)?.id||'');},[]);
  const registry=useCallback(async()=>{const r=await call('registry');setSpaces(r.workspaces);setSpace(old=>{if(!registryLoaded.current){registryLoaded.current=true;return r.workspaces[0]?.id||'';}return !old||r.workspaces.some((w:Row)=>w.id===old)?old:r.workspaces[0]?.id||'';});if(r.offline)setNotice(tr("中心暂不可用，正在使用本机保存的工作空间配置。"));},[]);
  const refresh=useCallback(async()=>{if(!status.configured)return;const request=++generation.current;try{const result=await call(tab,{workspaceId:space||undefined,limit:PAGE_SIZE+1,offset:page*PAGE_SIZE,...(tab!=='publications'&&search?{search}:{})});if(request===generation.current)setListing({key:listKey,rows:result.slice(0,PAGE_SIZE),hasNext:result.length>PAGE_SIZE});}catch(e){if(request===generation.current){setListing({key:listKey,rows:[],hasNext:false});setError(String(e));}}},[space,tab,page,search,listKey,status.configured]);
  const run=async(fn:()=>Promise<void>)=>{if(actionBusy.current)return;actionBusy.current=true;setBusy(true);setError('');setNotice('');try{await fn();}catch(e){setError(e instanceof Error?e.message:String(e));}finally{actionBusy.current=false;setBusy(false);}};
@@ -98,5 +99,5 @@ export function LegacyCenter({active,onConnectionChanged}:{active:boolean;onConn
  </main>;
 }
 export default function CenterWorkspace({active}:{active:boolean}){
- return <LiveCenter active={active} legacy={(shown,refresh)=><LegacyCenter active={active&&shown} onConnectionChanged={refresh}/>}/>;
+ return <LiveCenter active={active} legacy={(shown,shell)=><LegacyCenter active={active&&shown} onConnectionChanged={shell.refresh} onStatus={shell.status}/>}/>;
 }
