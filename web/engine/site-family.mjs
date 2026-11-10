@@ -1,14 +1,14 @@
+import {existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {profiles} from '../../scripts/site-config.mjs';
 import branding from '../../sites/branding/manifest.json' with {type:'json'};
 import {escapeHtml as esc} from '../modules/shared.mjs';
 
 export function familyIconEntries(source){
- return profiles.map(site=>{
+ return profiles.flatMap(site=>{
   const png=branding[site.id]?.icons?.png32;
   const file=png?join(source,'sites/branding',png):site.id==='scholay-today'?join(source,'web/themes/academic/public/scholay-logo.png'):'';
-  if(!file)throw Error('Missing family icon for '+site.id);
-  return {id:site.id,file};
+  return file&&existsSync(file)?[{id:site.id,file}]:[];
  });
 }
 export function familyFooter(siteId){
