@@ -1,4 +1,4 @@
-import {mkdir,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,link,rm} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
@@ -23,13 +23,20 @@ export async function lockOwnerAlive(owner){
 }
 export async function withFileLock(file,work,{timeout=5000}={}){
   await mkdir(dirname(file),{recursive:true});const start=Date.now(),nonce=randomUUID(),identity=await processIdentity(process.pid);
-  for(;;){
-    try{await writeFile(file,JSON.stringify({pid:process.pid,at:Date.now(),nonce,...(identity?{identity}:{})}),{flag:'wx',mode:0o600});break;}
-    catch(e){if(e.code!=='EEXIST')throw e;
-      try{const owner=JSON.parse(await readFile(file,'utf8'));if(!await lockOwnerAlive(owner)){await rm(file,{force:true});continue;}}catch{}
-      if(Date.now()-start>=timeout)throw Error('文件正在保存，请稍后重试；现有内容已保留');
-      await new Promise(r=>setTimeout(r,30));
+  // Prepare the complete owner record before making the shared lock visible.
+  // An interrupted write can leave an unused candidate, but never an empty
+  // shared lock that every receiver must conservatively treat as occupied.
+  const candidate=file+'.'+nonce+'.candidate';
+  await writeFile(candidate,JSON.stringify({pid:process.pid,at:Date.now(),nonce,...(identity?{identity}:{})}),{flag:'wx',mode:0o600});
+  try{
+    for(;;){
+      try{await link(candidate,file);break;}
+      catch(e){if(e.code!=='EEXIST')throw e;
+        try{const owner=JSON.parse(await readFile(file,'utf8'));if(!await lockOwnerAlive(owner)){await rm(file,{force:true});continue;}}catch{}
+        if(Date.now()-start>=timeout)throw Error('文件正在保存，请稍后重试；现有内容已保留');
+        await new Promise(r=>setTimeout(r,30));
+      }
     }
-  }
+  }finally{await rm(candidate,{force:true}).catch(()=>{});}
   try{return await work();}finally{try{if(JSON.parse(await readFile(file,'utf8')).nonce===nonce)await rm(file,{force:true});}catch(e){if(e.code!=='ENOENT')throw e;}}
 }
