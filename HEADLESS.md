@@ -1,10 +1,14 @@
-# Linux headless runtime
+# Headless runtime
 
-The Linux x64 artifact includes Node.js and the production protocol. It needs
-no desktop, browser, private repository or inbound server. Installed coding
-agents retain their own subscriptions and authentication on the device.
+Each packaged runtime includes Node.js and the production protocol for one
+platform: Linux x64, macOS Apple Silicon (`darwin-arm64`), or macOS Intel
+(`darwin-x64`). Install a package only on that same platform and architecture.
+It needs no desktop app, browser, private repository, or inbound server.
+Installed coding agents retain their own subscriptions and authentication on
+the device.
 
-Download the artifact from this repository's CI or protected release. Verify
+Download the matching artifact from this repository's CI or protected release.
+The archive name ends in `linux-x64`, `darwin-arm64`, or `darwin-x64`. Verify
 its `SHA256SUMS.txt`, extract it to an empty directory, and install with:
 
 ```sh

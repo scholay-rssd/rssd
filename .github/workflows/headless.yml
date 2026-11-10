@@ -1,10 +1,20 @@
-name: Linux headless package
+name: Headless packages
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
-  linux:
-    runs-on: ubuntu-latest
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x64
+          - os: macos-15
+            name: darwin-arm64
+          - os: macos-15-intel
+            name: darwin-x64
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -14,7 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --test tests/rssd-headless-runtime.test.mjs
+      - run: node --test tests/rssd-headless-runtime.test.mjs tests/rssd-headless-package.test.mjs
       - run: node scripts/build-headless.mjs
       - name: Verify the independent installation
         env:
@@ -23,13 +33,15 @@ jobs:
         run: |
           set -eu
           source=desktop/target/bundle-resources/workbench
+          archive=$(find artifacts -name 'rssd-headless-*-${{ matrix.name }}.tar.gz' -print -quit)
+          test -n "$archive"
           "$source/node" "$source/desktop/scripts/agent/headless/standalone.mjs" install --manifest-sha256 "$(cat artifacts/runtime-manifest.sha256)"
           "$RSSD_RUNTIME_HOME/rssd" version
           "$RSSD_RUNTIME_HOME/rssd" center --help
           "$RSSD_RUNTIME_HOME/rssd" writing-policy > "$RUNNER_TEMP/writing-policy.json"
       - uses: actions/upload-artifact@v4
         with:
-          name: rssd-headless-linux-x64-${{ github.sha }}
+          name: rssd-headless-${{ matrix.name }}-${{ github.sha }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 14
