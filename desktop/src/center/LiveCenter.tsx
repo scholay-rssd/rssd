@@ -1,5 +1,7 @@
-import {useCallback,useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState,type ReactNode} from 'react';
 import {openUrl} from '@tauri-apps/plugin-opener';
+import './center.css';
+import {CenterConnection} from './CenterConnection';
 import LocalCenterAssistant from './LocalCenterAssistant';
 import {tr} from '../uiText';
 import {invoke} from '../lib/nativeCore';
@@ -18,18 +20,20 @@ export function mapLiveCenter(overview:Row,demands:Row[],calendar:Row,channels:R
   publications:events.map((r:Row)=>({id:r.id,workId:r.workId||r.publicationId,workspaceId:r.workspaceId||'__postiz__',title:r.title||r.workId||r.publicationId,destination:r.destination||r.destinationId,locale:r.locale||'Postiz',...localDate(r.scheduledAt),state:['published','legacy_published','PUBLISHED'].includes(r.state)?'published':['blocked','ERROR','FAILED'].includes(r.state)?'blocked':r.state==='DRAFT'?'planned':r.source==='rssd'&&!r.hasSchedule?'ready':'scheduled'})),
   destinations:[...channels.destinations.map((d:Row)=>({name:d.name,platform:d.kind==='site'?'自家站点':d.kind==='discourse'?'Discourse':channels.channels.find((c:Row)=>c.id===d.integrationId)?.providerIdentifier||'Postiz',kind:d.kind==='site'?'owned':'external',account:d.origin||channels.channels.find((c:Row)=>c.id===d.integrationId)?.name||d.name,auth:d.kind==='site'?'站点接收服务':'中心渠道授权',state:!d.enabled?'not_connected':channels.channels.some((c:Row)=>c.id===d.integrationId&&(c.disabled||c.refreshNeeded))?'needs_attention':'connected',workspaceIds:d.workspaceIds})),...channels.channels.filter((c:Row)=>!channels.destinations.some((d:Row)=>d.integrationId===c.id)).map((c:Row)=>({name:c.name,platform:c.providerIdentifier,kind:'external',account:c.name,auth:'Postiz 原生授权',state:c.disabled||c.refreshNeeded?'needs_attention':'connected',workspaceIds:['__postiz__']}))] as PreviewData['destinations']};
 }
-export default function LiveCenter({onExit}:{onExit:()=>void}){
+export default function LiveCenter({active=true,legacy}:{active?:boolean;legacy?:(shown:boolean,refresh:()=>void)=>ReactNode}){
+ const [configured,setConfigured]=useState<boolean|null>(null);
  const [data,setData]=useState<PreviewData>(empty),[loading,setLoading]=useState(false),[error,setError]=useState(''),[status,setStatus]=useState<Row>({}),[agent,setAgent]=useState(''),[more,setMore]=useState(false),[calendarMore,setCalendarMore]=useState(false);
  const records=useRef<Row[]>([]),generation=useRef(0),pending=useRef<{fingerprint:string;requestId:string}|null>(null);
  const [limit,setLimit]=useState(200);
  const [range,setRange]=useState({from:new Date(Date.now()-31*86400000).toISOString(),to:new Date(Date.now()+62*86400000).toISOString()});
  const refresh=useCallback(async()=>{const seq=++generation.current;setLoading(true);setError('');try{
-  const local=await call('status');if(!local.configured)throw Error('请先登录 RSSD 中心');
+  const local=await call('status');
+  if(!local.configured){if(seq===generation.current){records.current=[];setStatus(local);setConfigured(false);setData(empty());}return;}
   const [overview,demands,calendar,channels]=await Promise.all([call('overview'),call('demands',{limit:200,offset:0}),call('calendar',{limit:200,...range}),call('channels')]);
   const all=[...demands];for(let offset=200;offset<limit&&all.length===offset;offset+=200)all.push(...await call('demands',{limit:200,offset}));
-  if(seq!==generation.current)return;records.current=all;setStatus(local);setAgent(old=>old||local.agents?.find((a:Row)=>a.available&&a.enabled)?.id||'');setData(mapLiveCenter(overview,all,calendar,channels));setMore(all.length===limit);setCalendarMore(calendar.hasNext);
+  if(seq!==generation.current)return;records.current=all;setStatus(local);setConfigured(true);setAgent(old=>old||local.agents?.find((a:Row)=>a.available&&a.enabled)?.id||'');setData(mapLiveCenter(overview,all,calendar,channels));setMore(all.length===limit);setCalendarMore(calendar.hasNext);
  }catch(e){if(seq===generation.current){setError(String(e));setData(empty());}}finally{if(seq===generation.current)setLoading(false);}},[limit,range]);
- useEffect(()=>{void refresh();return()=>{generation.current++;};},[refresh]);
+ useEffect(()=>{if(!active)return;void refresh();return()=>{generation.current++;};},[refresh,active]);
  const manage=(tab:string,workspaceId?:string)=>{if(!status.origin){setError('中心连接尚未读取');return;}const url=new URL('/rssd',status.origin);url.searchParams.set('tab',tab);if(workspaceId&&workspaceId!=='__postiz__')url.searchParams.set('workspaceId',workspaceId);void openUrl(url.href).catch(e=>setError(String(e)));};
  const updateDemand=async(task:PreviewDemand)=>{
   const old=records.current.find(d=>d.id===task.id);if(!old)throw Error('请重新加载需求');
@@ -39,7 +43,10 @@ export default function LiveCenter({onExit}:{onExit:()=>void}){
  };
  const claim=async(task:PreviewDemand)=>{if(!agent)throw Error('请先在执行设置中选择可用智能体');await call('start',{agentId:agent,workspaceIds:[task.workspaceId],demandId:task.id,once:true});await refresh();};
  const assistant=(workspaceIds:string[])=><LocalCenterAssistant agents={status.agents||[]} workspaceIds={workspaceIds} defaultAgent={agent} onAgentChange={setAgent} manage={()=>manage('goals')} openNative={status.origin?()=>{void openUrl(new URL('/agents',status.origin).href).catch(e=>setError(String(e)));}:undefined}/>;
- return <><CenterPreview onExit={onExit} live={{data,loading,error,refresh:()=>void refresh(),updateDemand,claim,manage,assistant,calendarRange:(from,to)=>setRange(old=>{const next={from:new Date(from+'T00:00:00').toISOString(),to:new Date(to+'T00:00:00').toISOString()};return old.from===next.from&&old.to===next.to?old:next;})}}/>
+ if(configured===false)return <main className="center-preview"><header className="cp-header"><div><div className="cp-eyebrow">{tr('RSSD / 内容生产')}</div><h1>{tr('工作中心')}</h1><p>{tr('登录 RSSD 中心后，可查看任务数量、发布日历和发布渠道。')}</p></div></header>
+  {error&&<p role="alert" className="cp-notice">{error}</p>}
+  <div className="center-view rssd-desktop-center"><CenterConnection status={status} disabled={loading} beforeChange={async()=>{}} onChanged={refresh}/></div></main>;
+ return <><CenterPreview live={{data,loading,error,refresh:()=>void refresh(),legacy:legacy&&(shown=>legacy(shown,()=>void refresh())),updateDemand,claim,manage,assistant,calendarRange:(from,to)=>setRange(old=>{const next={from:new Date(from+'T00:00:00').toISOString(),to:new Date(to+'T00:00:00').toISOString()};return old.from===next.from&&old.to===next.to?old:next;})}}/>
   {more&&<button disabled={loading} onClick={()=>setLimit(n=>n+200)}>{tr("加载更多需求（已读取 {{count}} 条）",{count:data.demands.length})}</button>}
   {calendarMore&&<p>{tr("当前显示前 200 条发布记录。")}<button onClick={()=>manage('calendar')}>{tr("打开中心分页查看全部")}</button></p>}
  </>;

@@ -11,9 +11,8 @@ type Row=Record<string,any>;
 const call=(method:string,params:Row={},token?:string)=>invoke<any>('rssd_center_call',{method,params,token});
 const PAGE_SIZE=50;
 const label=(value:string)=>stateLabel(value,tr);
-export default function CenterWorkspace({active}:{active:boolean}){
- const [preview,setPreview]=useState(()=>localStorage.getItem('rssd-center-live')==='1');
- useEffect(()=>{localStorage.setItem('rssd-center-live',preview?'1':'0');},[preview]);
+/** Works library, manuscript editor and local execution: a tab of the Center shell until these parts move into it. */
+export function LegacyCenter({active,onConnectionChanged}:{active:boolean;onConnectionChanged?:()=>void}){
  const [status,setStatus]=useState<Row>({}),[spaces,setSpaces]=useState<Row[]>([]),[space,setSpace]=useState(''),[section,setSection]=useState(''),[agent,setAgent]=useState('');
  const [autoTopics,setAutoTopics]=useState(false);
  const [tab,setTab]=useState<CenterTab>('demands'),[listing,setListing]=useState<{key:string;rows:Row[];hasNext:boolean}>({key:'',rows:[],hasNext:false}),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
@@ -33,9 +32,9 @@ export default function CenterWorkspace({active}:{active:boolean}){
  const registry=useCallback(async()=>{const r=await call('registry');setSpaces(r.workspaces);setSpace(old=>{if(!registryLoaded.current){registryLoaded.current=true;return r.workspaces[0]?.id||'';}return !old||r.workspaces.some((w:Row)=>w.id===old)?old:r.workspaces[0]?.id||'';});if(r.offline)setNotice(tr("中心暂不可用，正在使用本机保存的工作空间配置。"));},[]);
  const refresh=useCallback(async()=>{if(!status.configured)return;const request=++generation.current;try{const result=await call(tab,{workspaceId:space||undefined,limit:PAGE_SIZE+1,offset:page*PAGE_SIZE,...(tab!=='publications'&&search?{search}:{})});if(request===generation.current)setListing({key:listKey,rows:result.slice(0,PAGE_SIZE),hasNext:result.length>PAGE_SIZE});}catch(e){if(request===generation.current){setListing({key:listKey,rows:[],hasNext:false});setError(String(e));}}},[space,tab,page,search,listKey,status.configured]);
  const run=async(fn:()=>Promise<void>)=>{if(actionBusy.current)return;actionBusy.current=true;setBusy(true);setError('');setNotice('');try{await fn();}catch(e){setError(e instanceof Error?e.message:String(e));}finally{actionBusy.current=false;setBusy(false);}};
- useEffect(()=>{if(!active||preview)return;local().catch(e=>setError(String(e)));const timer=setInterval(()=>void local().catch(()=>{}),5000);return()=>clearInterval(timer);},[active,preview,local]);
- useEffect(()=>{if(active&&!preview&&status.configured)registry().catch(e=>setError(String(e)));},[active,preview,status.configured,registry]);
- useEffect(()=>{if(active&&!preview&&status.configured)void refresh();return()=>{generation.current++;};},[active,preview,refresh,status.configured]);
+ useEffect(()=>{if(!active)return;local().catch(e=>setError(String(e)));const timer=setInterval(()=>void local().catch(()=>{}),5000);return()=>clearInterval(timer);},[active,local]);
+ useEffect(()=>{if(active&&status.configured)registry().catch(e=>setError(String(e)));},[active,status.configured,registry]);
+ useEffect(()=>{if(active&&status.configured)void refresh();return()=>{generation.current++;};},[active,refresh,status.configured]);
  useEffect(()=>{setSection('');setWork(null);setPage(0);setSearch('');setSearchInput('');},[space]);
  useEffect(()=>{if(!canAutoTopics)setAutoTopics(false);},[canAutoTopics]);
  useEffect(()=>{if(!work)return;setDraftStatus(tr("正在保存本机草稿…"));draftTimer.current=setTimeout(()=>{void persist().then(()=>setDraftStatus(tr("本机草稿已保存"))).catch(e=>{setDraftStatus(tr("本机草稿保存失败"));setError(String(e));});},500);return()=>clearTimeout(draftTimer.current);},[work,locale,title,body,persist]);
@@ -68,11 +67,10 @@ export default function CenterWorkspace({active}:{active:boolean}){
   }
   setTab(next);setPage(0);setSearch('');setSearchInput('');setWork(null);
  });
- if(preview)return <LiveCenter onExit={()=>setPreview(false)}/>;
- return <main className="center-view rssd-desktop-center"><div className="rssd-center-preview-entry"><button disabled={busy} onClick={()=>void run(async()=>{await persist();setPreview(true);})}>{tr('打开新版调度中心')} ↗</button></div><CenterHeader spaces={spaces.map(s=>({id:s.id,name:s.name}))} space={space} disabled={busy||running} loading={busy} t={tr}
+ return <main className="center-view rssd-desktop-center"><CenterHeader spaces={spaces.map(s=>({id:s.id,name:s.name}))} space={space} disabled={busy||running} loading={busy} t={tr}
   onSpace={next=>void run(async()=>{await persist();setSpace(next);})} refresh={()=>void run(async()=>{await local();if(status.configured){await registry();await refresh();}})}/>
   {error&&<p className="rssd-center-error" role="alert">{error}</p>}{notice&&<p className="rssd-center-notice" role="status">{notice}</p>}
-  <CenterConnection status={status} disabled={busy||running} beforeChange={persist} onChanged={async()=>{latestDraft.current=null;setWork(null);setSpaces([]);registryLoaded.current=false;setSpace('');setListing({key:'',rows:[],hasNext:false});await local();if((await call('status')).configured)await registry();}}/>
+  <CenterConnection status={status} disabled={busy||running} beforeChange={persist} onChanged={async()=>{latestDraft.current=null;setWork(null);setSpaces([]);registryLoaded.current=false;setSpace('');setListing({key:'',rows:[],hasNext:false});await local();if((await call('status')).configured)await registry();onConnectionChanged?.();}}/>
   {status.configured&&status.activeClaim&&!running&&<p className="rssd-center-notice">{tr('本机仍保留未完成的认领。')} {status.activeClaim.title||status.activeClaim.id} <button disabled={busy} onClick={()=>{if(confirm(tr('释放认领后其他设备可以接续，本机稿件和原请求仍保留。确定释放？')))void run(async()=>{await persist();await call('release');await local();});}}>{tr('释放当前认领')}</button></p>}
   {status.configured&&status.preparedReference&&!status.preparedReference.error&&<p className="rssd-center-notice">{tr('待提交的本机参考文献修订：')} {status.preparedReference.title} · {status.preparedReference.locale} · {tr('基于版本')}{status.preparedReference.baseRevision} <button disabled={busy||running} onClick={()=>void run(async()=>{const result=await call('submit_prepared_revision');await local();setNotice(result.state==='accepted'?tr('中心已接收，发布结果请查看发布记录。'):tr('稿件和原请求已保存在本机。'));})}>{tr('提交参考文献修订')}</button></p>}
   {status.configured&&<><CenterNavigation tab={tab} onTab={selectTab} disabled={busy} external={managementCenterTabs} t={tr}/>
@@ -98,4 +96,7 @@ export default function CenterWorkspace({active}:{active:boolean}){
   {status.outbox?.some((r:Row)=>r.state!=='accepted')&&<section className="rssd-center-outbox"><h2>{tr("本机待处理稿件")}</h2>{status.outbox.filter((r:Row)=>r.state!=='accepted').map((r:Row)=><article key={r.requestId}><div>{r.workId}<p>{label(r.state)} · {r.error?.message}</p></div><button disabled={busy} onClick={()=>void run(async()=>{await call('recover',{requestId:r.requestId});await local();setNotice(tr("已查询原请求，结果已更新。"));})}>{tr("查询并恢复")}</button></article>)}</section>}
   </>}
  </main>;
+}
+export default function CenterWorkspace({active}:{active:boolean}){
+ return <LiveCenter active={active} legacy={(shown,refresh)=><LegacyCenter active={active&&shown} onConnectionChanged={refresh}/>}/>;
 }

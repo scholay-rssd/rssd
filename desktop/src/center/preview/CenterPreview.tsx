@@ -323,8 +323,11 @@ export interface LiveCenterActions {
   manage: (tab: string, workspaceId?: string) => void;
   assistant: (workspaceIds:string[])=>ReactNode;
   calendarRange: (from:string,to:string)=>void;
+  /** Works library and local execution, shown as a last tab; receives whether that tab is open. */
+  legacy?: (shown:boolean)=>ReactNode;
 }
-export default function CenterPreview({ onExit, live }: { onExit?: () => void; live?: LiveCenterActions }) {
+const legacyTab: [PreviewTab, string] = ["legacy", "作品与本机执行"];
+export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
   const [data, setData] = useState(() => live?.data || createPreviewData()),
     [tab, setTab] = useState<PreviewTab>("overview");
   const [scope, setScope] = useState<string[]>(() =>
@@ -460,20 +463,14 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
         </span>
         <div>
           <button disabled={live?.loading} onClick={reset}>{tr(live?"刷新":"重置预览")}</button>
-          {onExit && (
-            <button onClick={onExit}>
-              {tr("返回当前中心")}
-              <span aria-hidden="true">↗</span>
-            </button>
-          )}
         </div>
       </div>
       {live?.error&&<p role="alert" className="cp-notice">{live.error}</p>}
       {live?.loading&&<p role="status" className="cp-notice">{tr("正在读取中心…")}</p>}
       <header className="cp-header">
         <div>
-          <div className="cp-eyebrow">{tr("RSSD / 工作中心")}</div>
-          <h1>{tr("内容调度")}</h1>
+          <div className="cp-eyebrow">{tr("RSSD / 内容生产")}</div>
+          <h1>{tr("工作中心")}</h1>
           <p>{tr("目标、生产与发布，在同一个视图中查看。")}</p>
         </div>
         <div className="cp-header-actions">
@@ -515,8 +512,8 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
           </button>
         </div>
       </header>
-      <nav className="cp-tabs" aria-label={tr("新版中心功能")}>
-        {tabs.map(([id, label]) => (
+      <nav className="cp-tabs" aria-label={tr("中心功能")}>
+        {(live?.legacy ? [...tabs, legacyTab] : tabs).map(([id, label]) => (
           <button
             key={id}
             aria-current={tab === id ? "page" : undefined}
@@ -531,6 +528,18 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
         ))}
         <span className="cp-tab-context">{scopeName}</span>
       </nav>
+      <div className="cp-counts" role="group" aria-label={tr("任务数量")}>
+        {(["queued", "claimed", "blocked", "completed"] as const).map((id) => (
+          <button key={id} onClick={() => taskView(id)}>
+            {tr(demandLabels[id])}
+            <strong>{demandCount(id)}</strong>
+          </button>
+        ))}
+        <button onClick={() => taskView("all")}>
+          {tr("全部任务")}
+          <strong>{demandCount("all")}</strong>
+        </button>
+      </div>
       {notice && (
         <p className="cp-notice" role="status">
           {notice}
@@ -538,6 +547,10 @@ export default function CenterPreview({ onExit, live }: { onExit?: () => void; l
             <Icon kind="close" />
           </button>
         </p>
+      )}
+      {live?.legacy && (
+        // Stays mounted so an open manuscript survives a visit to another tab.
+        <div hidden={tab !== "legacy"}>{live.legacy(tab === "legacy")}</div>
       )}
       <div className="cp-content" key={tab}>
         {tab === "overview" && (

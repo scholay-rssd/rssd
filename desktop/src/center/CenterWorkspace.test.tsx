@@ -2,7 +2,7 @@
 import {act,createElement} from 'react';
 import {createRoot,type Root} from 'react-dom/client';
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
-import CenterWorkspace from './CenterWorkspace';
+import CenterWorkspace,{LegacyCenter} from './CenterWorkspace';
 import {invoke} from '../lib/nativeCore';
 import {openUrl} from '@tauri-apps/plugin-opener';
 vi.mock('../lib/nativeCore',()=>({invoke:vi.fn()}));
@@ -14,7 +14,7 @@ const work={id:'work-one',workspaceId:'first',sectionId:'news',editions:[edition
 const deferred=()=>{let resolve!:(value:any)=>void;const promise=new Promise<any>(done=>{resolve=done;});return {promise,resolve};};
 const button=(text:string)=>[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent===text)!;
 const click=async(text:string)=>{await act(async()=>button(text).click());};
-const mount=async()=>{await act(async()=>root.render(createElement(CenterWorkspace,{active:true})));};
+const mount=async()=>{await act(async()=>root.render(createElement(LegacyCenter,{active:true})));};
 const calls=(method:string)=>vi.mocked(invoke).mock.calls.filter(([,args])=>(args as any)?.method===method);
 beforeEach(()=>{
  vi.mocked(openUrl).mockClear();
@@ -45,17 +45,26 @@ it('opens scoped management in the browser without using worker credentials for 
  expect(host.querySelector('textarea')?.value).toBe('待保存的修改');
 });
 
-it('enters the live scheduling view only after saving the current local draft',async()=>{
- await mount();await click('作品库');await click('原稿');
- const saved=deferred(),fallback=vi.mocked(invoke).getMockImplementation()!;
- vi.mocked(invoke).mockImplementation((command,args:any)=>args.method==='save_local'?saved.promise:fallback(command,args));
- await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.startsWith('打开新版调度中心'))!.click());
- expect(host.querySelector('.center-preview')).toBeNull();
- await act(async()=>saved.resolve({}));
+it('opens on the scheduling shell with task counts and keeps an open manuscript across its tabs',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>{
+  if(args.method==='overview')return {workspaces:[{id:'first',name:'第一站',sections:[{id:'news',name:'新闻'}]}],goals:[],counts:[{workspaceId:'first',state:'queued',count:12},{workspaceId:'first',state:'claimed',count:3},{workspaceId:'first',state:'cancelled',count:9}]};
+  if(args.method==='calendar')return {items:[],hasNext:false};
+  if(args.method==='channels')return {destinations:[],channels:[]};
+  return fallback(command,args);
+ });
+ await act(async()=>root.render(createElement(CenterWorkspace,{active:true})));
  expect(host.querySelector('.center-preview')).not.toBeNull();
+ expect(host.querySelector('.cp-counts')?.textContent).toBe('待领取12进行中3待处理0已交稿0全部任务15');
+ expect(calls('registry')).toHaveLength(0);
+ await click('作品与本机执行');await click('作品库');await click('原稿');
+ const textarea=host.querySelector<HTMLTextAreaElement>('textarea')!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textarea,'待保存的修改');textarea.dispatchEvent(new Event('input',{bubbles:true}));});
+ await click('发布日历');
+ expect((calls('save_local').at(-1)?.[1] as any).params.body).toBe('待保存的修改');
  expect(calls('submit')).toHaveLength(0);expect(calls('start')).toHaveLength(0);
- await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.startsWith('返回当前中心'))!.click());
- expect(host.querySelector('textarea')?.value).toBe('原正文');
+ await click('作品与本机执行');
+ expect(host.querySelector('textarea')?.value).toBe('待保存的修改');
 });
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.unstubAllGlobals();});
 
