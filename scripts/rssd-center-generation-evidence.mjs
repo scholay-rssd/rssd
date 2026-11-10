@@ -72,7 +72,7 @@ export async function persistGenerationEvidence({directory,locale,sectionId,orig
   return record;
 }
 
-export async function recoverPersistedCenterEdition({directory,locale,source,origin,workspaceId,sectionId,agentId,demandId,generation,workerId,sourceHash}){
+export async function recoverPersistedCenterEdition({directory,locale,source,origin,workspaceId,sectionId,agentId,demandId,generation,workerId,sourceHash,strictRegisteredImages=false}){
   const raw=await readText(join(directory,locale+'.agent-output.txt'));
   const evidence=await readJson(join(directory,locale+'.generation-evidence.json'));
   if(!raw)return {edition:null,recovered:false};
@@ -93,7 +93,7 @@ export async function recoverPersistedCenterEdition({directory,locale,source,ori
   const {parseCenterEdition}=await import('../desktop/scripts/agent/center-producer.mjs');
   let edition;
   try{
-    edition=parseCenterEdition(raw,{source,locale,sectionId:sectionId||evidence.sectionId,signature:evidence.signature,origin:evidence.origin,workspaceId:evidence.workspaceId});
+    edition=parseCenterEdition(raw,{source,locale,sectionId:sectionId||evidence.sectionId,signature:evidence.signature,origin:evidence.origin,workspaceId:evidence.workspaceId,strictRegisteredImages});
   }catch(error){
     if(error.code===GENERATION_UNRECOVERABLE)throw error;
     fail('保留的模型输出无法按原证明解析，不能重跑模型');

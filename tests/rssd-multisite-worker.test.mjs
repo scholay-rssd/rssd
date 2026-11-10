@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {runProductionTurn} from '../scripts/rssd-production-worker.mjs';
 import {CenterError,CenterOutbox} from '../scripts/rssd-center-client.mjs';
+import {persistGenerationEvidence} from '../scripts/rssd-center-generation-evidence.mjs';
 import protocol from '../contracts/rssd-v1.cjs';
 import {ARTICLE_WRITING_INSTRUCTIONS,ARTICLE_WRITING_POLICY} from '../contracts/article-writing-policy.mjs';
 import {centerWritingScope} from '../desktop/scripts/agent/center-skill-mounts.mjs';
@@ -96,6 +97,28 @@ test('reference failure preserves the generated result and blocks submission',as
  await assert.rejects(runProductionTurn({...f.input,producer}),/参考文献/);assert.equal(f.packets.length,0);assert.equal(f.task.state,'blocked');
  const directory=join(f.input.home,'jobs',protocol.hash(f.scope.demandId+':1'));
  assert.match((await readFile(join(directory,'zh-CN.result.json'),'utf8')),/Body without references/);
+});
+
+test('scoped recovery writes source binding before result.json so later turns are not stuck',async t=>{
+ const f=await fixture(t);f.task.workerId='device-a';
+ const directory=join(f.input.home,'jobs',protocol.hash(f.task.id+':'+f.task.generation));
+ const output=JSON.stringify({notebook:{version:2,kind:'article',title:'研究方法',skills:[],fields:{},sources:[{id:'source-1',title:'Source',url:'https://example.org/source',summary:'Synthetic source',acquiredVia:'web',reviewed:false}],blocks:[{id:'body',type:'paragraph',state:'ready',text:'完整的中文正文。',sourceIds:['source-1']}],blockNotes:{},internalNotes:{}},summary:'摘要'});
+ const adapterSig={runId:'run-scoped-recover',agentId:'codex',status:'completed',startedAt:'2026-11-07T00:00:00.000Z',completedAt:'2026-11-07T00:00:01.000Z',modelId:'gpt-6.1-terra[max]',writingSkillSnapshotHash:snapshot.snapshotHash,writingSkills:[{id:skill.id,version:skill.version,contentHash:skill.contentHash}]};
+ let produced=0;
+ const producer=async({directory:dir,locale,source,origin,claim})=>{
+  produced++;
+  if(locale!=='zh-CN')return edition(locale);
+  await writeFile(join(dir,locale+'.agent-output.txt'),output,{mode:0o600});
+  await persistGenerationEvidence({directory:dir,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature:adapterSig,source,agentId:'codex',demandId:claim.id,generation:claim.generation,workerId:claim.workerId});
+  return {title:'bad',bodyMarkdown:'body'};
+ };
+ await assert.rejects(runProductionTurn({...f.input,producer}),/未确认由 Codex/);
+ assert.equal(produced,1);assert.equal(f.packets.length,0);
+ await assert.rejects(readFile(join(directory,'zh-CN.result.json')));
+ const result=await runProductionTurn({...f.input,resume:true,producer:async input=>{produced++;assert.equal(input.locale,'en');return edition('en');}});
+ assert.equal(produced,2);assert.equal(result.state,'accepted');assert.equal(f.packets.length,2);
+ const binding=JSON.parse(await readFile(join(directory,'zh-CN.result-source-binding.json'),'utf8'));
+ assert.equal(binding.snapshotHash,'c'.repeat(64));assert.equal(binding.selectionHash,'d'.repeat(64));
 });
 
 test('a recovered packet with invalid references is never flushed',async t=>{

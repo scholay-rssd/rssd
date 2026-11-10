@@ -169,7 +169,7 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
         const {persistGenerationEvidence}=await import('../../../scripts/rssd-center-generation-evidence.mjs');
         await persistGenerationEvidence({directory,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature,source,agentId,demandId:claim.id,generation:claim.generation,workerId:claim.workerId||claim.payload?.storeOnlyWorkerId});
       }
-      return parseCenterEdition(output,{source,locale,sectionId:claim.sectionId,signature,origin,workspaceId:claim.workspaceId});
+      return parseCenterEdition(output,{source,locale,sectionId:claim.sectionId,signature,origin,workspaceId:claim.workspaceId,strictRegisteredImages:claim.kind==='translate'});
     }
     // Preserve the original model output before any image/provider operation.
     const draft=parseCenterResult(output),binding={signature,sectionId:claim.sectionId,sourceHash:protocol.hash(source||null),writingSkillSnapshotHash:writingSkills.snapshotHash,...(verifiedSourceSnapshotHash?{verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash}:{})};

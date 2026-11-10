@@ -91,7 +91,10 @@ test('source-bound notebook accepts registered relative WebP URLs and rejects un
   const unregistered='media-'+'d'.repeat(48);
   assert.throws(()=>notebookEdition({notebook:notebookWithImages('Synthetic English title',[relativeRaw(unregistered),relative[1]]),summary:'Summary'},{locale:'en',origin:ORIGIN,source:{payload:chinese}}),/请先导入图片/);
   assert.throws(()=>notebookEdition({notebook:notebookWithImages('Synthetic English title',[absoluteRaw(first.id,'https://evil.example'),relative[1]]),summary:'Summary'},{locale:'en',origin:ORIGIN,source:{payload:chinese}}),/请先导入图片/);
-  assert.throws(()=>notebookEdition({notebook:notebookWithImages('Synthetic English title',['https://images.example/public.webp',relative[1]]),summary:'Summary'},{locale:'en',origin:ORIGIN,source:{payload:chinese}}),/请先导入图片/);
+  assert.throws(()=>notebookEdition({notebook:notebookWithImages('Synthetic English title',['https://images.example/public.webp',relative[1]]),summary:'Summary'},{locale:'en',origin:ORIGIN,source:{payload:chinese},strictRegisteredImages:true}),/请先导入图片/);
+  const rewritten=notebookEdition({notebook:notebookWithImages('Synthetic rewrite',[relative[0],'https://images.example/public.webp']),summary:'Summary'},{locale:'zh-CN',origin:ORIGIN,source:{payload:chinese}});
+  assert.match(rewritten.bodyMarkdown,/images\.example\/public\.webp/);
+  assert.equal(rewritten.media.some(item=>item.id===first.id),true);
 });
 
 test('prepareEditionMedia inherits registered relative refs with zero re-upload and rejects foreign Center-shaped URLs',async t=>{

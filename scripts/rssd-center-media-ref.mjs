@@ -50,7 +50,7 @@ export function registeredSourceMediaIds(source){
   return ids;
 }
 
-export function centerImageReference({origin,source}={}){
+export function centerImageReference({origin,source,strictRegisteredImages=false}={}){
   const registered=source?registeredSourceMediaIds(source):null;
   return value=>{
     const parsed=parseCenterMediaRef(value,{origin});
@@ -59,7 +59,7 @@ export function centerImageReference({origin,source}={}){
       return true;
     }
     if(looksLikeCenterMediaPath(value))return false;
-    if(registered&&registered.size)return false;
+    if(strictRegisteredImages&&registered&&registered.size)return false;
     return publicUrl(value);
   };
 }
