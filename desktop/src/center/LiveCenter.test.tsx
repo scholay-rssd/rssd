@@ -30,19 +30,20 @@ it('reads real data and forwards a retained demand generation rather than changi
   if(args.method==='overview')return overview;if(args.method==='demands')return [demand];if(args.method==='calendar')return {items:[],hasNext:false};if(args.method==='channels')return {destinations:[],channels:[]};return {};
  });
  await act(async()=>root.render(createElement(LiveCenter)));
- expect(host.textContent).toContain('真实数据');expect(host.querySelector('.cp-counts')?.textContent).toBe('待领取351进行中0待处理0已交稿0全部任务351');expect(host.textContent).toContain('实际工作空间');
+ expect(host.textContent).toContain('真实数据');expect(host.querySelector('.cp-metrics')?.textContent).toContain('待领取351');expect(host.textContent).toContain('实际工作空间');
  expect(host.textContent).not.toContain('本机 · 模拟认领');
  expect(host.textContent).not.toContain('演示周期');expect(host.textContent).not.toContain('实际服务由中心接入');
  expect(host.textContent).toContain('各目标当前周期汇总');
  const calendar=Array.from(host.querySelectorAll('button')).find(button=>button.textContent==='发布日历')!;
  await act(async()=>calendar.click());
  expect(host.textContent).toContain('本周');expect(host.textContent).toContain('中心真实数据');
+ expect(host.querySelector('.cp-counts')?.textContent).toBe('待领取351进行中0待处理0已交稿0全部任务351');
  expect(host.textContent).not.toContain('演示');expect(host.textContent).not.toContain('数据为示例');
 });
 it('offers the connection form to a signed-out device instead of an error or a Center read',async()=>{
  vi.mocked(invoke).mockImplementation(async(_command,args:any)=>args.method==='status'?{configured:false,agents:[]}:args.method==='auth_status'?{state:'idle'}:{});
  await act(async()=>root.render(createElement(LiveCenter)));
- expect(host.querySelector('[role=alert]')).toBeNull();expect(host.querySelector('.cp-counts')).toBeNull();
+ expect(host.querySelector('[role=alert]')).toBeNull();expect(host.querySelector('.cp-tabs')).toBeNull();
  expect(Array.from(host.querySelectorAll('button')).some(button=>button.textContent==='登录 RSSD 中心')).toBe(true);
  expect(vi.mocked(invoke).mock.calls.some(([,a]:any)=>['overview','demands','calendar','channels'].includes(a.method))).toBe(false);
 });

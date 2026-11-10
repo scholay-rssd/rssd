@@ -528,6 +528,8 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
         ))}
         <span className="cp-tab-context">{scopeName}</span>
       </nav>
+      {/* The overview's own tiles carry the same numbers. */}
+      {tab !== "overview" && (
       <div className="cp-counts" role="group" aria-label={tr("任务数量")}>
         {(["queued", "claimed", "blocked", "completed"] as const).map((id) => (
           <button key={id} onClick={() => taskView(id)}>
@@ -540,6 +542,7 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
           <strong>{demandCount("all")}</strong>
         </button>
       </div>
+      )}
       {notice && (
         <p className="cp-notice" role="status">
           {notice}
@@ -575,21 +578,21 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
                 <p>{tr("按作品计数，分发次数单独记录")}</p>
               </div>
               <button onClick={() => taskView("queued")}>
-                <span>{tr("待领取")}</span>
+                <span>{tr(demandLabels.queued)}</span>
                 <strong>
                   {demandCount("queued")}
                 </strong>
                 <p>{tr("已准备任务说明")}</p>
               </button>
               <button onClick={() => taskView("claimed")}>
-                <span>{tr("生产中")}</span>
+                <span>{tr(demandLabels.claimed)}</span>
                 <strong>
                   {demandCount("claimed")}
                 </strong>
                 <p>{tr("由已认领设备继续执行")}</p>
               </button>
               <button onClick={() => taskView("blocked")}>
-                <span>{tr("需要处理")}</span>
+                <span>{tr(demandLabels.blocked)}</span>
                 <strong>
                   {demandCount("blocked")}
                 </strong>
