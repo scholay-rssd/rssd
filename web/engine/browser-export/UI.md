@@ -11,14 +11,15 @@ A fixed Share button opens a compact panel:
 
 There is no image preview and no public "WeChat template" label. Opening an
 article does not fetch its export model or paginate. Opening the share panel may
-load helpers, but image generation starts only on an explicit download action.
+load helpers. Copying an article embeds its pictures; numbered page images
+are generated only on an explicit download.
 Long exports report progress, support cancellation and leave a retry available.
 Old export bookmarks redirect to their canonical article's sharing panel.
 
 Each category explicitly owns a light and a dark palette. The live article and
-share panel follow the site color mode. Portable HTML and rich clipboard output
-use the authored light paper with resolved legacy RGB colors; neither carries
-page navigation. The back link belongs to the separate page navigation row.
-The same article typography is measured for rich clipboard HTML and single-file
-download, with flexible block widths for narrow reading windows. No manuscript, private note, device token or author-only
-archive enters these public outputs.
+share panel follow the site color mode. Downloaded HTML uses that light paper.
+Rich clipboard HTML uses one phone-scale article for every category: no measured
+pixel width, colours and heading marks still come from the category, and each
+picture is embedded as JPEG or PNG. Neither output carries page navigation. The
+back link belongs to the separate page navigation row. No manuscript, private
+note, device token or author-only archive enters these public outputs.

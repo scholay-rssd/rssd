@@ -64,7 +64,7 @@ export async function attachBrowserExports({target,site,manifest,snapshot}){
     .replace('</body>',shareShell(model,'/'+path+'content.json')+`<script type="module" src="${base}share.mjs"></script></body>`);
   await write(articlePath,article);count++;
  }
- if(count)for(const file of ['share.mjs','share.css','article-style.mjs','portable.mjs','pagination.mjs','raster.mjs','zip.mjs','styles.mjs'])await write(base.slice(1)+file,await readFile(new URL(file,import.meta.url)));
+ if(count)for(const file of ['share.mjs','share.css','article-style.mjs','portable.mjs','wechat-clipboard.mjs','pagination.mjs','raster.mjs','zip.mjs','styles.mjs'])await write(base.slice(1)+file,await readFile(new URL(file,import.meta.url)));
  manifest.browserExports={version:2,articles:count,templates:[...templates].sort()};
  await writeFile(join(target,'release.json'),JSON.stringify(manifest));return manifest;
 }
