@@ -11,15 +11,21 @@ export default function LocalCenterAssistant({agents,workspaceIds,manage,openNat
  const scopeKey=JSON.stringify(workspaceIds.filter(id=>id!=='__postiz__').sort());
  const context=useMemo(()=>pinned||{agentId:preferred,workspaceIds:JSON.parse(scopeKey)},[pinned,preferred,scopeKey]);
  const key=JSON.stringify(context),generation=useRef(0),log=useRef<HTMLDivElement>(null);
+ const eager=useRef(0),follow=useRef<()=>void>(()=>{});
  const valid=Boolean(context.agentId&&context.workspaceIds.length),busy=pending||snapshot.state==='running';
  useEffect(()=>{
   const seq=++generation.current;setSnapshot(empty);setError('');if(!valid)return;
-  const refresh=async()=>{try{const result=await invoke<Snapshot>('rssd_center_call',{method:'assistant_status',params:context});if(seq!==generation.current)return;setSnapshot(result);if(result.state!=='running')setPinned(null);}catch(e){if(seq===generation.current)setError(String(e));}};
-  void refresh();const timer=setInterval(()=>void refresh(),1000);return()=>{generation.current++;clearInterval(timer);};
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const refresh=async()=>{clearTimeout(timer);let active=false;
+   try{const result=await invoke<Snapshot>('rssd_center_call',{method:'assistant_status',params:context});if(seq!==generation.current)return;setSnapshot(result);active=result.state==='running';if(!active)setPinned(null);}catch(e){if(seq===generation.current)setError(String(e));}
+   if(seq===generation.current){clearTimeout(timer);timer=setTimeout(()=>void refresh(),active||Date.now()<eager.current?1000:5000);}
+  };
+  follow.current=()=>{eager.current=Date.now()+10000;clearTimeout(timer);timer=setTimeout(()=>void refresh(),0);};
+  void refresh();return()=>{generation.current++;clearTimeout(timer);};
  },[key,valid]);
  useEffect(()=>{log.current?.scrollTo?.(0,log.current.scrollHeight);},[snapshot]);
  async function action(method:string){setPending(true);setError('');const current=context;
-  try{await invoke('rssd_center_call',{method,params:{...current,...(method==='assistant_send'?{text}: {})}});if(method==='assistant_send'){setPinned(current);setSnapshot(old=>({...old,state:'running',message:tr('正在启动本机助手')}));setText('');}else if(method==='assistant_reset')setSnapshot(empty);}
+  try{await invoke('rssd_center_call',{method,params:{...current,...(method==='assistant_send'?{text}: {})}});if(method==='assistant_send'){setPinned(current);setSnapshot(old=>({...old,state:'running',message:tr('正在启动本机助手')}));setText('');follow.current();}else if(method==='assistant_reset')setSnapshot(empty);}
   catch(e){setError(String(e));}finally{setPending(false);}
  }
  return <div className="cp-assistant cp-local-assistant"><section className="cp-conversation">
