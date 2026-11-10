@@ -59,7 +59,7 @@ Identity:
 
 - Campus/year: skip when live `id`, `title+start` or `sourceUrl+start` already match. Same-day similar titles are `conflict`, not updates.
 - History: skip when live `title+dateKey+year` match. Same-day similar titles are `conflict`.
-- Replay uses the frozen packet and original `requestKey`. An `unknown` / `unconfirmed` row is held; it is not submitted again.
+- Replay uses the frozen packet and original `requestKey`. An `unknown` / `unconfirmed` row is held; it is not submitted again. Resume calls `status` on that original id/`requestKey` and continues to public readback if the job is now `published`. `failed` / `rejected` are terminal and are not queried or submitted again.
 
 ## Pacing (site calendar only)
 
@@ -77,7 +77,7 @@ Do not SIGKILL. The running process should finish the current item.
 
 - **Current tested CLI (no stop handler):** wait until the item logs `published` / `unconfirmed` / `error` / `auth_failed`, then SIGTERM during the courtesy `--gap` sleep. File locks with a dead pid are stale and resume can take them.
 - **This revision:** SIGINT/SIGTERM sets `stop_at_boundary`, finishes the in-flight item, and does not start the next key. `--limit N` also stops after N newly published items in this process.
-- **Resume:** same `--workspace` and `--state`, same campus/history files. Published and `skipped_already_public` keys are skipped. `unconfirmed`/`unknown` keep the original `requestKey` and are not submitted again. `error` after a saved receipt is status-only recovery, not a second request.
+- **Resume:** same `--workspace` and `--state`, same campus/history files. Published and `skipped_already_public` keys are skipped. `unconfirmed`/`unknown` keep the original `requestKey` and are not submitted again; the next run polls `status` only (no new prepare/publish) and records `published` after readback if the original job finished. `failed`/`rejected` stay terminal. `error` after a saved receipt is also status-only recovery, not a second request. A status poll that is still `queued` after the 40 × 6s budget is stored as `unconfirmed` so a later resume can finish it.
 
 ```sh
 # After a confirmed-item stop, same state, no courtesy sleep:
@@ -121,7 +121,7 @@ Do not treat a local overlay calendar (desktop `yearOfficialCampusSeeds.json` / 
 
 - A failed or unverified receiver build leaves the previous public release active.
 - Skipped already-public rows were never written.
-- Queued-but-unconfirmed rows keep `requestKey`. Recover with Center `GET /editorial/academic/requests/:key` (or the website publisher `status`). Do not prepare a second packet.
+- Queued-but-unconfirmed rows keep `requestKey`. Resume of this CLI polls the website publisher `status` (same as Center `GET /editorial/academic/requests/:key`) and does not prepare a second packet. Do not mint a new request if that lookup is still in flight or unknown.
 - Do not remove the legacy content-write fence to “roll back” this path.
 - Do not restore an incomplete local history snapshot onto the public site.
 

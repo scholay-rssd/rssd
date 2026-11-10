@@ -15,7 +15,8 @@ import {
   assertLiveBaseline,matchLiveYear,yearReadBackProblems,yearCluster,historyCluster,CAMPUS_CLUSTER
 } from '../scripts/calendar-data-records.mjs';
 import {
-  assertCenterEditorial,assertPublisherUsesCenter,publishPlanned,summarizePlan,runCommand,interruptibleWait
+  assertCenterEditorial,assertPublisherUsesCenter,publishPlanned,summarizePlan,runCommand,interruptibleWait,
+  STATUS_POLL_LIMIT
 } from '../scripts/calendar-data-batch.mjs';
 
 const academicWorkspace={id:'academic',siteId:'scholay-today',writable:true,sections:[{id:'calendar',enabled:true,writable:true},{id:'history',enabled:true,writable:true}]};
@@ -207,8 +208,49 @@ test('unknown outcomes are held and not retried',async t=>{
   f.setItem(plan.items.find(i=>i.status==='queued'));
   const first=await publishPlanned(plan,{workspace:f.workspace,statePath:f.statePath,publisher:f.publisher,center:f.center,fetcher:f.fetcher,authorizePublish:true,gapMs:0,pauseMs:0,log(){}});
   assert.equal(first.entries['campus-981358'].status,'unconfirmed');
+  const statusBefore=f.calls.status;
   const second=await publishPlanned(plan,{workspace:f.workspace,statePath:f.statePath,publisher:f.publisher,center:f.center,fetcher:f.fetcher,authorizePublish:true,gapMs:0,pauseMs:0,log(){}});
   assert.equal(second.entries['campus-981358'].status,'unconfirmed');
+  assert.equal(f.calls.publish,1);
+  assert.ok(f.calls.status>statusBefore);
+});
+
+test('queued past the poll budget becomes published on resume without a second submit',async t=>{
+  const f=await publisherFixture(t);
+  const plan=planBatch({campus:addedCampus.slice(0,1),history:[],liveYear:[],liveHistory:[]});
+  const queued=plan.items.find(i=>i.status==='queued');
+  f.setItem(queued);
+  let statusCalls=0;
+  const publisher={...f.publisher,status:async id=>{
+    statusCalls++;
+    f.setItem(queued);
+    if(statusCalls<=STATUS_POLL_LIMIT)return {stage:'queued',receipt:{requestKey:'req-1'}};
+    return f.publisher.status(id);
+  }};
+  const wait=async()=>{};
+  const first=await publishPlanned(plan,{workspace:f.workspace,statePath:f.statePath,publisher,center:f.center,fetcher:f.fetcher,authorizePublish:true,gapMs:0,pauseMs:0,wait,log(){}});
+  assert.equal(first.entries['campus-981358'].status,'unconfirmed');
+  assert.equal(first.entries['campus-981358'].error,'queued');
+  assert.equal(f.calls.publish,1);
+  assert.equal(statusCalls,STATUS_POLL_LIMIT);
+  const resumed=await publishPlanned(plan,{workspace:f.workspace,statePath:f.statePath,publisher,center:f.center,fetcher:f.fetcher,authorizePublish:true,gapMs:0,pauseMs:0,wait,log(){}});
+  assert.equal(resumed.entries['campus-981358'].status,'published');
+  assert.equal(resumed.entries['campus-981358'].id,first.entries['campus-981358'].id);
+  assert.equal(f.calls.publish,1);
+  assert.ok(statusCalls>STATUS_POLL_LIMIT);
+});
+
+test('failed and rejected stages are terminal and are not submitted again',async t=>{
+  const f=await publisherFixture(t);
+  const plan=planBatch({campus:addedCampus.slice(0,1),history:[],liveYear:[],liveHistory:[]});
+  f.setItem(plan.items.find(i=>i.status==='queued'));
+  const publisher={...f.publisher,status:async()=>({stage:'failed',receipt:{requestKey:'req-1',job:{error:'receiver failed'}}})};
+  const first=await publishPlanned(plan,{workspace:f.workspace,statePath:f.statePath,publisher,center:f.center,fetcher:f.fetcher,authorizePublish:true,gapMs:0,pauseMs:0,log(){}});
+  assert.equal(first.entries['campus-981358'].status,'failed');
+  assert.equal(first.entries['campus-981358'].error,'receiver failed');
+  const resumed=await publishPlanned(plan,{workspace:f.workspace,statePath:f.statePath,publisher:{...publisher,publish:async()=>{throw Error('must not resubmit');},status:async()=>{throw Error('must not poll terminal failure');}},center:f.center,fetcher:f.fetcher,authorizePublish:true,gapMs:0,pauseMs:0,log(){}});
+  assert.equal(resumed.entries['campus-981358'].status,'failed');
+  assert.equal(resumed.entries['campus-981358'].id,first.entries['campus-981358'].id);
   assert.equal(f.calls.publish,1);
 });
 

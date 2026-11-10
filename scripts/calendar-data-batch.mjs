@@ -11,13 +11,15 @@
 // skipped, never replaced. Publication uses RSSD Center editorial via
 // scripts/website-publication.mjs. The retired /manage/api writer, scripts/publish.sh
 // and local incomplete history mirrors are refused. Query the original requestKey
-// after an unknown outcome; do not mint a second request.
+// after an unknown or still-queued outcome; do not mint a second request. Resume
+// calls status on those rows and records definite failed/rejected terminals.
 //
 // --gap default 75 is a client courtesy sleep copied from history-batch, not a
 // Center, receiver, or site rate. 0 is allowed: the writer still waits for each
 // item's public readback (~one serialized receiver build) before the next
 // submit. SIGINT/SIGTERM finish the current item, then stop before the next
-// key. Resume the same --workspace/--state; published keys are skipped.
+// key. Resume the same --workspace/--state; published keys are skipped and
+// unconfirmed keys are status-only.
 import {readFile,writeFile,readdir,mkdir,rename} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
@@ -31,6 +33,11 @@ import {readBack as historyReadBack} from './history-batch.mjs';
 import {loadJsonList,planBatch,assertLiveBaseline,yearReadBackProblems} from './calendar-data-records.mjs';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+export const STATUS_POLL_LIMIT=40;
+export const STATUS_POLL_MS=6000;
+const SETTLED_STAGES=new Set(['published','failed','rejected','prepared','unknown']);
+const TERMINAL_FAILURE=new Set(['failed','rejected']);
+const HELD_UNKNOWN=new Set(['unconfirmed','unknown']);
 export async function interruptibleWait(ms,wait=sleep,shouldStop){
   if(!Number.isFinite(ms)||ms<=0)return 'ok';
   if(typeof shouldStop!=='function'){await wait(ms);return 'ok';}
@@ -129,6 +136,29 @@ async function readBack(kind,origin,url,fields,fetcher){
   return yearReadBackProblems(origin,url,fields,html,response.ok,response.status);
 }
 
+async function pollPublisherStatus(client,id,wait){
+  let result;
+  for(let i=0;i<STATUS_POLL_LIMIT;i++){
+    result=await client.status(id);
+    if(SETTLED_STAGES.has(result.stage))break;
+    await wait(STATUS_POLL_MS);
+  }
+  return result;
+}
+
+async function settlePublishedResult({s,item,result,origin,fetcher,save,log}){
+  s.stage=result.stage;s.url=result.receipt?.url?origin+result.receipt.url:s.url;s.requestKey=result.receipt?.requestKey||s.requestKey;
+  if(result.stage==='unknown'){s.status='unconfirmed';s.error='unknown_outcome';await save();log(item.key,'unconfirmed','unknown_outcome_no_retry');return 'held';}
+  if(TERMINAL_FAILURE.has(result.stage)){
+    s.status=result.stage;s.error=result.receipt?.readbackError||result.receipt?.job?.error||result.stage;await save();log(item.key,s.status,s.error);return 'terminal';
+  }
+  if(result.stage!=='published'){s.status='unconfirmed';s.error=result.receipt?.readbackError||result.receipt?.job?.error||result.stage;await save();log(item.key,'unconfirmed',s.error);return 'held';}
+  const problems=await readBack(item.kind,origin,result.receipt.url,item.fields,fetcher);
+  s.readback=problems.length?problems:'ok';s.status=problems.length?'published-readback-issue':'published';s.publishedAt=new Date().toISOString();await save();
+  log(item.key,s.status,s.url);
+  return s.status;
+}
+
 export async function publishPlanned(plan,options={}){
   if(!SITE.legacy||SITE.id!=='scholay-today')throw Error('日历数据批量发布仅支持今日学术');
   if(options.dryRun)return {dryRun:true,summary:summarizePlan(plan),plan};
@@ -161,11 +191,11 @@ async function runPlanned(plan,{workspace,statePath,gapMs=75000,pauseMs=600000,l
     if(typeof item?.key!=='string'||!item.key.trim()||item.key.length>200||['__proto__','constructor','prototype'].includes(item.key))throw Error('条目 key 无效');
     const existing=state.entries[item.key];
     if(existing?.status==='published'||existing?.status==='skipped_already_public')continue;
+    if(TERMINAL_FAILURE.has(existing?.status)){log(item.key,existing.status,'terminal_no_retry');continue;}
     if(item.status==='skipped_already_public'||item.status==='invalid'||item.status==='conflict'){
       const row=state.entries[item.key]={kind:item.kind,sectionId:item.sectionId,status:item.status,reason:item.match?.reason,publicId:item.match?.item?.id,errors:item.errors};
       await save();log(item.key,item.status,item.errors?.join('; ')||item.match?.reason||row.reason);continue;
     }
-    if(existing?.status==='unconfirmed'||existing?.status==='unknown'){log(item.key,'held_unknown_outcome','保留原 requestKey，不重复提交');continue;}
     if(done>=limit){log('stop_at_boundary','limit',done);break;}
     if(shouldStop?.()){log('stop_at_boundary',item.key,'not_started');break;}
     const s=state.entries[item.key]||={kind:item.kind,sectionId:item.sectionId};
@@ -197,21 +227,18 @@ async function runPlanned(plan,{workspace,statePath,gapMs=75000,pauseMs=600000,l
         s.created=true;await save();
       }
       const savedReceipt=await optionalJson(join(dir,'receipt.json'));
+      const heldUnknown=HELD_UNKNOWN.has(existing?.status);
       if(!savedReceipt?.requestKey){
+        if(heldUnknown){log(item.key,'held_unknown_outcome','保留原 requestKey，不重复提交');continue;}
         const frozen=s.submitted?await client.inspect(id):null;
         if(s.submitted&&!frozen?.prepared)throw Error('找不到原冻结发布包，请核对后恢复；不要重新生成请求');
         const prepared=frozen||await client.prepare(id);
         s.submitted=true;s.requestKey=prepared.prepared?.requestKey||s.requestKey;await save();
         await client.publish(id,{packetSha256:prepared.prepared.packetSha256});
       }
-      let result;
-      for(let i=0;i<40;i++){result=await client.status(id);if(['published','failed','rejected','prepared','unknown'].includes(result.stage))break;await wait(6000);}
-      s.stage=result.stage;s.url=result.receipt?.url?origin+result.receipt.url:s.url;s.requestKey=result.receipt?.requestKey||s.requestKey;
-      if(result.stage==='unknown'){s.status='unconfirmed';s.error='unknown_outcome';await save();log(item.key,'unconfirmed','unknown_outcome_no_retry');continue;}
-      if(result.stage!=='published'){s.status='unconfirmed';s.error=result.receipt?.readbackError||result.receipt?.job?.error||result.stage;await save();log(item.key,'unconfirmed',s.error);continue;}
-      const problems=await readBack(item.kind,origin,result.receipt.url,item.fields,fetcher);
-      s.readback=problems.length?problems:'ok';s.status=problems.length?'published-readback-issue':'published';s.publishedAt=new Date().toISOString();await save();
-      done++;log(item.key,s.status,s.url);
+      const result=await pollPublisherStatus(client,id,wait);
+      const outcome=await settlePublishedResult({s,item,result,origin,fetcher,save,log});
+      if(outcome==='published')done++;
     }catch(e){
       s.status=e.statusCode===401||e.statusCode===403?'auth_failed':'error';
       s.error=e.message;s.code=e.code;await save();log(item.key,s.status,e.message);
@@ -278,7 +305,7 @@ async function main(argv){
     out.receipts=counts;
   }
   console.log(JSON.stringify(out,null,2));
-  const failed=result.summary?.invalid||result.summary?.conflicts||(result.state&&Object.values(result.state.entries||{}).some(s=>['invalid','error','unconfirmed','published-readback-issue','auth_failed','conflict'].includes(s.status)));
+  const failed=result.summary?.invalid||result.summary?.conflicts||(result.state&&Object.values(result.state.entries||{}).some(s=>['invalid','error','unconfirmed','published-readback-issue','auth_failed','conflict','failed','rejected'].includes(s.status)));
   if(failed)process.exitCode=1;
 }
 
