@@ -57,6 +57,11 @@ test('generated feed pagination, category routes and detail navigation keep orig
  const article=await readFile(join(target,'news/frozen/index.html'),'utf8');assert.match(article,/原内容/);assert.match(article,/data-nav="feed" class="active" aria-current="page"/);
  const archive=await readFile(join(target,'archive/index.html'),'utf8');assert.match(archive,/feed-search/);assert.equal((archive.match(/class="feed-entry"/g)||[]).length,24);
  const nav=archive.match(/<nav aria-label="主导航">([\s\S]*?)<\/nav>/)[1];assert.doesNotMatch(nav,/archive\/frontiers/);
+ assert.match(nav,/class="github-mark"/);assert.match(nav,/https:\/\/github.com\/scholay-rssd\/rssd/);assert.match(nav,/width="15"/);
+ assert.match(archive,/<a class="brand" href="\/"><img class="site-logo"[^>]*><span>犀术智法<\/span><\/a>/);
+ const family=archive.match(/<nav class="site-family"[\s\S]*?<\/nav>/)[0];
+ assert.doesNotMatch(family,/legis\.wiki/);assert.match(family,/https:\/\/metho\.scholay\.com\//);assert.match(family,/\/family\/metho\.png/);
+ await access(join(target,'family/metho.png'));await access(join(target,'family/scholay-today.png'));
  assert.match(await readFile(join(target,'sitemap-content.xml'),'utf8'),/archive\/page\/2/);
  for(const path of ['content-feed.js','content-feed-index.json'])assert.throws(()=>homepagePath(path));
  await assert.rejects(buildSiteRelease({source:process.cwd(),target:join(target,'collision'),site,job:{id:'collision',snapshot:{...snapshot,permalinks:{'news:n0':'/archive/page/2/'}},snapshot_hash:'fixture'}}),/collides with article/);

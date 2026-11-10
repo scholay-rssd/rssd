@@ -9,6 +9,7 @@ import {renderRssFeed} from './rss-feed.mjs';
 import {createSeoState,sitemapXml} from '../../scripts/seo-state.mjs';
 import {byteHash} from './theme-homepage.mjs';
 import {addSocialMetadata} from './social-metadata.mjs';
+import {familyFooter} from './site-family.mjs';
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const englishBrands=Object.freeze({
@@ -38,7 +39,7 @@ function EnglishShell(template,{site,title,summary,route,body,sourceRoute,index=
  const themeButton=academic?(template.match(/<button\b[^>]*\bid="theme-toggle"[^>]*>[\s\S]*?<\/button>/)?.[0]||''):'';
  const siteLinks=academic?(template.match(/<div\b[^>]*\bclass="site-links"[^>]*>[\s\S]*?<\/div>/)?.[0]||''):'';
  if(academic&&index)body=body.replace('class="hero compact"','class="collection-hero"').replace('class="entries"','class="record-grid"').replace(/class="entry"/g,'class="record-card"').replace(/class="entry-meta"/g,'class="eyebrow"').replace(/class="read"/g,'class="read-more"');
- const brandLink=academic?`<a class="app-bar-brand" href="/en/"><span>${esc(brand.name)}</span></a>`:`<a class="brand" href="/en/"><span class="brand-monogram" aria-hidden="true">${esc(brand.name[0])}</span><span>${esc(brand.name)}</span><small>English edition</small></a>`;
+ const brandLink=academic?`<a class="app-bar-brand" href="/en/"><span>${esc(brand.name)}</span></a>`:`<a class="brand" href="/en/"><span class="brand-monogram" aria-hidden="true">${esc(brand.name[0])}</span><span>${esc(brand.name)}</span></a>`;
  let html=template.replace(/<html\b[^>]*>/,'<html lang="en">')
   .replace(/<title>[\s\S]*?<\/title>/,`<title>${esc(title)} · ${esc(brand.name)}</title>`)
   .replace(/<meta\b[^>]*name=["']description["'][^>]*>/,`<meta name="description" content="${esc(summary)}">`)
@@ -54,7 +55,7 @@ function EnglishShell(template,{site,title,summary,route,body,sourceRoute,index=
  // Keep each Theme's authored shell and assets. Only the language view's own
  // header/footer slots are localized; translated prose is never string-replaced.
  html=html.replace(/<header\b([^>]*)>[\s\S]*?<\/header>/,(_,attrs)=>`<header${attrs}>${academic?'<div class="app-bar-inner">':''}${brandLink}<nav${academic?' class="main-nav"':''} aria-label="Main navigation">${academic?'<div class="section-nav">':''}<a href="${esc(directory)}">Articles</a><a href="/">Chinese site</a>${academic?'</div>':''}</nav>${themeButton}${siteLinks}${academic?'</div>':''}</header>`)
-  .replace(/<footer\b([^>]*)>[\s\S]*?<\/footer>/,(_,attrs)=>`<footer${attrs}><span>${esc(brand.name)} · ${esc(brand.slogan)}</span><span class="footer-links"><a href="/en/content-feed.xml">RSS</a><a href="/">中文</a></span></footer>`)
+  .replace(/<footer\b([^>]*)>[\s\S]*?<\/footer>/,(_,attrs)=>`<footer${attrs}><span>${esc(brand.name)} · ${esc(brand.slogan)}</span><span class="footer-links"><a href="/en/content-feed.xml">RSS</a><a href="/">中文</a></span>${familyFooter(site.id)}</footer>`)
   .replace(/<a\b[^>]*class=["']skip["'][^>]*>[\s\S]*?<\/a>/g,'<a class="skip" href="#main">Skip to content</a>');
  const schema={'@context':'https://schema.org','@type':index?'CollectionPage':'Article','@id':url,url,inLanguage:'en',name:title,...(!index?{headline:title,mainEntityOfPage:url}:{}),description:summary,isPartOf:{'@type':'WebSite','@id':site.origin+'/#website',url:site.origin+'/',name:brand.name}};
  const head=`<meta property="og:type" content="${index?'website':'article'}"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(summary)}"><meta property="og:url" content="${esc(url)}"><link rel="alternate" type="application/rss+xml" title="${esc(brand.name)} RSS" href="/en/content-feed.xml"><script type="application/ld+json">${JSON.stringify(schema).replace(/</g,'\\u003c')}</script>${mathStyles(body)}`;
