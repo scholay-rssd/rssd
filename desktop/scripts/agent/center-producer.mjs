@@ -69,7 +69,7 @@ export function centerWritingPrompt({claim,locale,source,writingPolicy,writingSk
   imagePlan?CENTER_IMAGE_PLAN_OUTPUT:CENTER_NOTEBOOK_OUTPUT,
  ].join('\n\n');
 }
-export async function produceCenterEdition({claim,locale,workId,source,directory,agentId,expectedModel,signal,onEvent=()=>{},writingSkillScope,imagePlanRequired=false,verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash,imageTranslationInstructions,verifiedBibliographyInstructions,handshakeOnly=false,writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}},{registry=new AgentRegistry(),timeoutMs=30*60000,pilotEnvironment=pilotCodexEnvironment,skillSnapshot=centerSkillSnapshot,imageStage}={}){
+export async function produceCenterEdition({claim,locale,workId,source,directory,agentId,origin,expectedModel,signal,onEvent=()=>{},writingSkillScope,imagePlanRequired=false,verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash,imageTranslationInstructions,verifiedBibliographyInstructions,handshakeOnly=false,writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}},{registry=new AgentRegistry(),timeoutMs=30*60000,pilotEnvironment=pilotCodexEnvironment,skillSnapshot=centerSkillSnapshot,imageStage}={}){
   if(expectedModel&&(expectedModel!=='gpt-6.1-terra'||agentId!=='codex'))throw Error('自动试点需要 Codex 和 gpt-6.1-terra');
   if([verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash].some(x=>x!==undefined)&&(typeof verifiedSourcePrompt!=='string'||!verifiedSourcePrompt||![verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash].every(x=>/^[a-f0-9]{64}$/.test(x||''))))throw Error('来源快照或正文材料无效');
   const writingSkills=await skillSnapshot({claim,directory,writingPolicy,writingSkillScope});
@@ -86,7 +86,7 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
     signal?.throwIfAborted();
     if(protocol.hash(checked)!==before)throw Error('原图片计划发生变化');
     const bound=bindImagePlan({plan:checked,images,origin:imageStage.origin});
-    const edition=notebookEdition(bound,{source,locale,sectionId:claim.sectionId,signature:binding.signature});
+    const edition=notebookEdition(bound,{source,locale,sectionId:claim.sectionId,signature:binding.signature,origin:origin||imageStage.origin,workspaceId:claim.workspaceId});
     const receipt={version:1,planHash:before,origin:imageStage.origin,workspaceId:claim.workspaceId,images:images.map(({reused,...image})=>image)};
     const file=join(directory,locale+'.image-receipt.json');let prior;
     try{prior=JSON.parse(await readFile(file,'utf8'));}catch(error){if(error.code!=='ENOENT')throw Error('原图片回执无法读取');}
@@ -163,9 +163,15 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
     phase='complete';
     if(result.stopReason==='cancelled')throw Error('智能体已停止');
     const signature={runId,agentId,agentName:launch.agent?.name||agentId,startedAt,completedAt:new Date().toISOString(),action:claim.kind||'write',status:'completed',modelId,modelName,writingSkillSnapshotHash:writingSkills.snapshotHash,writingSkills:writingSkills.skills.map(({id,version,contentHash})=>({id,version,contentHash}))};
-    if(!imagePlan)return parseCenterEdition(output,{source,locale,sectionId:claim.sectionId,signature});
-    // Preserve the original model output before any image/provider operation.
     await writeFile(join(directory,locale+'.agent-output.txt'),output,{mode:0o600});
+    if(!imagePlan){
+      if(origin&&claim?.workspaceId){
+        const {persistGenerationEvidence}=await import('../../../scripts/rssd-center-generation-evidence.mjs');
+        await persistGenerationEvidence({directory,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature,source,agentId,demandId:claim.id,generation:claim.generation,workerId:claim.workerId||claim.payload?.storeOnlyWorkerId});
+      }
+      return parseCenterEdition(output,{source,locale,sectionId:claim.sectionId,signature,origin,workspaceId:claim.workspaceId,strictRegisteredImages:claim.kind==='translate'});
+    }
+    // Preserve the original model output before any image/provider operation.
     const draft=parseCenterResult(output),binding={signature,sectionId:claim.sectionId,sourceHash:protocol.hash(source||null),writingSkillSnapshotHash:writingSkills.snapshotHash,...(verifiedSourceSnapshotHash?{verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash}:{})};
     const plan=await freezeImagePlan({directory,claimId:claim.id,generation:claim.generation,workId,locale,result:draft,binding});
     return await completeImagePlan(plan);
