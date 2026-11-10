@@ -4,7 +4,8 @@ export type PreviewTab =
   | "demands"
   | "calendar"
   | "channels"
-  | "assistant";
+  | "assistant"
+  | "legacy";
 export type DemandState = "queued" | "claimed" | "completed" | "blocked";
 export interface PreviewSpace {
   id: string;

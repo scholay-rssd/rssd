@@ -1,6 +1,7 @@
 /* Native-only additions. Shared presentation lives in shared/center-view.css. */
-.rssd-desktop-center{height:100%;overflow:auto;padding-bottom:72px}
-.rssd-center-preview-entry{display:flex;justify-content:flex-end;margin-bottom:12px}.rssd-center-preview-entry button{font-size:11px;color:var(--muted)}
+.center-view.rssd-desktop-center{max-width:none;padding:24px 0 28px}
+/* The Center shell already carries the screen title. */
+.rssd-desktop-center .center-view-header>div:first-child{display:none}
 .rssd-desktop-center p{line-height:1.6;overflow-wrap:anywhere}
 .rssd-center-connection{padding:10px 0;color:var(--muted);font-size:12px}.rssd-center-connection summary{cursor:pointer;overflow-wrap:anywhere}.rssd-center-connection form,.rssd-center-controls{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}.rssd-center-connection form{margin:16px 0}.rssd-center-connection label,.rssd-center-controls label{display:flex;flex-direction:column;gap:8px;font-size:13px}.rssd-center-connection input{width:260px;max-width:100%;box-sizing:border-box}
 .rssd-center-device{padding:14px 0;border-bottom:1px solid #8882;font-size:12px;color:var(--muted)}.rssd-center-device summary{cursor:pointer}.rssd-center-production{padding-top:18px}.rssd-center-production>p{font-size:12px;margin:12px 0 0}.center-view-external{font-size:11px;opacity:.55}
