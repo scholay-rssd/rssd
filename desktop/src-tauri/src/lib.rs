@@ -26,6 +26,7 @@ mod publications;
 mod platforms;
 mod connections;
 mod rssd_center;
+mod rssd_multisite_intent;
 mod rssd_auth;
 #[cfg(windows)]
 mod windows_credentials;
@@ -103,7 +104,19 @@ const READ_POOL_SIZE: usize = 4;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // Forward protocol launches before a second process can open the vault or database.
+    #[cfg(any(windows, target_os = "linux"))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+    builder = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -131,6 +144,7 @@ pub fn run() {
     builder
         .setup(|app| {
             workbench_runtime::init(app.handle())?;
+            rssd_center::start_multisite_recovery();
             reader_shortcuts::install(app.handle())?;
             window_fit::install(app.handle());
             // ── Database ──────────────────────────────────────────────
@@ -202,7 +216,8 @@ pub fn run() {
                     handle_deep_links(&handle, &urls);
                 });
                 if let Ok(Some(urls))=app.deep_link().get_current(){
-                    for url in urls { rssd_auth::callback(app.handle(),url.as_str()); }
+                    let urls:Vec<String>=urls.iter().map(ToString::to_string).collect();
+                    handle_deep_links(app.handle(), &urls);
                 }
                 // On Linux/Windows dev builds, register the scheme at runtime
                 // so `papr://` resolves without a full bundle install.

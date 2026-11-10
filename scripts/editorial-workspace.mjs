@@ -101,9 +101,11 @@ export async function packedDraft(id,root=workspaceRoot,{maxAsset=PUBLICATION_IM
     const path=await contained(dirname(join(root,draft.canonicalPath)),decodeURIComponent(src));
     if((await stat(path)).size>24*1024*1024)throw Error('原始配图超过 24MB');
     const original=await readFile(path);
-    // Exact server derivatives already contain the watermark. Modified images
-    // go through the normal image pipeline again.
-    const bytes=derivatives[src]?.sha256===sha(original)&&src.endsWith('.webp')?original:await publicationImage(original,join(publicationDirectory(root) ,'image-cache'),{maxBytes:maxAsset});
+    // Notebook images are frozen with their caption and provenance. Preserve
+    // those reviewed bytes, including source figures, without another footer.
+    const notebook=src.match(/^assets\/notebook\/([a-f0-9]{64})\.webp$/);
+    if(notebook&&notebook[1]!==sha(original))throw Error('笔记配图已改变，请重新核对原图、图注与来源后保存');
+    const bytes=notebook||derivatives[src]?.sha256===sha(original)&&src.endsWith('.webp')?original:await publicationImage(original,join(publicationDirectory(root) ,'image-cache'),{maxBytes:maxAsset,site:siteForWorkspace(root)});
     if(bytes.length>maxAsset||total+bytes.length>maxTotal)throw Error('压缩后配图仍超出发布限制：单图 1MB，整篇 2MB');
     total+=bytes.length;const ext='webp';
     const publicPath='/article-media/'+sha(bytes)+'.'+ext;assets.push({path:publicPath,data:bytes.toString('base64')});markdown=markdown.split(src).join(publicPath);

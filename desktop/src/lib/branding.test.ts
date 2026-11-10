@@ -82,7 +82,7 @@ describe("today display branding with compatible local identity", () => {
   });
   it("documents the current repository separately from historical CI", () => {
     expect(read("README.md")).toContain("# today");
-    expect(read("README.md")).toContain("https://github.com/scholay/rssd");
+    expect(read("README.md")).toContain("https://github.com/scholay-rssd/rssd");
     expect(read("README.md")).toContain("historical");
     expect(config.identifier).toBe("com.thomas.papr");
   });

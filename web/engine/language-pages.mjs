@@ -3,11 +3,13 @@ import {join,dirname} from 'node:path';
 import {digest,sourceKey} from '../../admin/model.mjs';
 import {asEditorialRecord} from '../../scripts/editorial-record.mjs';
 import {articleLocale,sourceContentSha256} from '../../contracts/language-editions.mjs';
+import {sourceHasher} from './source-hash-v1.mjs';
 import {renderArticleParts,mathStyles} from './article-math.mjs';
 import {renderRssFeed} from './rss-feed.mjs';
 import {createSeoState,sitemapXml} from '../../scripts/seo-state.mjs';
 import {byteHash} from './theme-homepage.mjs';
 import {addSocialMetadata} from './social-metadata.mjs';
+import {familyFooter} from './site-family.mjs';
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const englishBrands=Object.freeze({
@@ -37,7 +39,7 @@ function EnglishShell(template,{site,title,summary,route,body,sourceRoute,index=
  const themeButton=academic?(template.match(/<button\b[^>]*\bid="theme-toggle"[^>]*>[\s\S]*?<\/button>/)?.[0]||''):'';
  const siteLinks=academic?(template.match(/<div\b[^>]*\bclass="site-links"[^>]*>[\s\S]*?<\/div>/)?.[0]||''):'';
  if(academic&&index)body=body.replace('class="hero compact"','class="collection-hero"').replace('class="entries"','class="record-grid"').replace(/class="entry"/g,'class="record-card"').replace(/class="entry-meta"/g,'class="eyebrow"').replace(/class="read"/g,'class="read-more"');
- const brandLink=academic?`<a class="app-bar-brand" href="/en/"><span>${esc(brand.name)}</span></a>`:`<a class="brand" href="/en/"><span class="brand-monogram" aria-hidden="true">${esc(brand.name[0])}</span><span>${esc(brand.name)}</span><small>English edition</small></a>`;
+ const brandLink=academic?`<a class="app-bar-brand" href="/en/"><span>${esc(brand.name)}</span></a>`:`<a class="brand" href="/en/"><span class="brand-monogram" aria-hidden="true">${esc(brand.name[0])}</span><span>${esc(brand.name)}</span></a>`;
  let html=template.replace(/<html\b[^>]*>/,'<html lang="en">')
   .replace(/<title>[\s\S]*?<\/title>/,`<title>${esc(title)} · ${esc(brand.name)}</title>`)
   .replace(/<meta\b[^>]*name=["']description["'][^>]*>/,`<meta name="description" content="${esc(summary)}">`)
@@ -53,7 +55,7 @@ function EnglishShell(template,{site,title,summary,route,body,sourceRoute,index=
  // Keep each Theme's authored shell and assets. Only the language view's own
  // header/footer slots are localized; translated prose is never string-replaced.
  html=html.replace(/<header\b([^>]*)>[\s\S]*?<\/header>/,(_,attrs)=>`<header${attrs}>${academic?'<div class="app-bar-inner">':''}${brandLink}<nav${academic?' class="main-nav"':''} aria-label="Main navigation">${academic?'<div class="section-nav">':''}<a href="${esc(directory)}">Articles</a><a href="/">Chinese site</a>${academic?'</div>':''}</nav>${themeButton}${siteLinks}${academic?'</div>':''}</header>`)
-  .replace(/<footer\b([^>]*)>[\s\S]*?<\/footer>/,(_,attrs)=>`<footer${attrs}><span>${esc(brand.name)} · ${esc(brand.slogan)}</span><span class="footer-links"><a href="/en/content-feed.xml">RSS</a><a href="/">中文</a></span></footer>`)
+  .replace(/<footer\b([^>]*)>[\s\S]*?<\/footer>/,(_,attrs)=>`<footer${attrs}><span>${esc(brand.name)} · ${esc(brand.slogan)}</span><span class="footer-links"><a href="/en/content-feed.xml">RSS</a><a href="/">中文</a></span>${familyFooter(site.id)}</footer>`)
   .replace(/<a\b[^>]*class=["']skip["'][^>]*>[\s\S]*?<\/a>/g,'<a class="skip" href="#main">Skip to content</a>');
  const schema={'@context':'https://schema.org','@type':index?'CollectionPage':'Article','@id':url,url,inLanguage:'en',name:title,...(!index?{headline:title,mainEntityOfPage:url}:{}),description:summary,isPartOf:{'@type':'WebSite','@id':site.origin+'/#website',url:site.origin+'/',name:brand.name}};
  const head=`<meta property="og:type" content="${index?'website':'article'}"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(summary)}"><meta property="og:url" content="${esc(url)}"><link rel="alternate" type="application/rss+xml" title="${esc(brand.name)} RSS" href="/en/content-feed.xml"><script type="application/ld+json">${JSON.stringify(schema).replace(/</g,'\\u003c')}</script>${mathStyles(body)}`;
@@ -87,17 +89,19 @@ export async function renderLanguagePages({job,target,previousRoot,site,now,mani
  };
  const records=[];
  for(const data of editions){
-  const original=sources.get(data.translationOf?.articleId),sourceRoute=original?(original.sourceRoute||job.snapshot.permalinks?.['news:'+original.id]||'/news/'+original.id+'/'):null;
+  const original=sources.get(data.translationOf?.articleId||(data.translationSourceStatus==='unknown'?data.translationCandidateArticleId:null)),sourceRoute=original?(original.sourceRoute||job.snapshot.permalinks?.['news:'+original.id]||'/news/'+original.id+'/'):null;
   const route=job.snapshot.permalinks?.['news:'+data.id]||'/en/news/'+(original?.id||data.id)+'/';
   if(!/^\/en\/(?:[A-Za-z0-9_\-\u0080-\uFFFF]+\/)+$/.test(route))throw Error('Invalid English article permalink');
   const file=sourceRoute?sourceRoute.slice(1)+'index.html':custom?'journal/index.html':'index.html',template=await readFile(join(target,file),'utf8');
   const rendered=renderArticleParts(data.markdown.replace(/^# [^\n]+\n+/,''),{site});
-  const stale=Boolean(original&&sourceContentSha256(original)!==data.translationOf.sha256);
-  const body=`<article class="${/class="seo-main"/.test(template)?'record-page news-article':'reading'}"${sourceRoute?` data-community-source-route="${esc(sourceRoute)}"`:''}><a class="back" href="/en/">← All articles</a><div class="entry-meta">${esc(data.date)} · ${esc(data.author)}</div>${stale?'<p class="muted">This English edition reflects an earlier revision of the Chinese source.</p>':''}<div class="prose"><h1>${esc(data.title)}</h1><p class="lead">${esc(data.summary)}</p><div class="article-body">${rendered.body}</div>${rendered.endnotes?`<div class="article-body article-endnotes">${rendered.endnotes}</div>`:''}</div></article>`;
+  const hashSource=data.translationSourceStatus==='verified'?sourceHasher(data.translationSourceHashVersion,sourceContentSha256,{requiresVersion:true}):sourceContentSha256;
+  const stale=Boolean(original&&data.translationOf&&hashSource(original)!==data.translationOf.sha256);
+  const unknown=data.translationSourceStatus==='unknown',sourceMissing=data.translationSourceStatus==='verified'&&!original;
+  const body=`<article class="${/class="seo-main"/.test(template)?'record-page news-article':'reading'}"${sourceRoute?` data-community-source-route="${esc(sourceRoute)}"`:''}><a class="back" href="/en/">← All articles</a><div class="entry-meta">${esc(data.date)} · ${esc(data.author)}</div>${unknown?'<p class="muted">This English edition has an unverified source revision.</p>':sourceMissing?'<p class="muted">This English edition’s source is currently unavailable.</p>':stale?'<p class="muted">This English edition reflects an earlier revision of the Chinese source.</p>':''}<div class="prose"><h1>${esc(data.title)}</h1><p class="lead">${esc(data.summary)}</p><div class="article-body">${rendered.body}</div>${rendered.endnotes?`<div class="article-body article-endnotes">${rendered.endnotes}</div>`:''}</div></article>`;
   const english=EnglishShell(template,{site,title:data.title,summary:data.summary,route,body,sourceRoute,directory}).replace(/href="\/en\/">(Articles|← All articles)/g,`href="${directory}">$1`);
   await write(route.slice(1)+'index.html',english);paths.set(route,seo.page(route,english).lastmod);
   if(sourceRoute){const chinese=addLanguageUi(template,{site,zh:sourceRoute,en:route,locale:'zh-CN'});await write(file,chinese);paths.set(sourceRoute,seo.page(sourceRoute,chinese).lastmod);}
-  records.push({id:data.id,...(original?{sourceArticleId:original.id,sourceUrl:site.origin+sourceRoute}:{}),route,url:site.origin+route,locale:'en',title:data.title,summary:data.summary,date:data.date,category:data.category,bodyMarkdown:data.markdown,translationOf:data.translationOf,contentSha256:sourceContentSha256(data),stale});
+  records.push({id:data.id,...(original?{sourceArticleId:original.id,sourceUrl:site.origin+sourceRoute}:{}),route,url:site.origin+route,locale:'en',title:data.title,summary:data.summary,date:data.date,category:data.category,bodyMarkdown:data.markdown,translationOf:data.translationOf,contentSha256:sourceContentSha256(data),stale:unknown||sourceMissing||data.translationSourceStatus==='independent'?null:stale,...(data.translationSourceStatus==='verified'?{sourceHashVersion:data.translationSourceHashVersion}:{}),sourceVersionState:unknown?'unknown':sourceMissing?'source_unavailable':data.translationSourceStatus==='independent'?'independent':data.translationSourceStatus==='verified'?(stale?'stale':'current'):'legacy'});
  }
  const home=await readFile(join(target,custom?'journal/index.html':'index.html'),'utf8'),brand=englishBrands[site.id]||{name:site.name,slogan:site.slogan||''};
  const cards=records.slice().sort((a,b)=>b.date.localeCompare(a.date)||a.id.localeCompare(b.id)).map(r=>`<article class="entry"><div class="entry-meta">${esc(r.date)}</div><h2><a href="${esc(r.route)}">${esc(r.title)}</a></h2><p>${esc(r.summary)}</p><a class="read" href="${esc(r.route)}">Read article ↗</a></article>`).join('');

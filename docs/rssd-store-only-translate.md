@@ -1,0 +1,111 @@
+# Store-only English (`store-en`)
+
+Companion to [rssd-center PR 10](https://github.com/scholay-rssd/rssd-center/pull/10) at `f38d8e6b98393265ee9306902ec4c91404c363a8` (base `3dd7fb25`). Center CI for this head passed (`42351517761`); that is **not** a live deploy. Head `1db773af` is obsolete and must not be used as this pack. This document is not a production grant.
+
+One existing Chinese work. English is stored on the center only. No publication rows, no schedule, no site/Discourse/Postiz dispatch, even when section policy has `en` targets. The creating device is the only claimant. Ordinary `enqueue-translate` is unchanged and **may publish**.
+
+This repository’s tests use a **fixture** center. They do not prove a live `f38d8e6b` deployment.
+
+## Probe (fail-closed)
+
+`GET /api/rssd/v1/coordination/overview` or MCP `rssd_overview`. Refuse create/claim/submit/retry/recover of store-only work unless:
+
+```json
+"contracts": {
+  "storeOnlyTranslate": {
+    "version": 1,
+    "guarantees": [
+      "storeOnlyFrozen",
+      "zeroPublications",
+      "exclusiveWorkerClaim",
+      "intentRequired",
+      "noClaimSteal",
+      "leaseRecovery",
+      "englishOnly",
+      "sourceBind",
+      "receipt",
+      "receiptIsolation",
+      "openWorkFence"
+    ]
+  }
+}
+```
+
+`version` must be an integer `>= 1` and `guarantees` must contain all **eleven** tokens. A v1 object that only lists the original nine (`receiptIsolation` / `openWorkFence` missing) is **not** this pack and is `409 contract_unavailable`. `translateContinuation`, MCP tool names, `publicationScheduling: false`, and client `publish: false` are also not this pack. Do not fall back to `enqueue-translate`.
+
+## Official single-article commands
+
+```sh
+rssd center store-en --work <existingWorkId> [--revision n]
+rssd center work --agent <this-device-acp-id> --workspace enter --id <demandId> --once --store-only
+rssd center recover <requestId>
+```
+
+| Command | Writes |
+| --- | --- |
+| `store-en --work` | `POST /demands` with `storeOnly: true`. Does not claim, produce, or submit |
+| `work … --id … --once --store-only` | Pointed `POST /claims` `{demandId, storeOnly:true}` → `produceCenterEdition` → EN-only `POST /submissions` |
+| `claim --id … --store-only` | Pointed claim only |
+| `submit packet.json --store-only` | Outbox marks `storeOnly:true`; receipt must be `storeOnly:true`, `storeOnlyWorkerId` of this device, and `publicationIds:[]` |
+| `enqueue-translate` | Default path that may publish. **`--store-only` is rejected** |
+
+`--revision` must equal the current zh-CN head (`409 source_conflict` otherwise). Chinese revision/hash/head are not rewritten. Writing protocol remains `private-notes-first-pass-v2`.
+
+Do not loop work IDs. Do not omit `--id` or `--store-only` on work. Generic `claim` / `work` without `--store-only` cannot take the row (`store_only_required` if targeted; skip if unscoped). Another device with `storeOnly:true` is `forbidden`. Lease expiry: only the creating device re-claims with `storeOnly:true`; the expired token is `claim_revoked`.
+
+`existing` never crosses store-only and ordinary translate. Ordinary create against an open store-only bind (or the reverse) is `409 open_translate_conflict`, never `existing`.
+
+## Receipt
+
+Accepted store-only receipt:
+
+```json
+{"status":"accepted","storeOnly":true,"storeOnlyWorkerId":"<creating-worker>","publicationIds":[],"demandState":"completed","editions":[{"locale":"en","revision":1,"hash":"<hex>"}]}
+```
+
+Same `requestId` on the creating device replays the original result. Other devices querying or replaying that `requestId` get `404 not_found` and never the result (including never a `request_conflict` body). A receipt is accepted only when it has `storeOnly:true`, `storeOnlyWorkerId` of this device, `publicationIds:[]`, `demandState:completed`, the original `requestId`/`workId`/`workspaceId`, and exactly one English edition matching the packet hash. Anything else is `not_store_only` or `receipt_mismatch` and **must not** mark the outbox `accepted` or clear the packet.
+
+`--store-only` cannot be stripped to downgrade a persisted outbox or a store-only demand. `submit`/`recover` infer intent from the outbox hash, `active-claim.json`, and the demand payload. Rewriting the outbox as ordinary publish is `not_store_only`. `work` without `--store-only` cannot produce a store-only claim. Missing eleven-token overview refuses before claim, producer, or submit. Store-only work does not drain ordinary outbox packets.
+
+While the store-only demand is queued/claimed/blocked, drafts or submissions to the same work that omit that demand (bypass `demandId`) are `409 store_only_conflict`.
+
+Outbox entries hash `{storeOnly:true, packet}` so ordinary recover cannot silently republish them. Ordinary outbox packets keep the previous hash and may still publish.
+
+## Fixture tree (no stubs, Node 24+)
+
+`sites/profiles.json` is the public **rssd-sites submodule**, recorded as a gitlink in this repo. It is **not** generated by a build step. `git archive` of the parent only stores that gitlink, so a parent-only tarball cannot even import `tests/rssd-store-only-translate.test.mjs` (`scripts/site-config.mjs` → `sites/profiles.json`). That is a packaging omission of `git archive`, not a missing generator and not a reason to write `[]` or an extract stub.
+
+Official headless packaging copies the **same real file** (`desktop/scripts/prepare-workbench.mjs`). CI checks out `submodules: recursive` on Node 24. `package.json` engines are `node: >=24`; Node 22.x is not a complete verification.
+
+Prepare without stubs:
+
+```sh
+git clone --recurse-submodules https://github.com/scholay-rssd/rssd.git
+git submodule update --init sites
+# Node 24+
+npm ci --omit=dev --no-audit --no-fund
+node --test tests/rssd-protocol.test.mjs tests/rssd-center-client.test.mjs tests/rssd-production-worker.test.mjs tests/rssd-translate-continuation.test.mjs tests/rssd-store-only-translate.test.mjs tests/rssd-store-only-fixture.test.mjs tests/rssd-translate-isolated-acceptance.test.mjs
+```
+
+Or emit the credential-free pack (parent archive **plus** the recorded `sites` tree):
+
+```sh
+node scripts/archive-store-only-fixture.mjs /tmp/rssd-store-only-fixture
+```
+
+Then, on local disk with Node 24+:
+
+```sh
+replay=$(mktemp -d)
+tar -xzf rssd-app-*.tar.gz -C "$replay"
+mkdir -p "$replay/sites"
+tar -xzf rssd-sites-*.tar.gz -C "$replay/sites"
+```
+
+Do not mint production tokens; mint a test device token at the fixture site. The in-test producer is a mock `{title, bodyMarkdown}`, not Codex.
+
+## Fixture vs live
+
+`tests/rssd-store-only-translate.test.mjs` plus `tests/fixtures/rssd-translate-center.mjs` cover create → pointed claim → injected `produceCenterEdition` identity → EN packet → receipt/recover, plus steal/lease/omit/tamper/fail-closed/default-publish, the obsolete nine-token pack, receipt isolation, and the open-work fence. That is not a billed ACP run and not a live center.
+
+If a later Owner-run needs the real center fixture pack (center PR 10 `rssd/store.test.cjs` at `f38d8e6b`), required inputs are: fixture DB, device token for the creating worker, one enter work id that lacks `en`, overview already advertising this eleven-token pack, and no production origin.

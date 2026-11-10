@@ -10,7 +10,7 @@ export default defineConfig({
     outDir: fileURLToPath(new URL("../.local/center-preview", import.meta.url)),
     emptyOutDir: true,
     rollupOptions: {
-      input: fileURLToPath(new URL("./center-preview.html", import.meta.url)),
+      input: {center:fileURLToPath(new URL("./center-preview.html", import.meta.url)),assistant:fileURLToPath(new URL("./center-assistant.html", import.meta.url))},
     },
   },
   preview: { host: "127.0.0.1", port: 1432, strictPort: true },

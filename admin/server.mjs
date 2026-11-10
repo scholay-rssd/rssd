@@ -9,13 +9,15 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import * as argon2 from '@node-rs/argon2';
 import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
-import {readFile} from 'node:fs/promises';
+import {readFile,realpath,lstat} from 'node:fs/promises';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {audit,openStore,readDocument,createDocument,saveDocument,setReview,enqueue,enqueueBatch,enqueueSiteBuild,claim,finish} from './store.mjs';
 import {digest,fail,plain,sourceKey,kinds,yearCategories,sourceCategories} from './model.mjs';
 import {localizeMessage} from './messages.mjs';
 import {createContentWriteFence,contentMutation} from './content-write-fence.mjs';
+import {coordinationConfig,withReleaseLock,readFence,inspectCoordinationLocks,closeCoordinationLocks} from './release-coordination.mjs';
+import {verifyLive} from './release-verification.mjs';
 
 export const passwordOptions={algorithm:argon2.Algorithm.Argon2id,memoryCost:19456,timeCost:2,parallelism:1};
 export const secret=()=>randomBytes(32).toString('base64url');
@@ -28,7 +30,11 @@ const secureEqual=(a,b)=>typeof a==='string'&&typeof b==='string'&&Buffer.byteLe
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const maxAge=12*60*60*1000,idle=30*60*1000;
 
-export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,'.admin-local/admin.sqlite'),labelsDbPath=process.env.SCHOLAY_LABELS_DB||join(dirname(dbPath),'labels.sqlite'),origin=process.env.SCHOLAY_ADMIN_ORIGIN||'http://127.0.0.1:4180',logger=false,guestbookEnabled=process.env.TODAY_GUESTBOOK_ENABLED!==undefined?process.env.TODAY_GUESTBOOK_ENABLED==='1':SITE.services?.guestbook.enabled===true,guestbookDbPath=process.env.TODAY_GUESTBOOK_DB||join(dirname(dbPath),'guestbook.sqlite'),contentFencePath}={}) {
+export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,'.admin-local/admin.sqlite'),labelsDbPath=process.env.SCHOLAY_LABELS_DB||join(dirname(dbPath),'labels.sqlite'),origin=process.env.SCHOLAY_ADMIN_ORIGIN||'http://127.0.0.1:4180',logger=false,guestbookEnabled=process.env.TODAY_GUESTBOOK_ENABLED!==undefined?process.env.TODAY_GUESTBOOK_ENABLED==='1':SITE.services?.guestbook.enabled===true,guestbookDbPath=process.env.TODAY_GUESTBOOK_DB||join(dirname(dbPath),'guestbook.sqlite'),contentFencePath,coordination:coordinationOptions,publicationRoot=process.env.SCHOLAY_PUBLIC_ROOT||'/opt/scholay-today-web',publicationOrigin=process.env.SCHOLAY_PUBLIC_ORIGIN||'https://today.scholay.com',publicationResolveLocal=process.env.SCHOLAY_VERIFY_LOCAL==='1'}={}) {
+  const coordination=coordinationConfig(coordinationOptions);
+  // Do not let replacement of a lock file silently split cooperating writers.
+  const coordinationLocks=coordination?await inspectCoordinationLocks(coordination):null;
+  try{
   const contentFence=createContentWriteFence({dbPath,siteId:SITE.id,path:contentFencePath});
   const db=openStore(dbPath),secure=origin.startsWith('https:'),cookieName=secure?'__Secure-scholay-session':'scholay-session';
   let labelsDb=null;
@@ -37,18 +43,34 @@ export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,
     labelsDb=openLabelsStore(labelsDbPath);
   }catch{console.error('Cloud labels state is unavailable; administration remains available.');}
   const app=Fastify({logger,bodyLimit:256*1024,trustProxy:['127.0.0.1','::1'],requestTimeout:15000});
-  const contentRequests=new Set();
+  const contentRequests=new Set(),releases=new Map();
+  function release(request){contentRequests.delete(request);const done=releases.get(request);releases.delete(request);done?.();}
   app.addHook('onRequest',async(request,reply)=>{
     if(!contentMutation(request.method,request.routeOptions.url||request.url.split('?')[0]))return;
-    await contentFence.requireWritable();contentRequests.add(request);
-    const done=()=>contentRequests.delete(request);request.raw.once('aborted',done);reply.raw.once('close',done);
+    if(!coordination){await contentFence.requireWritable();contentRequests.add(request);const done=()=>release(request);request.raw.once('aborted',done);reply.raw.once('close',done);return;}
+    let ready,failReady,done;const accepted=new Promise((a,b)=>{ready=a;failReady=b;}),untilDone=new Promise(a=>done=a);let ended=false,started=false;
+    // A disconnected client does not prove an asynchronous handler stopped.
+    // Keep its lease until handler completion; an unreported completion fails closed.
+    const finish=()=>{ended=true;if(!started)done();};request.raw.once('aborted',finish);reply.raw.once('close',finish);
+    const path=request.url.split('?')[0],workerFinish=/^\/manage\/api\/worker\/jobs\/([^/]+)\/finish$/.exec(path),workerClaim=path==='/manage/api/worker/claim';
+    void withReleaseLock(coordination.orchestrationLock,async verify=>withReleaseLock(coordination.publicationLock,async verifyPublication=>{
+      const fence=await readFence(coordination.fenceRoot,SITE.id);
+      const permitted=fence.mode==='open'||fence.mode==='drain'&&fence.resumeJob&&(workerClaim||workerFinish?.[1]===fence.resumeJob.id)||fence.mode==='maintenance'&&(workerClaim||workerFinish?.[1]===fence.jobId);
+      if(!permitted)throw Object.assign(Error('内容写入正在维护中，请稍后重试'),{statusCode:409,code:'legacy_content_read_only'});
+      request.rssdFence=fence;
+      await contentFence.requireWritable();await verify();await verifyPublication();
+      if(ended)throw Object.assign(Error('Request closed'),{statusCode:409});
+      contentRequests.add(request);releases.set(request,done);started=true;ready();await untilDone;
+    },coordinationLocks.publicationLock),coordinationLocks.orchestrationLock).catch(error=>{if(!started)failReady(error);else console.error('Admin coordination lease lost:',error.code||error.name);});
+    await accepted;
   });
   app.addHook('preHandler',async request=>{if(contentRequests.has(request))await contentFence.requireWritable();});
-  app.addHook('onResponse',async request=>{contentRequests.delete(request);});
-  app.addHook('onError',async request=>{contentRequests.delete(request);});
+  app.addHook('onSend',async(request,reply,payload)=>{release(request);return payload;});
+  app.addHook('onResponse',async request=>{release(request);});
+  app.addHook('onError',async request=>{release(request);});
   await app.register(cookie);
   await registerCommunityLinks(app);
-  app.decorate('db',db);app.decorate('labelsDb',labelsDb);app.addHook('onClose',()=>{db.close();labelsDb?.close();});
+  app.decorate('db',db);app.decorate('labelsDb',labelsDb);app.addHook('onClose',async()=>{db.close();labelsDb?.close();await closeCoordinationLocks(coordinationLocks);});
   const dummy=await argon2.hash(secret(),passwordOptions);let hashing=0,lastCleanup=0;
   const verify=async(hash,password)=>{
     if(hashing>=2)fail('登录请求较多，请稍后重试',429);
@@ -63,12 +85,12 @@ export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,
   }
   const body=request=>{if(!request.body||Array.isArray(request.body)||typeof request.body!=='object')fail('请求格式错误');return request.body;};
   const checkOrigin=request=>{if(request.headers.origin!==origin)fail('请求来源无效，请从管理页面操作',403);};
-  const bearer=(request,scope)=>{
+  const bearer=(request,scope,{track=true}={})=>{
     const raw=request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{40,100})$/)?.[1];
     if(!raw)fail('未授权',401);
     const token=db.prepare('SELECT * FROM tokens WHERE hash=? AND revoked IS NULL').get(digest(raw));
     if(!token||!scope.includes(token.scope))fail('凭证无效或权限不足',403);
-    db.prepare('UPDATE tokens SET last_used=? WHERE id=?').run(Date.now(),token.id);request.actor='token:'+token.id;return token;
+    if(track)db.prepare('UPDATE tokens SET last_used=? WHERE id=?').run(Date.now(),token.id);request.actor='token:'+token.id;return token;
   };
   const session=request=>{
     const raw=request.cookies[cookieName];if(!raw)fail('请先登录',401);
@@ -95,7 +117,7 @@ export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,
   app.setErrorHandler((error,request,reply)=>{
     // A unique-key collision is the caller's conflict, not a server fault.
     const conflict=error.code==='ERR_SQLITE_ERROR'&&[1555,2067].includes(error.errcode);
-    const status=conflict?409:error.statusCode||500;
+    const status=conflict?409:error.statusCode||error.status||500;
     if(status===429)reply.header('Retry-After','60');
     if(status>=500)console.error('Admin request failed:',error.code||error.name);
     reply.code(status).send({error:localizeMessage(conflict?'内容与已有记录冲突（链接或路径重复）':status>=500?'服务暂时不可用，请稍后重试':error.message,request.headers['x-scholay-language']),...(error.code==='duplicate_source'?{code:error.code,existing:error.existing}:error.code==='legacy_content_read_only'?{code:error.code}:{})});
@@ -115,7 +137,17 @@ export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,
   registerNewsApi(app,{db,bearer,session,body,limit});
   registerLabelsApi(app,{labelsDb,bearer,session,limit});
   app.get('/manage/health',async()=>({ok:true}));
-  app.get('/manage/api/content-write-status',async()=>({...await contentFence.status(),inFlight:contentRequests.size}));
+  app.get('/manage/api/content-write-status',async()=>{
+    const legacy=await contentFence.status();if(!coordination)return {...legacy,inFlight:contentRequests.size,coordination:'disabled',coordinationSafe:false};
+    await inspectCoordinationLocks(coordination,coordinationLocks);
+    const fence=await readFence(coordination.fenceRoot,SITE.id);
+    return {...legacy,readOnly:legacy.readOnly||fence.mode!=='open',state:legacy.readOnly?legacy.state:(fence.mode==='open'?'writable':fence.mode),inFlight:contentRequests.size,coordination:'active'};
+  });
+  app.get('/manage/api/content-coordination-status',async()=>{
+    if(!coordination)return {protocol:1,siteId:SITE.id};
+    await inspectCoordinationLocks(coordination,coordinationLocks);
+    const fence=await readFence(coordination.fenceRoot,SITE.id);return {protocol:2,siteId:SITE.id,mode:fence.mode,generation:fence.generation,runId:fence.runId,...(fence.mode==='maintenance'?{jobId:fence.jobId}:{}),...(fence.resumeJob?{resumeJob:fence.resumeJob}:{})};
+  });
   app.get('/manage/api/session',async(request)=>{
     try {const s=session(request);return {user:{username:s.username},csrf:s.csrf};}
     catch{return {user:null,initialized:!!db.prepare('SELECT 1 FROM users LIMIT 1').get()};}
@@ -225,12 +257,48 @@ export async function createApp({dbPath=process.env.SCHOLAY_ADMIN_DB||join(root,
     }
     audit(db,request.actor,'content.import','',JSON.stringify(results.map(x=>x.status)));return {results};
   });
-  app.post('/manage/api/worker/claim',async request=>{
-    bearer(request,['publisher']);db.prepare("INSERT INTO meta VALUES('worker',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify({seen:Date.now()}));return {job:claim(db,{reusePublishedAssets:request.body?.reusePublishedAssets===true&&!SITE.legacy})};
+  // Read-only, scoped recovery evidence. The fence, row and lock identities are
+  // observed together; no token heartbeat or job data is changed here.
+  app.get('/manage/api/worker/jobs/:id/drain-receipt',async request=>{
+    if(!coordination)fail('维护任务身份无效',409);
+    return withReleaseLock(coordination.orchestrationLock,async verifyOrchestration=>
+      withReleaseLock(coordination.publicationLock,async verifyPublication=>{
+        bearer(request,['publisher'],{track:false});
+        const fence=await readFence(coordination.fenceRoot,SITE.id),job=fence.resumeJob;
+        if(fence.mode!=='drain'||!job||request.params.id!==job.id)fail('维护任务身份无效',409);
+        const row=db.prepare(`SELECT id,status,release,snapshot,snapshot_hash FROM ${job.table} WHERE id=?`).get(job.id);
+        if(!row||row.snapshot_hash!==job.snapshotHash||!['running','success'].includes(row.status))fail('维护任务身份无效',409);
+        if(row.status==='running'&&(typeof row.snapshot!=='string'||digest(row.snapshot)!==job.snapshotHash))fail('维护任务身份无效',409);
+        if(row.status==='success'&&row.release!=='admin-'+job.id)fail('维护任务身份无效',409);
+        await verifyOrchestration();await verifyPublication();
+        return {id:row.id,status:row.status,release:row.release,snapshot_hash:row.snapshot_hash};
+      },coordinationLocks.publicationLock),coordinationLocks.orchestrationLock);
   });
-  app.post('/manage/api/worker/jobs/:id/finish',async request=>{bearer(request,['publisher']);return finish(db,request.params.id,body(request));});
+  app.post('/manage/api/worker/claim',async request=>{
+    bearer(request,['publisher']);db.prepare("INSERT INTO meta VALUES('worker',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify({seen:Date.now()}));return {job:claim(db,{reusePublishedAssets:request.body?.reusePublishedAssets===true&&!SITE.legacy,...(request.rssdFence?.mode==='maintenance'?{maintenanceJobId:request.rssdFence.jobId}:request.rssdFence?.mode==='drain'?{resumeOnly:request.rssdFence.resumeJob}:{})})};
+  });
+  app.post('/manage/api/worker/jobs/:id/finish',async request=>{
+    bearer(request,['publisher']);
+    if(request.rssdFence?.mode==='drain'){
+      if(body(request).ok!==true)fail('维护任务身份无效',409);
+      const j=request.rssdFence.resumeJob,row=db.prepare(`SELECT snapshot,snapshot_hash,status FROM ${j.table} WHERE id=?`).get(j.id);
+      if(!row||row.status!=='running'||typeof row.snapshot!=='string'||row.snapshot_hash!==j.snapshotHash||digest(row.snapshot)!==j.snapshotHash)fail('维护任务身份无效',409);
+      const submitted=body(request),expected='admin-'+j.id,current=join(publicationRoot,'current'),release=join(publicationRoot,'releases',expected);
+      if(submitted.hash!==j.snapshotHash||submitted.release!==expected)fail('维护任务身份无效',409);
+      try{
+        const before=await lstat(current),target=await lstat(release);
+        if(!before.isSymbolicLink()||!target.isDirectory()||await realpath(current)!==await realpath(release))throw Error('Current release differs');
+        const manifest=JSON.parse(await readFile(join(release,'release.json'),'utf8'));
+        if(manifest.jobId!==j.id||manifest.snapshotHash!==j.snapshotHash||manifest.release!==expected||!(manifest.hashes?.['index.html']||manifest.byteHashes?.['index.html']))throw Error('Release manifest differs');
+        await verifyLive(manifest,publicationOrigin,publicationResolveLocal);
+        const after=await lstat(current);if(after.dev!==before.dev||after.ino!==before.ino||await realpath(current)!==await realpath(release))throw Error('Current release changed');
+      }catch{fail('维护任务身份无效',409);}
+    }
+    return finish(db,request.params.id,body(request));
+  });
   app.setNotFoundHandler((request,reply)=>reply.code(404).send({error:localizeMessage('页面不存在',request.headers['x-scholay-language'])}));
   return app;
+  }catch(error){await closeCoordinationLocks(coordinationLocks);throw error;}
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const app=await createApp();await app.listen({host:'127.0.0.1',port:Number(process.env.PORT||4180)});

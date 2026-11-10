@@ -23,3 +23,12 @@ test('translation orders refer to an immutable source and policy targets cannot 
   const target={destinationId:'website',locale:'en'};
   assert.throws(()=>protocol.policy({targets:[target,target]}),/Duplicate/);
 });
+test('editions must list every body-referenced center media ID before they can be accepted',()=>{
+  const mediaId='media-'+'a'.repeat(48),body='Complete prose.\n\n![One](/api/rssd/v1/media/'+mediaId+'/raw)\n\n![Two](https://center.example/api/rssd/v1/media/media-second/raw)';
+  assert.deepEqual(protocol.referencedMediaIds(body),[mediaId,'media-second']);
+  assert.throws(()=>protocol.edition({locale:'en',title:'English',bodyMarkdown:body,media:[]}),{code:'missing_media'});
+  assert.throws(()=>protocol.edition({locale:'en',title:'English',bodyMarkdown:body,media:[{id:mediaId,alt:'One'}]}),{code:'missing_media'});
+  const complete=protocol.edition({locale:'en',title:'English',bodyMarkdown:body,media:[{id:mediaId,alt:'One'},{id:'media-second',alt:'Two'}]});
+  assert.equal(complete.media.length,2);
+  assert.deepEqual(protocol.edition({locale:'zh-CN',title:'中文',bodyMarkdown:'No images'}).media,[]);
+});

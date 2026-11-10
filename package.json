@@ -6,7 +6,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --test tests/rssd-*.test.mjs tests/language-pages.test.mjs",
+    "test": "node --test --test-concurrency=4 tests/*.test.mjs",
+    "fixture:store-only": "node scripts/archive-store-only-fixture.mjs",
     "check": "node scripts/check-syntax.mjs",
     "build:seo": "node scripts/build-seo.mjs",
     "admin": "node admin/server.mjs",
@@ -18,6 +19,7 @@
     "desktop:check": "pnpm --dir desktop exec tsc --noEmit",
     "desktop:build:web": "pnpm --dir desktop build",
     "desktop:build": "pnpm --dir desktop build:desktop",
+    "desktop:release": "bash scripts/install-desktop-macos.sh",
     "headless": "node desktop/scripts/agent/headless/cli.mjs",
     "headless:produce": "node desktop/scripts/agent/headless/produce.mjs",
     "headless:verify": "node desktop/scripts/agent/headless/verify.mjs",
@@ -32,6 +34,7 @@
     "rss:sources:opml": "node scripts/rss-sources.mjs opml",
     "rss:sources:sync": "node scripts/rss-sources.mjs sync",
     "history:batch": "node scripts/history-batch.mjs",
+    "calendar:batch": "node scripts/calendar-data-batch.mjs",
     "receiver": "node receiver/server.mjs"
   },
   "dependencies": {

@@ -1,0 +1,53 @@
+[
+  {
+    "lane": "培养节点",
+    "provenance": {
+      "origin": "web_search",
+      "sourceTier": "official",
+      "verification": "verified",
+      "reviewedAt": "2026-09-27"
+    },
+    "article": {
+      "id": 981000,
+      "feedTitle": "北京大学",
+      "title": "[2024年9月2日] 北京大学2024—2025学年研究生新生报到",
+      "snippet": "北京大学2024—2025学年校历：研究生新生（含港澳台及留学生研究生）9月2日报到。",
+      "url": "https://www.pku.edu.cn/detail/3001.html",
+      "publishedAt": "2024-06-07"
+    }
+  },
+  {
+    "lane": "培养节点",
+    "provenance": {
+      "origin": "web_search",
+      "sourceTier": "official",
+      "verification": "verified",
+      "reviewedAt": "2026-09-27"
+    },
+    "article": {
+      "id": 981358,
+      "feedTitle": "示例大学研究生院",
+      "title": "[2026年9月1日] 示例大学2026级研究生开学报到",
+      "snippet": "示例大学校历：2026级研究生9月1日报到注册。",
+      "url": "https://example.org/graduate/calendar-2026.html",
+      "publishedAt": "2026-06-01"
+    }
+  },
+  {
+    "lane": "培养节点",
+    "provenance": {
+      "origin": "web_search",
+      "sourceTier": "official",
+      "verification": "verified",
+      "reviewedAt": "2026-09-27"
+    },
+    "article": {
+      "id": 981359,
+      "feedTitle": "示例大学研究生院",
+      "title": "[2026年1月13日-2026年2月16日] 示例大学学生寒假",
+      "snippet": "示例大学校历：学生寒假为1月13日至2月16日。",
+      "url": "https://example.org/graduate/calendar-2026.html",
+      "publishedAt": "2026-06-01"
+    }
+  }
+]

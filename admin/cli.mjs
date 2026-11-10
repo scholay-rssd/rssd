@@ -10,7 +10,7 @@ const [command,...args]=process.argv.slice(2);
 const dbPath=process.env.SCHOLAY_ADMIN_DB||resolve('.admin-local/admin.sqlite');
 if(command==='import') {
   const file=args[0],kind=args[1],token=process.env.SCHOLAY_INGEST_TOKEN,origin=process.env.SCHOLAY_ADMIN_ORIGIN||'https://today.scholay.com';
-  if(!token)throw new Error('Set SCHOLAY_INGEST_TOKEN in your environment');
+  if(!token)throw new Error('SCHOLAY_INGEST_TOKEN is required; run through `rssd-secrets exec --component admin-cli --` or set it in the environment');
   const input=JSON.parse(await readFile(file,'utf8'));
   const items=Array.isArray(input)?input:kind==='openSource'?input.items:input[kind];
   if(!Array.isArray(items))throw new Error('Input must contain selected section array');

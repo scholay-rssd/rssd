@@ -11,7 +11,12 @@ for(const file of ['package.json','package-lock.json'])await cp(join(desktop,'ru
 const queue=['scripts/publishing-flow-cli.mjs','desktop/scripts/note-cards.mjs','scripts/space-registry.mjs','scripts/editorial-workspace.mjs','scripts/website-publication.mjs','desktop/scripts/publication-center.mjs','desktop/scripts/website-publisher.mjs','desktop/scripts/workspace-location.mjs','desktop/scripts/website-connection.mjs','desktop/scripts/space-authorization.mjs','desktop/scripts/labels-cloud.mjs','desktop/scripts/agent/bridge.mjs','desktop/scripts/agent/worker.mjs','desktop/scripts/agent/mcp.mjs','desktop/scripts/runtime/cursor-command.mjs'],seen=new Set();
 // Native entrypoints have no JS import edge for the allowlist walker to find.
 queue.push('desktop/scripts/agent/queue-snapshot.mjs','scripts/publication-queue-recover.mjs');
-queue.push('desktop/scripts/rssd-center.mjs');
+queue.push('desktop/scripts/rssd-center.mjs','desktop/scripts/agent/center-assistant-mcp.mjs','scripts/rssd-multisite-cli.mjs');
+// The source verifier invokes this fixed Python parser by file URL; the JS
+// import walker cannot discover non-JavaScript runtime assets.
+queue.push('scripts/rssd-source-jats-verifier.py','scripts/rssd-pmc-resolver.py','scripts/rssd-jats-bibliography.py');
+// The optional scoped image stage is not yet wired into the production worker.
+queue.push('scripts/rssd-cursor-gallery-image-stage.mjs');
 if(process.env.RSSD_HEADLESS_BUILD==='1')queue.push('desktop/scripts/agent/headless/standalone.mjs');
 while(queue.length){const file=queue.shift();if(seen.has(file))continue;seen.add(file);const text=await readFile(join(root,file),'utf8');await mkdir(dirname(join(out,file)),{recursive:true});await writeFile(join(out,file),text);for(const match of text.matchAll(/(?:from\s*|import\s*\(|require\s*\()\s*['"](\.[^'"]+\.[mc]js)['"]/g)){const relative=resolve(root,dirname(file),match[1]).slice(root.length+1).replaceAll('\\','/');if(!relative.startsWith('scripts/')&&!relative.startsWith('desktop/scripts/')&&!relative.startsWith('admin/')&&!relative.startsWith('web/')&&!relative.startsWith('contracts/'))throw Error('Unexpected runtime import '+relative);queue.push(relative);}}
 await cp(join(desktop,'scripts/agent/vendor/aionui'),join(out,'desktop/scripts/agent/vendor/aionui'),{recursive:true});
@@ -22,6 +27,10 @@ const bundled=join(out,process.platform==='win32'?'node.exe':'node');
 await cp(portable,bundled);
 const license=join(dirname(portable),process.platform==='win32'?'LICENSE':'../LICENSE');
 await cp(license,join(out,'NODE-LICENSE'));
+// The stdio proxy is an executable entrypoint, not a static import edge.
+// Probe the staged file so an omitted proxy fails the build, not a user session.
+const assistantProbe=spawnSync(bundled,[join(out,'desktop/scripts/agent/center-assistant-mcp.mjs')],{encoding:'utf8',env:{...process.env,RSSD_ASSISTANT_BRIDGE:'',RSSD_ASSISTANT_KEY:''}});
+if(assistantProbe.status!==1||!assistantProbe.stderr.includes('Missing assistant host'))throw Error('Packaged assistant MCP proxy is missing or cannot start');
 const probe=spawnSync(bundled,['--version'],{encoding:'utf8'});if(probe.status!==0)throw Error('Packaged Node is not standalone: '+probe.stderr);
 const npm=process.platform==='win32'?join(dirname(process.execPath),'node_modules/npm/bin/npm-cli.js'):process.env.npm_execpath?.endsWith('npm-cli.js')?process.env.npm_execpath:join(dirname(process.execPath),'../lib/node_modules/npm/bin/npm-cli.js');
 // Runtime modules are invoked with the bundled Node executable, never npm's

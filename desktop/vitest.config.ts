@@ -1,11 +1,13 @@
 import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
+import { calendarCorpusPlugin } from "./scripts/calendar-corpus-plugin.mjs";
 
 // Vitest covers the dependency-free, pure logic modules: the browser-extension
 // feed detection (feature F6) and the highlight re-anchoring algorithm
 // (feature F7, `src/lib/anchor.ts`). Both run in a plain node environment —
 // Interaction tests opt into jsdom with a per-file environment directive.
 export default defineConfig({
+  plugins: [calendarCorpusPlugin()],
   server:{fs:{allow:[fileURLToPath(new URL("..",import.meta.url))]}},
   test: {
     include: [

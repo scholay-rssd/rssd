@@ -10,5 +10,5 @@ export function clarityScript(site){
   const project=analytics[site.id];if(!project)return '';
   if(!/^[a-z0-9]+$/.test(project))throw Error('Invalid Clarity project');
   const origin=JSON.stringify(new URL(site.origin).origin).replace(/</g,'\\u003c');
-  return `<script data-site-analytics="${project}">(function(c,l,a,r,i,t,y){if(location.origin!==${origin}||/^\\/(manage|guestbook)(\\/|$)/.test(location.pathname))return;c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y)})(window,document,"clarity","script","${project}");</script>`;
+  return `<script data-site-analytics="${project}">(function(c,l,a,r,i){if(location.origin!==${origin}||/^\\/(manage|guestbook)(\\/|$)/.test(location.pathname))return;function start(){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};var t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;var y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);}function later(){if(c.requestIdleCallback)c.requestIdleCallback(start,{timeout:4000});else c.setTimeout(start,1);}if(l.readyState==="complete")later();else c.addEventListener("load",later,{once:true});})(window,document,"clarity","script","${project}");</script>`;
 }

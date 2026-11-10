@@ -169,3 +169,27 @@ test('structured center projections retain semantic identity across reordered fi
   f.state.receipt.job.status='success';f.state.publishedVersion=2;
   const published=await f.client.status(f.draft.id);assert.equal(published.stage,'published');assert.equal(published.receipt.readbackError,undefined);
 });
+
+test('retired columns retain existing Center manuscript identities but cannot be selected for a new manuscript',async t=>{
+ const f=await manuscript(t),first=await f.client.publish(f.draft.id,{packetSha256:f.prepared.prepared.packetSha256});
+ assert(first);f.state.section='new-formal-column';
+ const base=f.fetcher;
+ const fetcher=async(url,options={})=>{
+  const response=await base(url,options);
+  if(new URL(url).pathname.endsWith('/'+f.state.articleId)){
+   const data=await response.json();return Response.json({...data,workId:'imported-existing-work'});
+  }
+  return response;
+ };
+ const client=createWebsitePublisher({root:f.root,site,centerDirectory:f.directory,fetcher});
+ await client.status(f.draft.id).catch(()=>{});
+ // Settle the original publication receipt before preparing another revision.
+ f.state.receipt.job.status='success';f.state.publishedVersion=1;
+ await client.status(f.draft.id);
+ const local=await client.inspect(f.draft.id);
+ const retained=await client.localAction(f.draft.id,{action:'metadata',expectedSourceSha256:local.sourceSha256,expectedMetadataSha256:local.metadataSha256,metadata:{...local.metadata}});
+ assert.equal(retained.metadata.sectionId,'briefings');
+ const prepared=await client.prepare(f.draft.id,{metadata:f.metadata});assert.equal(prepared.metadata.sectionId,'briefings');
+ f.state.data=null;f.state.version=0;
+ await assert.rejects(client.prepare(f.draft.id,{metadata:f.metadata}),/可写的栏目/);
+});

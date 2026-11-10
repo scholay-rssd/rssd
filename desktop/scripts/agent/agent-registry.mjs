@@ -63,8 +63,12 @@ export class AgentRegistry{
   else if(a.adapter){
    launch=packageCommand(a.adapter,id==='codex'?'codex-acp':'claude-agent-acp');
    if(!launch)throw Error('安装包缺少 '+a.name+' ACP 适配器，请重新安装 Today');
-   if(customCommand&&id==='codex'){const cli=executableCommand(a.command);if(!cli)throw Error('未找到配置的 Codex 可执行文件');if(cli.args.length)throw Error('请指定原生 Codex 可执行文件路径');launch.env={CODEX_PATH:cli.command};}
-  if(customCommand&&id==='claude'){const cli=executableCommand(a.command);if(!cli||cli.args.length)throw Error('请指定原生 Claude Code 可执行文件路径');launch.env={CLAUDE_CODE_EXECUTABLE:cli.command};}
+   if(id==='codex'){
+    const cli=executableCommand(a.command);
+    if(cli){if(cli.args.length)throw Error('请指定原生 Codex 可执行文件路径');launch.env={...launch.env,CODEX_PATH:cli.command};}
+    else if(customCommand)throw Error('未找到配置的 Codex 可执行文件');
+   }
+   if(customCommand&&id==='claude'){const cli=executableCommand(a.command);if(!cli||cli.args.length)throw Error('请指定原生 Claude Code 可执行文件路径');launch.env={CLAUDE_CODE_EXECUTABLE:cli.command};}
   }else launch=executableCommand(a.command,login?a.loginArgs:a.args||[]);
   if(!launch)throw Error('未找到 '+a.name+'，请安装官方 CLI 或在设置中指定路径');
   return {...launch,agent:a};

@@ -100,7 +100,8 @@ export function NavigationIcon({ tab }: { tab: PreviewTab }) {
           demands: "inbox",
           channels: "send",
           assistant: "sparkle",
-        }[tab] as "grid" | "inbox" | "send" | "sparkle"
+          legacy: "folder",
+        }[tab] as "grid" | "inbox" | "send" | "sparkle" | "folder"
       }
       size={18}
     />

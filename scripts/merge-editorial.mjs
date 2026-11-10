@@ -78,10 +78,13 @@ export const applyEditorial=(data,items,yearCategories)=>{
  };
 };
 
-const writeAtomic=(file,text)=>{
- const tmp=file+'.'+process.pid+'.tmp';
+// data.json may be a symlink into a private overlay checkout; replace the
+// target so the link survives.
+export const writeAtomic=(file,text)=>{
+ const target=fs.existsSync(file)?fs.realpathSync(file):file;
+ const tmp=target+'.'+process.pid+'.tmp';
  fs.writeFileSync(tmp,text);
- fs.renameSync(tmp,file);
+ fs.renameSync(tmp,target);
 };
 
 const run=()=>{

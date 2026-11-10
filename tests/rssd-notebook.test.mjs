@@ -19,11 +19,50 @@ test('updates preserve previous notes and signatures even when the agent omits t
  assert.equal(result.metadata.notebook.blockNotes.body.notes.supplement,'Private supplement');
  assert.deepEqual(result.metadata.notebook.modelSignatures,[{agentId:'previous'},{agentId:'actual'}]);
 });
+test('center editions use the requested language for generated reference headings',()=>{
+ const n=notebook();
+ n.sources=[{id:'s',title:'Source',url:'https://example.org/source',summary:'Source evidence',acquiredVia:'web',reviewed:false}];
+ n.blocks[0].sourceIds=['s'];
+ const english=notebookEdition({notebook:n},{locale:'en'}),chinese=notebookEdition({notebook:n},{locale:'zh-CN'});
+ assert.match(english.bodyMarkdown,/### References\n\n1\. \[Source\]\(https:\/\/example\.org\/source\)/);
+ assert.doesNotMatch(english.bodyMarkdown,/参考文献|Private/);
+ assert.match(chinese.bodyMarkdown,/### 参考文献/);
+ assert.equal(english.metadata.notebook.internalNotes.verification,'Private verification');
+ n.blocks[0].text+='\n\n### References\n\n- [Earlier](https://example.org/earlier)';
+ const merged=notebookEdition({notebook:n},{locale:'en'}).bodyMarkdown;
+ assert.equal((merged.match(/### References/g)||[]).length,1);
+ assert.match(merged,/1\. \[Earlier\].*\n\n2\. \[Source\]/s);
+ n.blocks[0].text='Article body\n\n### Notes\n\nOrdinary narrative.';
+ const withNotes=notebookEdition({notebook:n},{locale:'en'}).bodyMarkdown;
+ assert.match(withNotes,/### Notes\n\nOrdinary narrative\.\n\n### References/);
+});
 test('center images use real HTTP references while desktop local image validation is preserved',()=>{
  const n=notebook();n.blocks.push({id:'image',type:'image',state:'ready',text:'https://example.com/image.png',alt:'Fixture',sourceIds:[]});
- assert.match(notebookEdition({notebook:n}).bodyMarkdown,/!\[Fixture\]\(https:/);
+ const publicImage=notebookEdition({notebook:n});
+ assert.match(publicImage.bodyMarkdown,/!\[Fixture\]\(https:/);assert.deepEqual(publicImage.media,[]);
  assert.ok(formatErrors(n).some(e=>e.path==='blocks.1.text'));
  n.blocks[1].text='file:///private/image.png';assert.throws(()=>notebookEdition({notebook:n}),/图片/);
+ const origin='https://center.example',mediaId='media-'+'c'.repeat(48);
+ n.blocks[1].text='https://example.com/image.png';
+ const defaultPath=notebookEdition({notebook:n},{origin});
+ assert.match(defaultPath.bodyMarkdown,/!\[Fixture\]\(https:\/\/example.com\/image.png\)/);
+ n.blocks[1].text='/api/rssd/v1/media/'+mediaId+'/raw';
+ assert.throws(()=>notebookEdition({notebook:n}),/请先导入图片/);
+ const relative=notebookEdition({notebook:n},{origin,workspaceId:'enter'});
+ assert.match(relative.bodyMarkdown,new RegExp(mediaId));
+ assert.equal(relative.media[0].id,mediaId);
+ n.blocks[1].text='https://evil.example/api/rssd/v1/media/'+mediaId+'/raw';
+ assert.throws(()=>notebookEdition({notebook:n},{origin}),/请先导入图片/);
+});
+test('translated notebooks keep authorized center media IDs instead of an empty manifest',()=>{
+ const mediaId='media-'+'b'.repeat(48),url='https://center.example/api/rssd/v1/media/'+mediaId+'/raw';
+ const n=notebook();n.blocks.push({id:'image',type:'image',state:'ready',text:url,alt:'Shared figure',sourceIds:[]});
+ const chinese=notebookEdition({notebook:n},{locale:'zh-CN'});
+ assert.deepEqual(chinese.media,[{id:mediaId,alt:'Shared figure'}]);
+ const englishNotebook=structuredClone(n);englishNotebook.title='English title';englishNotebook.blocks[1].alt='Shared figure';
+ const english=notebookEdition({notebook:englishNotebook},{locale:'en',source:{payload:chinese}});
+ assert.equal(english.media.length,1);assert.equal(english.media[0].id,mediaId);
+ assert.match(english.bodyMarkdown,new RegExp(mediaId));
 });
 test('invalid notebook and uncompleted rows retain the output instead of silently falling back',()=>{
  assert.throws(()=>notebookEdition({title:'Legacy',bodyMarkdown:'Lost notes'}),/notebook v2/);

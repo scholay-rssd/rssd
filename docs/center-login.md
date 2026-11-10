@@ -39,6 +39,8 @@ rssd center work --agent codex --workspace example --once --resume
 rssd center recover
 ```
 
+已有中文作品的英文补译：默认 `enqueue-translate` 在栏目含 en 目标时仍可能创建发布任务。若只要中心存英、不发、且禁止其他设备抢领，须中心已部署 [rssd-center PR 10](https://github.com/scholay-rssd/rssd-center/pull/10) 的 `f38d8e6b`，overview `contracts.storeOnlyTranslate` 为整数 `version >= 1` 且十一项 guarantees 齐全（含 `receiptIsolation` / `openWorkFence`），再按 [store-en](rssd-store-only-translate.md) 对单个 `workId` 执行 `store-en`，然后 `center work --agent <本机 Agent Registry 标识> --workspace <id> --id <demandId> --once --store-only`。中心 CI 通过不等于已上线。`1db773af` 的九项包必须拒绝。不要对 `enqueue-translate` 加 `--store-only`。不要新建中文作品，也不要用 `cloud-sync`、`rssd produce` 或 `SCHOLAY_CLOUD_EXECUTOR` 冒充启动。本云验收 VM 缺 CLI 只说明该 VM；共享电脑已有的 Codex/Cursor CLI 不由本仓库自动调用。
+
 恢复时使用原认领和原请求，不另建稿件或重新发布。已失效的认领不能继续提交，必须先处理它的恢复或释放状态。
 
 Linux 设备状态位于独立的私有认证目录，可通过 `RSSD_CENTER_HOME` 指定；新建目录权限为 `0700`，凭据文件为 `0600`。安装和更新运行时不会替换设备状态。不要把这个目录放入源码、公开发布目录或共享日志中。

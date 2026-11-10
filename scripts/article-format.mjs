@@ -35,7 +35,13 @@ md.renderer.rules.image=(tokens,i,options,env,self)=>{
     if(typeof replacement!=='string'||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(replacement))return '<span class="muted">[图片无法预览]</span>';
     tokens[i].attrSet('src',replacement);
   }else if(!/^https?:\/\//i.test(src)&&!/^\/article-media\/[a-f0-9]{64}\.(png|jpg|webp)$/.test(src))return '<span class="muted">[图片未打包]</span>';
-  tokens[i].attrSet('loading','lazy');tokens[i].attrSet('decoding','async');
+  const size=env.imageSizes?.get(src);
+  if(size){tokens[i].attrSet('width',String(size.width));tokens[i].attrSet('height',String(size.height));}
+  // The first picture is usually the largest paint. Later pictures stay lazy.
+  env.imageOrdinal=(env.imageOrdinal||0)+1;
+  tokens[i].attrSet('decoding','async');
+  if(env.imageOrdinal===1)tokens[i].attrSet('fetchpriority','high');
+  else tokens[i].attrSet('loading','lazy');
   return originalImage(tokens,i,options,env,self);
 };
 // Older publications stored selected brand notes as plain final paragraphs.
@@ -75,7 +81,7 @@ md.core.ruler.push('article_captions',state=>{
     const image=t[i-2]?.children?.filter(x=>x.type!=='text'||x.content.trim());
     if(image?.length!==1||image[0].type!=='image')continue;
     const label=(t[i+1].children||[]).filter(x=>x.type==='text'||x.type==='code_inline').map(x=>x.content).join('').trim();
-    if(/^(?:图(?:注|片|像|[｜|：:]|\s*\d)|图片来源|来源[：:]|Figure\s*\d|Photo[：:]|AI\s*生成)/i.test(label)||/(?:图[：:]|图片来源[：:]|摄影[：:]|\bCC BY(?:-SA)?\b|AI\s*(?:生成|辅助)|示意图)/i.test(label))t[i].attrSet('class','article-caption');
+    if(/^(?:图(?:注|示|片|像|[｜|：:]|\s*\d)|图片来源|来源[：:]|Figure\s*\d|Photo[：:]|AI\s*生成)/i.test(label)||/(?:图[：:]|图片来源[：:]|摄影[：:]|\bCC BY(?:-SA)?\b|AI\s*(?:生成|辅助)|示意图)/i.test(label))t[i].attrSet('class','article-caption');
   }
 });
 // Presentation only: the stored manuscript and selected brand snapshots remain
@@ -118,9 +124,48 @@ const articlePresentation=(markdown,options)=>{
   }
   return {text:lines.slice(0,start).join('\n')+(start?'\n':'')+prefix+lines.slice(listStart).join('\n'),start};
 };
-const renderArticle=(markdown,options={})=>md.render(articlePresentation(markdown,options).text,{imageSources:options.imageSources,articleUrl:options.articleUrl});
+// Resolve citations from the authored bibliography, never from arbitrary body
+// links. Pass the same index to split body/endnote renders. Code and references
+// remain literal; all generated markup is renderer-owned (raw HTML stays off).
+const citationIndex=text=>{
+ const tokens=md.parse(text,{}),urls=new Map(),numbers=new Map();let refs=false,number=0;
+ for(let i=0;i<tokens.length;i++){
+  const t=tokens[i];
+  if(t.type==='heading_open'&&t.level===0)refs=/^(参考文献|参考资料|References)$/i.test(tokens[i+1]?.content||'');
+  if(!refs)continue;
+  if(t.type==='ordered_list_open'&&t.level===0)number=Number(t.attrGet('start')||1)-1;
+  if(t.type==='list_item_open'&&t.level===1){number++;numbers.set(number,null);}
+  if(t.type==='inline')for(const child of t.children||[])if(child.type==='link_open'&&number){const url=child.attrGet('href');if(!urls.has(url))urls.set(url,number);if(!numbers.get(number))numbers.set(number,url);}
+ }
+ return {urls,numbers};
+};
+md.core.ruler.push('article_citations',state=>{
+ const index=state.env.citations;if(!index)return;
+ let refs=false;
+ const marker=(number,url)=>{
+  const token=(type,tag,nesting,content)=>{const t=new state.Token(type,tag,nesting);if(content)t.content=content;return t;};
+  const open=token('sup_open','sup',1);open.attrSet('class','article-citation');
+  const result=[open];if(url){const link=token('link_open','a',1);link.attrSet('href',url);link.attrSet('aria-label','参考文献 '+number);result.push(link);}
+  result.push(token('text','',0,'['+number+']'));if(url)result.push(token('link_close','a',-1));result.push(token('sup_close','sup',-1));return result;
+ };
+ for(let i=0;i<state.tokens.length;i++){
+  const t=state.tokens[i];
+  if(t.type==='heading_open'&&t.level===0)refs=/^(参考文献|参考资料|来源|附注|品牌与发布说明|References)$/i.test(state.tokens[i+1]?.content||'');
+  if(refs||t.type!=='inline')continue;
+  const result=[],children=t.children||[];let linked=false;
+  for(let j=0;j<children.length;j++){
+   const child=children[j],url=child.type==='link_open'&&child.attrGet('href'),number=index.urls.get(url);
+   if(number){let end=j+1;while(end<children.length&&children[end].type!=='link_close')end++;if(end<children.length){result.push(...children.slice(j+1,end),...marker(number,url));j=end;continue;}}
+   if(child.type==='link_open')linked=true;
+   if(child.type==='text'&&!linked){let offset=0;for(const m of child.content.matchAll(/\[(\d+)\]/g)){const n=Number(m[1]);if(!index.numbers.has(n))continue;const text=new state.Token('text','',0);text.content=child.content.slice(offset,m.index);result.push(text,...marker(n,index.numbers.get(n)));offset=m.index+m[0].length;}if(offset){const text=new state.Token('text','',0);text.content=child.content.slice(offset);result.push(text);continue;}}
+   result.push(child);if(child.type==='link_close')linked=false;
+  }
+  t.children=result;
+ }
+});
+const renderArticle=(markdown,options={})=>{const {text}=articlePresentation(markdown,options);return md.render(text,{imageSources:options.imageSources,imageSizes:options.imageSizes,articleUrl:options.articleUrl,citations:citationIndex(text)});};
 const renderArticleParts=(markdown,options={})=>{
-  const {text,start}=articlePresentation(markdown,options),env={imageSources:options.imageSources};
+  const {text,start}=articlePresentation(markdown,options),env={imageSources:options.imageSources,imageSizes:options.imageSizes,citations:citationIndex(text)};
   if(start===null)return {body:md.render(text,env),endnotes:''};
   const lines=text.split('\n');
   return {body:md.render(lines.slice(0,start).join('\n'),env),endnotes:md.render(lines.slice(start).join('\n'),env)};

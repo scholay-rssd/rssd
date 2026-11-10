@@ -4,7 +4,8 @@ export type PreviewTab =
   | "demands"
   | "calendar"
   | "channels"
-  | "assistant";
+  | "assistant"
+  | "legacy";
 export type DemandState = "queued" | "claimed" | "completed" | "blocked";
 export interface PreviewSpace {
   id: string;
@@ -39,9 +40,10 @@ export interface PreviewPublication {
   locale: string;
   date: string;
   time: string;
-  state: "planned" | "scheduled" | "published" | "blocked";
+  state: "planned" | "ready" | "scheduled" | "published" | "blocked";
 }
 export interface PreviewData {
+  demandCounts?: Array<{workspaceId:string;state:string;count:number}>;
   spaces: PreviewSpace[];
   demands: PreviewDemand[];
   publications: PreviewPublication[];
@@ -65,6 +67,7 @@ export const demandLabels: Record<DemandState, string> = {
 };
 export const publicationLabels = {
   planned: "待生产",
+  ready: "成品就绪",
   scheduled: "已排期",
   published: "已发布",
   blocked: "待处理",

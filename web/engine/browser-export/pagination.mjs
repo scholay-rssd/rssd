@@ -1,9 +1,9 @@
+import {articleHeading} from './article-style.mjs';
 import {templateStyles} from './styles.mjs';
 const tick=()=>new Promise(resolve=>requestAnimationFrame(resolve));
 export function fullArticle(doc,model){
  const host=doc.createElement('div');host.className='rssd-body';
- const title=doc.createElement('h1');title.textContent=model.title;host.append(title);
- const byline=doc.createElement('p');byline.className='rssd-byline';byline.textContent=[model.site.name,model.sectionName,model.author,model.date].filter(Boolean).join(' · ');host.append(byline);
+ host.innerHTML=articleHeading(model);
  const body=doc.createElement('div');body.innerHTML=model.html;
  // The build emits HTML from the Markdown renderer with raw HTML disabled.
  // Drop active elements defensively even if a public JSON file is replaced.

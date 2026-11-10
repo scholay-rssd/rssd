@@ -3,6 +3,7 @@ import {mkdirSync} from 'node:fs';
 import {dirname} from 'node:path';
 import p from '../contracts/rssd-v1.cjs';
 import {publication,contentKey,operation,visible} from '../contracts/rssd-publication.cjs';
+import {preflightAcademicNews} from './academic-preflight.mjs';
 
 export class ReceiverStore {
   constructor(file,site) {
@@ -62,6 +63,7 @@ export class ReceiverStore {
     return this.transaction(()=>{
       const old=this.db.prepare('SELECT hash FROM requests WHERE id=?').get(value.requestId);
       if(old){if(old.hash!==hash)p.fail('Request identity reused',409,'request_conflict');return this.receipt(value.requestId);}
+      preflightAcademicNews(value,this.site);
       const head=this.db.prepare('SELECT * FROM heads WHERE work_key=?').get(key);
       const action=operation(value),sequence=(head?.operation_sequence||0)+1;
       if(action==='publish'){

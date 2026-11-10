@@ -2,19 +2,19 @@
 import {act,createElement} from 'react';
 import {createRoot,type Root} from 'react-dom/client';
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
-import CenterWorkspace from './CenterWorkspace';
+import CenterWorkspace,{LegacyCenter} from './CenterWorkspace';
 import {invoke} from '../lib/nativeCore';
 import {openUrl} from '@tauri-apps/plugin-opener';
 vi.mock('../lib/nativeCore',()=>({invoke:vi.fn()}));
 vi.mock('@tauri-apps/plugin-opener',()=>({openUrl:vi.fn(async()=>{})}));
-vi.mock('../uiText',()=>({tr:(s:string)=>s}));
+vi.mock('../uiText',()=>({tr:(s:string)=>s,uiLocale:()=>'zh-CN'}));
 let host:HTMLDivElement,root:Root;
 const edition={locale:'zh-CN',revision:2,payload:{locale:'zh-CN',title:'原稿',bodyMarkdown:'原正文'}};
 const work={id:'work-one',workspaceId:'first',sectionId:'news',editions:[edition]};
 const deferred=()=>{let resolve!:(value:any)=>void;const promise=new Promise<any>(done=>{resolve=done;});return {promise,resolve};};
 const button=(text:string)=>[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent===text)!;
 const click=async(text:string)=>{await act(async()=>button(text).click());};
-const mount=async()=>{await act(async()=>root.render(createElement(CenterWorkspace,{active:true})));};
+const mount=async()=>{await act(async()=>root.render(createElement(LegacyCenter,{active:true})));};
 const calls=(method:string)=>vi.mocked(invoke).mock.calls.filter(([,args])=>(args as any)?.method===method);
 beforeEach(()=>{
  vi.mocked(openUrl).mockClear();
@@ -45,19 +45,73 @@ it('opens scoped management in the browser without using worker credentials for 
  expect(host.querySelector('textarea')?.value).toBe('待保存的修改');
 });
 
-it('enters the isolated preview only after saving the current local draft',async()=>{
- await mount();await click('作品库');await click('原稿');
- const saved=deferred(),fallback=vi.mocked(invoke).getMockImplementation()!;
- vi.mocked(invoke).mockImplementation((command,args:any)=>args.method==='save_local'?saved.promise:fallback(command,args));
- await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.startsWith('预览新版调度界面'))!.click());
- expect(host.querySelector('.center-preview')).toBeNull();
- await act(async()=>saved.resolve({}));
+it('opens on the scheduling shell with task counts and keeps an open manuscript across its tabs',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>{
+  if(args.method==='overview')return {workspaces:[{id:'first',name:'第一站',sections:[{id:'news',name:'新闻'}]}],goals:[],counts:[{workspaceId:'first',state:'queued',count:12},{workspaceId:'first',state:'claimed',count:3},{workspaceId:'first',state:'cancelled',count:9}]};
+  if(args.method==='calendar')return {items:[],hasNext:false};
+  if(args.method==='channels')return {destinations:[],channels:[]};
+  return fallback(command,args);
+ });
+ await act(async()=>root.render(createElement(CenterWorkspace,{active:true})));
  expect(host.querySelector('.center-preview')).not.toBeNull();
+ expect(host.querySelector('.cp-metrics')?.textContent).toContain('待领取12');expect(host.querySelector('.cp-metrics')?.textContent).toContain('进行中3');
+ expect(host.querySelector('.cp-counts')).toBeNull();
+ expect(calls('registry')).toHaveLength(0);
+ await click('作品与本机执行');await click('作品库');await click('原稿');
+ const textarea=host.querySelector<HTMLTextAreaElement>('textarea')!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(textarea,'待保存的修改');textarea.dispatchEvent(new Event('input',{bubbles:true}));});
+ await click('发布日历');
+ expect(host.querySelector('.cp-counts')?.textContent).toBe('待领取12进行中3待处理0已交稿0全部任务15');
+ expect((calls('save_local').at(-1)?.[1] as any).params.body).toBe('待保存的修改');
  expect(calls('submit')).toHaveLength(0);expect(calls('start')).toHaveLength(0);
- await act(async()=>[...host.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.startsWith('返回当前中心'))!.click());
- expect(host.querySelector('textarea')?.value).toBe('原正文');
+ await click('作品与本机执行');
+ expect(host.querySelector('textarea')?.value).toBe('待保存的修改');
 });
 afterEach(async()=>{await act(async()=>root.unmount());host.remove();vi.unstubAllGlobals();});
+
+it('enables automatic topics only when the user opts into the methods pilot',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>{
+  if(args.method==='registry')return {workspaces:[{id:'metho',name:'研究方法',sections:[{id:'methods',name:'方法百科'},{id:'statistics',name:'统计'}]}]};
+  if(args.method==='status')return {configured:true,origin:'https://center.example.org',agents:[{id:'codex',name:'Codex',enabled:true,available:true}],outbox:[],drafts:[]};
+  return fallback(command,args);
+ });
+ await mount();
+ const checkbox=host.querySelector<HTMLInputElement>('.rssd-center-controls input[type=checkbox]')!;
+ expect(checkbox.checked).toBe(false);expect(checkbox.disabled).toBe(true);
+ const section=host.querySelector<HTMLSelectElement>('.rssd-center-controls select')!;
+ await act(async()=>{section.value='methods';section.dispatchEvent(new Event('change',{bubbles:true}));});
+ expect(checkbox.disabled).toBe(false);
+ await act(async()=>checkbox.click());
+ expect(host.textContent).toContain('完成的文章会按该栏目已绑定的目标自动发布');
+ await click('开启工作模式');
+ expect((calls('start').at(-1)?.[1] as any).params).toMatchObject({agentId:'codex',workspaceIds:['metho'],sectionIds:['methods'],autoTopics:true});
+});
+
+it('shows a running worker’s actual automatic-topic setting after reopening the view',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>args.method==='status'?{configured:true,origin:'https://center.example.org',agents:[],outbox:[],drafts:[],worker:{state:'idle',autoTopics:true}}:fallback(command,args));
+ await mount();
+ const checkbox=host.querySelector<HTMLInputElement>('.rssd-center-controls input[type=checkbox]')!;
+ expect(checkbox.disabled).toBe(true);expect(checkbox.checked).toBe(true);
+ expect(host.textContent).toContain('完成的文章会按该栏目已绑定的目标自动发布');
+});
+
+it('starts the multi-site scheduler only when its private configuration is enabled',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>args.method==='status'?{configured:true,multisiteConfigured:true,origin:'https://center.example.org',agents:[],outbox:[],drafts:[]}:fallback(command,args));
+ await mount();await click('开启多站排程');
+ expect(calls('start_multisite')).toHaveLength(1);
+ expect((calls('start_multisite')[0][1] as any).params).toEqual({});
+});
+
+it('shows the prepared reference revision and submits through the native bridge',async()=>{
+ const fallback=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command,args:any)=>args.method==='status'?{configured:true,origin:'https://center.example.org',agents:[],outbox:[],drafts:[],preparedReference:{workId:'work-one',workspaceId:'first',title:'测试稿',locale:'zh-CN',baseRevision:1}}:args.method==='submit_prepared_revision'?{state:'accepted'}:fallback(command,args));
+ await mount();expect(host.textContent).toContain('待提交的本机参考文献修订：');expect(host.textContent).toContain('测试稿');
+ await click('提交参考文献修订');expect(calls('submit_prepared_revision')).toHaveLength(1);expect(host.textContent).toContain('中心已接收，发布结果请查看发布记录。');
+});
 
 it('never renders demand rows as works and ignores a late response from the prior tab',async()=>{
  const demand=deferred(),works=deferred(),fallback=vi.mocked(invoke).getMockImplementation()!;

@@ -1,23 +1,15 @@
 import {ARTICLE_WRITING_INSTRUCTIONS,ARTICLE_WRITING_PRIORITY} from '../../../contracts/article-writing-policy.mjs';
 import {canonicalArticleEndnotes} from '../../../scripts/article-endnotes.mjs';
+import MarkdownIt from 'markdown-it';
+import {cleanNotebookCitations,cleanCitationUrl} from '../../../scripts/clean-citation-urls.mjs';
 import {ACTIVE_SITE,onActiveSiteChange} from '../../../scripts/site-profile.mjs';
 import {GUOXUE_WRITING_SKILLS,GUOXUE_SCOPE,isGuoxueSite} from './guoxue-domain.mjs';
+import {DEFAULT_WRITING_SKILLS} from './content-modes.mjs';
 import {headingLabels,headingFormatErrors,assertHeadingOwnership,HEADING_INSTRUCTIONS} from './notebook-headings.mjs';
 import {formatErrors,upgradeNotebook,assertAgentScope} from './notebook-model.mjs';
 import {recordHeadings} from '../../../scripts/editorial-record.mjs';
 export {NOTEBOOK_VERSION,upgradeNotebook,stampNotebook,notebookGroups,formatErrors,notebookPromptScope} from './notebook-model.mjs';
 // Shared, serializable article board. Working notes never become indexed manuscripts implicitly.
-const DEFAULT_WRITING_SKILLS={
- xiwen:{name:'资讯汇编',hint:'组织多条独立资讯，去重并保留每条原始出处。'},
- observation:{name:'事件报道',hint:'写清核心事件、时间、行动者与背景，事实保留原始出处。'},
- opensource:{name:'资源介绍',hint:'核对官方项目、版本、许可证与能力边界，未实测不能声称实测。'},
- calendar:{name:'通知公告',hint:'核对公告日期、活动日期、截止时间与年度重复规则。'},
- history:{name:'历史事件',hint:'核对实际发生年月日及史料，保留日期精度。'},
- documentation:{name:'技术文档',hint:'说明适用版本、前置条件、操作步骤、示例和验证结果。命令示例不等于已执行。'},
- design:{name:'设计案例',hint:'说明项目背景、设计意图、过程和图注，区分作者作品与参考作品。'},
- essay:{name:'个人写作',hint:'尊重作者的经历和观点，不编造个人体验；无需强行套用新闻结构。'},
- encyclopedia:{name:'百科条目',hint:'定义对象、分类、特征、可靠来源与适用边界；萌宠健康内容不作个体诊断。'},
-};
 export let WRITING_SKILLS=isGuoxueSite(ACTIVE_SITE)?GUOXUE_WRITING_SKILLS:DEFAULT_WRITING_SKILLS;
 export let WRITING_TYPES={...WRITING_SKILLS,unskilled:{name:'未挂载技能',hint:'由作者自由编写，尚未挂载写作技能。'}};
 onActiveSiteChange(()=>{WRITING_SKILLS=isGuoxueSite(ACTIVE_SITE)?GUOXUE_WRITING_SKILLS:DEFAULT_WRITING_SKILLS;WRITING_TYPES={...WRITING_SKILLS,unskilled:WRITING_TYPES.unskilled};});
@@ -66,8 +58,8 @@ export function validateNotebook(input,prior,{agent=false,scope}={}){
  }
  return n;
 }
-export function notebookMarkdown(input,{site=ACTIVE_SITE}={}){
- const n=upgradeNotebook(input),labels=headingLabels(n.blocks),ready=n.blocks.filter(b=>b.state==='ready'),endnotes=ready.filter(b=>b.type==='annotation'&&b.role==='endnote');
+export function notebookMarkdown(input,{site=ACTIVE_SITE,locale='zh-CN'}={}){
+ const n=cleanNotebookCitations(upgradeNotebook(input)),labels=headingLabels(n.blocks),ready=n.blocks.filter(b=>b.state==='ready'),endnotes=ready.filter(b=>b.type==='annotation'&&b.role==='endnote');
  const blocks=ready.filter(b=>!endnotes.includes(b)).map(b=>{
   if(b.type==='heading'){const label=labels[b.id];const protocol=new Set(recordHeadings(n.kind));const extra=n.kind!=='article'&&b.level===2&&!protocol.has(b.text)&&!protocol.has(label);return '#'.repeat(extra?3:b.level)+' '+(['fixed','source'].includes(b.heading?.mode)&&!b.locked?label.replace(/[\\`*_{}\[\]<>]/g,'\\$&').replace(/\r?\n/g,' '):label);}
   if(b.type==='image')return '!['+(b.alt||'').replace(/[\[\]\n]/g,'')+']('+b.text+')';
@@ -76,7 +68,14 @@ export function notebookMarkdown(input,{site=ACTIVE_SITE}={}){
  });
  let result='# '+n.title.trim()+'\n\n'+blocks.join('\n\n').trim()+'\n';
  const used=new Set(n.blocks.filter(b=>b.state==='ready').flatMap(b=>b.sourceIds));
- const refs=n.sources.filter(s=>used.has(s.id)&&![result,...endnotes.map(b=>b.text)].some(text=>text.includes(s.url)));
+ // A link in prose is not a bibliography entry. Deduplicate only against
+ // links already under a reference heading or in an endnote (endnotes are
+ // rendered into the closing reference lists), then append all used sources.
+ const parser=new MarkdownIt({html:false,linkify:true}),listed=new Set();
+ const collect=(text,inReferences)=>{const tokens=parser.parse(text,{});let references=inReferences,level=0;
+  for(let i=0;i<tokens.length;i++){const token=tokens[i];if(!inReferences&&token.type==='heading_open'){const next=Number(token.tag.slice(1));if(references&&next<=level)references=false;const heading=(tokens[i+1]?.content||'').trim().toLowerCase();if(['参考文献','参考资料','来源','资料来源','references','sources'].includes(heading)){references=true;level=next;}}if(references&&token.type==='inline')for(const child of token.children||[])if(child.type==='link_open'){const href=child.attrGet('href');if(href)listed.add(cleanCitationUrl(href).replace(/\/$/,''));}}};
+ collect(result,false);for(const b of endnotes)collect(b.text,true);
+ const refs=n.sources.filter(s=>used.has(s.id)&&!listed.has(cleanCitationUrl(s.url).replace(/\/$/,'')));
  if(refs.length)result+='\n### 来源\n\n'+refs.map(s=>'- ['+s.title.replace(/[\[\]\n]/g,'')+']('+s.url+')').join('\n')+'\n';
  // Formatting is deterministic and never edits the selected, possibly locked,
  // brand snapshot. Only explicitly inserted notes are exported, never mounts.
@@ -87,7 +86,7 @@ export function notebookMarkdown(input,{site=ACTIVE_SITE}={}){
   const prefix=(i+1)+'. ';
   return prefix+b.text.trim().replace(/\r?\n/g,'\n'+' '.repeat(prefix.length));
  }).join('\n\n')+'\n';
- return canonicalArticleEndnotes(result,{site});
+ return canonicalArticleEndnotes(result,{site,locale});
 }
 export function notebookInstructions(t){
  const n=upgradeNotebook(t.notebook),scope=t.runtime?.notebookAction;

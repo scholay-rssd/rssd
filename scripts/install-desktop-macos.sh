@@ -10,6 +10,22 @@ if pgrep -x papr-desktop >/dev/null; then
   echo '请先退出 RSSD，再运行 npm run desktop:release。' >&2
   exit 1
 fi
+# A private deployment overlay pins the public commit installed builds come
+# from. RSSD_ALLOW_UNPINNED=1 installs a local development build anyway and
+# records it as unpinned in the installation receipt.
+pinned=none
+if [[ -f deploy/drift.mjs ]]; then
+  if node deploy/drift.mjs; then
+    pinned=yes
+  elif [[ "${RSSD_ALLOW_UNPINNED:-}" == 1 ]]; then
+    pinned=no
+    echo 'RSSD_ALLOW_UNPINNED=1: installing an unpinned development build.' >&2
+  else
+    echo 'Refusing to install: merge the change publicly and move the pin, or set RSSD_ALLOW_UNPINNED=1 for a development build.' >&2
+    exit 1
+  fi
+fi
+export RSSD_RELEASE_PINNED="$pinned"
 bundle="$PWD/desktop/target/release/bundle/macos/RSSD.app"
 destination='/Applications/RSSD.app'
 legacy_paths=('/Applications/today.app' '/Applications/scholay today.app')
@@ -110,13 +126,14 @@ for legacy in "${legacy_paths[@]}"; do
 done
 python3 - "$destination" "$maintenance/current-desktop.json" "$backup" <<'PY'
 from pathlib import Path
-import datetime, hashlib, json, plistlib, subprocess, sys
+import datetime, hashlib, json, os, plistlib, subprocess, sys
 bundle=Path(sys.argv[1])
 with (bundle/'Contents/Info.plist').open('rb') as f: info=plistlib.load(f)
 assert info['CFBundleIdentifier']=='com.thomas.papr'
 receipt={'installedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),
     'sourceCommit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
     'sourceRoot':str(Path.cwd()),'installedBundle':str(bundle),
+    'publicPin':{'yes':'pinned','no':'unpinned development build','none':'no deployment overlay'}[os.environ['RSSD_RELEASE_PINNED']],
     'version':info['CFBundleShortVersionString'],'backup':sys.argv[3],
     'codeSigning':json.loads(Path(sys.argv[3],'signing.json').read_text()),
     'binarySha256':hashlib.sha256((bundle/'Contents/MacOS/papr-desktop').read_bytes()).hexdigest()}

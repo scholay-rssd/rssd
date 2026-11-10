@@ -6,6 +6,35 @@ on:
 permissions:
   contents: read
 jobs:
+  public-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: No private overlays, data, receipts or credentials
+        run: node scripts/check-public-boundary.mjs
+  secrets-schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: scholay-rssd/rssd-secrets
+          path: .local/rssd-secrets
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Every secret read is declared in rssd-secrets
+        run: node .local/rssd-secrets/scripts/coverage.mjs .
   public-build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -22,8 +51,10 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix desktop/runtime --no-audit --no-fund
       - run: npm run check
       - run: npm test
+      - run: python3 -m unittest discover -s tests -p 'test_*.py'
       - run: npm run demo:build
       - run: npm run desktop:install
       - run: npm run desktop:check
