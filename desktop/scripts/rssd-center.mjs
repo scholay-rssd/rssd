@@ -13,6 +13,8 @@ import {assistantLocal,runCenterAssistant} from './agent/center-assistant.mjs';
 import {readConfiguredLabels} from './runtime/labels-source.mjs';
 import {assertAutomaticTopicScope,automaticTopicTick} from './rssd-topic-auto.mjs';
 import {preparedReferencePreview,submitPreparedReferenceRevision} from '../../scripts/rssd-prepared-reference-revision.mjs';
+import {completeStoredEdition} from '../../scripts/rssd-device-media.mjs';
+import {enqueueStoreOnlyTranslate,enqueueTranslateContinuation,requireStoreOnlyContract,storeOnlyClaimBody} from '../../scripts/rssd-translate-continuation.mjs';
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw e;}};
 
 export async function centerDesktopCall(method,params={},home=centerHome()){
@@ -99,10 +101,27 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
     if(result?.id!==input.id||result.workspaceId!==input.workspaceId||result.sectionId!==input.sectionId||protocol.canonical(result.payload)!==protocol.canonical(input))throw Error('选题回执与原请求不符，请按原 ID 核对');
     return {id:input.id,workspaceId:input.workspaceId,sectionId:input.sectionId,title:input.title,state:result.state,payload:input};
   }
+  if(method==='enqueue_translate'){
+    if(params?.storeOnly)throw Error('enqueue_translate may publish; use store_en for store-only English');
+    const allowed=new Set(['workId','revision']);
+    if(!params||typeof params!=='object'||Array.isArray(params)||Object.keys(params).some(key=>!allowed.has(key)))throw Error('补译参数无效');
+    return enqueueTranslateContinuation({client,workId:params.workId,revision:params.revision});
+  }
+  if(method==='store_en'){
+    const allowed=new Set(['workId','revision']);
+    if(!params||typeof params!=='object'||Array.isArray(params)||Object.keys(params).some(key=>!allowed.has(key)))throw Error('store-en 参数无效');
+    return enqueueStoreOnlyTranslate({client,workId:params.workId,revision:params.revision});
+  }
   if(method==='works')return client.works({workspaceId:params.workspaceId,search:params.search,limit:params.limit,offset:params.offset});
   if(method==='work')return client.work(params.workId);
   if(method==='publications')return client.publications({workspaceId:params.workspaceId,limit:params.limit,offset:params.offset});
-  if(method==='claim')return client.claim({workspaceIds:[params.workspaceId],sectionIds:params.sectionId?[params.sectionId]:[],demandId:params.demandId});
+  if(method==='claim'){
+    if(params.storeOnly===true){
+      await requireStoreOnlyContract(client);
+      return client.claim(storeOnlyClaimBody({workspaceIds:params.workspaceId?[params.workspaceId]:[],sectionIds:params.sectionId?[params.sectionId]:[],demandId:params.demandId}));
+    }
+    return client.claim({workspaceIds:[params.workspaceId],sectionIds:params.sectionId?[params.sectionId]:[],demandId:params.demandId});
+  }
   if(method==='release'){
     await centerDesktopCall('prepare_update',{},home);const active=await read(join(home,'active-claim.json'));
     if(!active?.claim)throw Error('本机没有待释放的认领');
@@ -111,8 +130,18 @@ export async function centerDesktopCall(method,params={},home=centerHome()){
     if(current)await client.changeDemand(current.id,{action:'release',claimToken:current.claimToken});
     await writeCenterJson(join(home,'active-claim.json'),{origin:client.origin,claim:null});return {released:true};
   }
-  if(method==='submit'){const entry=await outbox.enqueue(params.packet);return outbox.flushOne(entry.requestId);}
+  if(method==='submit'){
+    const storeOnly=params.storeOnly===true;
+    if(storeOnly)await requireStoreOnlyContract(client);
+    const packet=await completeStoredEdition({packet:params.packet,home,directory:home,client});
+    const entry=await outbox.enqueue(packet,{storeOnly});return outbox.flushOne(entry.requestId);
+  }
   if(method==='recover')return params.requestId?outbox.flushOne(params.requestId,{retry:true}):outbox.flush();
+  if(method==='retry_website'){
+    protocol.id(params.workspaceId,'workspaceId');protocol.id(params.requestKey,'requestKey');protocol.id(params.jobId,'jobId');
+    if(Array.isArray(identity.workspaceIds)&&!identity.workspaceIds.includes(params.workspaceId))throw Error('Workspace access denied');
+    return client.editorialRetry(params.workspaceId,params.requestKey,{jobId:params.jobId});
+  }
   throw Error('Unknown center operation');
 }
 export async function runDesktopWorker(params,{home=centerHome(),producer=produceCenterEdition,topicTick=automaticTopicTick,turn=runProductionTurn,connect=loadCenterConnection,retryDelaysMs=[5000,15000,30000],idleRetryCapMs=300000,pause=ms=>new Promise(r=>setTimeout(r,ms))}={}){

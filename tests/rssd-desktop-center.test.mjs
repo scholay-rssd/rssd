@@ -106,3 +106,53 @@ test('the demand bridge does not retry an uncertain POST and preserves its origi
   await assert.rejects(centerDesktopCall('create_demand',input,home),{code:'network_error'});
   assert.equal(posts,1);assert.equal(receivedId,input.id);
 });
+
+test('website retry uses the workspace editorial path and never the owner publication retry',async t=>{
+  const home=await mkdtemp(join(tmpdir(),'rssd-desktop-retry-'));
+  t.after(()=>rm(home,{recursive:true,force:true}));
+  const received=[];
+  const server=createServer(async(request,response)=>{
+    received.push({method:request.method,path:request.url});
+    response.setHeader('Content-Type','application/json');
+    response.end(JSON.stringify({queued:true,centerManaged:true}));
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  await writeCenterJson(join(home,'connection.json'),{origin:'http://127.0.0.1:'+server.address().port,token:'rssd_device_'+'a'.repeat(48),identity:{orgId:'example',workspaceIds:['pets']}});
+  const result=await centerDesktopCall('retry_website',{workspaceId:'pets',requestKey:'editorial-request-one',jobId:'job-one'},home);
+  assert.deepEqual(result,{queued:true,centerManaged:true});
+  assert.deepEqual(received,[{method:'POST',path:'/api/rssd/v1/editorial/pets/requests/editorial-request-one/retry'}]);
+  await assert.rejects(centerDesktopCall('retry_website',{workspaceId:'other',requestKey:'editorial-request-one',jobId:'job-one'},home),/Workspace access denied/);
+  assert.equal(received.length,1);
+});
+
+test('desktop submit fills omitted media manifests from body-referenced center assets',async t=>{
+  const home=await mkdtemp(join(tmpdir(),'rssd-desktop-submit-media-'));
+  t.after(()=>rm(home,{recursive:true,force:true}));
+  const mediaId='media-'+'c'.repeat(48);let submitted=null;
+  const server=createServer(async(request,response)=>{
+    const url=new URL(request.url,'http://127.0.0.1');
+    response.setHeader('Content-Type','application/json');
+    if(request.method==='GET'&&url.pathname==='/api/rssd/v1/media/'+mediaId){
+      response.end(JSON.stringify({id:mediaId,workspaceId:'pets',manifest:{sha256:'a'.repeat(64)}}));return;
+    }
+    if(request.method==='GET'&&url.pathname.startsWith('/api/rssd/v1/submissions/')){
+      response.statusCode=404;response.end(JSON.stringify({message:'Not found',code:'not_found'}));return;
+    }
+    if(request.method==='POST'&&url.pathname==='/api/rssd/v1/submissions'){
+      let body='';for await(const chunk of request)body+=chunk;
+      submitted=JSON.parse(body);
+      response.end(JSON.stringify({status:'accepted',requestId:submitted.requestId,workId:submitted.workId,workspaceId:submitted.workspaceId,editions:[{locale:'en',revision:1,hash:protocol.hash(submitted.editions[0])}]}));return;
+    }
+    response.statusCode=404;response.end(JSON.stringify({message:'Not found'}));
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>new Promise(resolve=>server.close(resolve)));
+  const origin='http://127.0.0.1:'+server.address().port;
+  await writeCenterJson(join(home,'connection.json'),{origin,token:'rssd_device_'+'a'.repeat(48),identity:{orgId:'example',workspaceIds:['pets']}});
+  const packet={requestId:'desktop-title-fix',workId:'work-pets',workspaceId:'pets',sectionId:'pet-news',editions:[{locale:'en',title:'English title',bodyMarkdown:'Complete prose.\n\n![Figure]('+origin+'/api/rssd/v1/media/'+mediaId+'/raw)',media:[]}]};
+  const result=await centerDesktopCall('submit',{packet},home);
+  assert.equal(result.state,'accepted');
+  assert.equal(submitted.editions[0].media[0].id,mediaId);
+  assert.equal(submitted.editions[0].media.length,1);
+});

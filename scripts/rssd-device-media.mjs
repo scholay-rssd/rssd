@@ -16,14 +16,19 @@ export async function stageMedia({directory,origin,workspaceId,bytes,name='image
  const record={version:1,id,origin,workspaceId,name:String(name).slice(0,300),manifest};await save(join(directory,stem+'.json'),record);
  return {...record,url:origin+'/api/rssd/v1/media/'+id+'/raw'};
 }
-export async function prepareEditionMedia({edition,home,directory,client,workspaceId,signal,fetchBytes=fetchPublicBytes}){
- const mappingFile=join(directory,'media-sources.json'),mapping=await json(mappingFile)||{},media=new Map((edition.media||[]).map(item=>[item.id,item]));let bodyMarkdown=edition.bodyMarkdown;
+export async function prepareEditionMedia({edition,home,directory,client,workspaceId,signal,fetchBytes=fetchPublicBytes,source}){
+ const mappingFile=join(directory,'media-sources.json'),mapping=await json(mappingFile)||{};
+ const media=new Map([...(source?.media||[]),...(edition.media||[])].map(item=>[item.id,{id:item.id,alt:item.alt||''}]));
+ let bodyMarkdown=edition.bodyMarkdown;
  for(const image of markdownImageDetails(bodyMarkdown)){
   signal?.throwIfAborted();const internal=image.src.match(/^(?:https?:\/\/[^/]+)?\/api\/rssd\/v1\/media\/([a-zA-Z0-9._:-]+)\/raw$/);
-  if(internal){media.set(internal[1],{id:internal[1],alt:image.alt||''});continue;}
+  if(internal){const prior=media.get(internal[1]);media.set(internal[1],{id:internal[1],alt:image.alt||prior?.alt||''});continue;}
   let asset=mapping[image.src];
   if(asset&&(asset.origin!==client.origin||asset.workspaceId!==workspaceId))throw Error('Cached image belongs to a different center or workspace');
-  if(!asset){const bytes=await fetchBytes(image.src,{maxBytes:m.MAX_BYTES});asset=await stageMedia({directory:join(home,'media'),origin:client.origin,workspaceId,bytes,name:image.alt||'article-image'});mapping[image.src]=asset;await save(mappingFile,mapping);}
+  if(!asset){
+   if(process.env.RSSD_ISOLATED_ACCEPTANCE==='1')throw Error('Isolated acceptance refuses public image fetch');
+   const bytes=await fetchBytes(image.src,{maxBytes:m.MAX_BYTES});asset=await stageMedia({directory:join(home,'media'),origin:client.origin,workspaceId,bytes,name:image.alt||'article-image'});mapping[image.src]=asset;await save(mappingFile,mapping);
+  }
   media.set(asset.id,{id:asset.id,alt:image.alt||''});bodyMarkdown=bodyMarkdown.replaceAll(image.src,asset.url);
  }
  const metadata=structuredClone(edition.metadata||{});
@@ -47,7 +52,20 @@ export async function prepareEditionMedia({edition,home,directory,client,workspa
    content.mediaIds=p.array([...ids],'platform media',20);delete content.mediaUrls;
   }
  }
+ for(const id of p.referencedMediaIds(bodyMarkdown)){
+  if(media.has(id))continue;
+  throw Object.assign(Error('Article references media missing from its edition manifest'),{status:400,code:'missing_media'});
+ }
  return {...edition,bodyMarkdown,metadata,media:[...media.values()]};
+}
+export function editionMediaComplete(edition){
+ try{p.edition(edition);return true;}catch(error){if(error.code==='missing_media')return false;throw error;}
+}
+export async function completeStoredEdition({packet,home,directory,client,signal,source}){
+ const edition=packet.editions[0];
+ if(editionMediaComplete(edition))return packet;
+ const repaired=await prepareEditionMedia({edition,home,directory,client,workspaceId:packet.workspaceId,signal,source});
+ return p.submission({...packet,editions:[{...repaired,locale:edition.locale,translationOf:edition.translationOf}]});
 }
 export async function uploadPacketMedia({packet,directory,client}){
  for(const id of new Set(packet.editions.flatMap(e=>e.media.map(m=>m.id)))){

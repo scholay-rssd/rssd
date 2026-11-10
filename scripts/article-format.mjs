@@ -35,7 +35,13 @@ md.renderer.rules.image=(tokens,i,options,env,self)=>{
     if(typeof replacement!=='string'||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(replacement))return '<span class="muted">[图片无法预览]</span>';
     tokens[i].attrSet('src',replacement);
   }else if(!/^https?:\/\//i.test(src)&&!/^\/article-media\/[a-f0-9]{64}\.(png|jpg|webp)$/.test(src))return '<span class="muted">[图片未打包]</span>';
-  tokens[i].attrSet('loading','lazy');tokens[i].attrSet('decoding','async');
+  const size=env.imageSizes?.get(src);
+  if(size){tokens[i].attrSet('width',String(size.width));tokens[i].attrSet('height',String(size.height));}
+  // The first picture is usually the largest paint. Later pictures stay lazy.
+  env.imageOrdinal=(env.imageOrdinal||0)+1;
+  tokens[i].attrSet('decoding','async');
+  if(env.imageOrdinal===1)tokens[i].attrSet('fetchpriority','high');
+  else tokens[i].attrSet('loading','lazy');
   return originalImage(tokens,i,options,env,self);
 };
 // Older publications stored selected brand notes as plain final paragraphs.
@@ -157,9 +163,9 @@ md.core.ruler.push('article_citations',state=>{
   t.children=result;
  }
 });
-const renderArticle=(markdown,options={})=>{const {text}=articlePresentation(markdown,options);return md.render(text,{imageSources:options.imageSources,articleUrl:options.articleUrl,citations:citationIndex(text)});};
+const renderArticle=(markdown,options={})=>{const {text}=articlePresentation(markdown,options);return md.render(text,{imageSources:options.imageSources,imageSizes:options.imageSizes,articleUrl:options.articleUrl,citations:citationIndex(text)});};
 const renderArticleParts=(markdown,options={})=>{
-  const {text,start}=articlePresentation(markdown,options),env={imageSources:options.imageSources,citations:citationIndex(text)};
+  const {text,start}=articlePresentation(markdown,options),env={imageSources:options.imageSources,imageSizes:options.imageSizes,citations:citationIndex(text)};
   if(start===null)return {body:md.render(text,env),endnotes:''};
   const lines=text.split('\n');
   return {body:md.render(lines.slice(0,start).join('\n'),env),endnotes:md.render(lines.slice(start).join('\n'),env)};

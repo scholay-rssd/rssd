@@ -2,6 +2,7 @@ import {readFile,writeFile,mkdir} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
 import {markdownImages} from '../../scripts/article-format.mjs';
+import {readImageSize} from './image-size.mjs';
 
 export async function publicationAssetBytes(asset,previousRoot){
   const match=/^\/article-media\/([a-f0-9]{64})\.(png|jpg|webp)$/.exec(asset.path||'');
@@ -11,6 +12,17 @@ export async function publicationAssetBytes(asset,previousRoot){
   const bytes=await readFile(join(previousRoot,asset.path.slice(1)));
   if(createHash('sha256').update(bytes).digest('hex')!==match[1])throw Error('已发布图片校验失败：'+asset.path);
   return bytes;
+}
+// Intrinsic sizes for the images this record will publish. Missing or remote
+// pictures stay unsized instead of failing the page.
+export async function imageSizeMap(assets,previousRoot){
+  const sizes=new Map();
+  for(const asset of assets||[]){
+    if(!asset?.path)continue;
+    let bytes;try{bytes=await publicationAssetBytes(asset,previousRoot);}catch{continue;}
+    const size=readImageSize(bytes);if(size)sizes.set(asset.path,size);
+  }
+  return sizes;
 }
 
 // Preserve assets used only by a translated edition, and materialize the

@@ -38,9 +38,20 @@ test('center editions use the requested language for generated reference heading
 });
 test('center images use real HTTP references while desktop local image validation is preserved',()=>{
  const n=notebook();n.blocks.push({id:'image',type:'image',state:'ready',text:'https://example.com/image.png',alt:'Fixture',sourceIds:[]});
- assert.match(notebookEdition({notebook:n}).bodyMarkdown,/!\[Fixture\]\(https:/);
+ const publicImage=notebookEdition({notebook:n});
+ assert.match(publicImage.bodyMarkdown,/!\[Fixture\]\(https:/);assert.deepEqual(publicImage.media,[]);
  assert.ok(formatErrors(n).some(e=>e.path==='blocks.1.text'));
  n.blocks[1].text='file:///private/image.png';assert.throws(()=>notebookEdition({notebook:n}),/图片/);
+});
+test('translated notebooks keep authorized center media IDs instead of an empty manifest',()=>{
+ const mediaId='media-'+'b'.repeat(48),url='https://center.example/api/rssd/v1/media/'+mediaId+'/raw';
+ const n=notebook();n.blocks.push({id:'image',type:'image',state:'ready',text:url,alt:'Shared figure',sourceIds:[]});
+ const chinese=notebookEdition({notebook:n},{locale:'zh-CN'});
+ assert.deepEqual(chinese.media,[{id:mediaId,alt:'Shared figure'}]);
+ const englishNotebook=structuredClone(n);englishNotebook.title='English title';englishNotebook.blocks[1].alt='Shared figure';
+ const english=notebookEdition({notebook:englishNotebook},{locale:'en',source:{payload:chinese}});
+ assert.equal(english.media.length,1);assert.equal(english.media[0].id,mediaId);
+ assert.match(english.bodyMarkdown,new RegExp(mediaId));
 });
 test('invalid notebook and uncompleted rows retain the output instead of silently falling back',()=>{
  assert.throws(()=>notebookEdition({title:'Legacy',bodyMarkdown:'Lost notes'}),/notebook v2/);
