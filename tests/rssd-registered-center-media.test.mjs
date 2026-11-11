@@ -217,6 +217,32 @@ test('same-task resume recovers persisted evidence without re-running the labele
   assert.equal(edition.metadata.notebook.modelSignatures.some(item=>item.agentId==='forged-from-body'),false);
 });
 
+test('a malformed note wrapper resumes the original claim without another model run',async t=>{
+  const home=await temp(t),center=storeCenter();
+  const work=center.addWork({id:'work-note-resume',workspaceId:WORKSPACE,sectionId:'forums',title:'合成中文标题'});
+  const chinese=notebookEdition({notebook:notebook(),summary:'摘要'},{locale:'zh-CN',origin:ORIGIN,workspaceId:WORKSPACE});
+  center.putEdition(center.works.get(work.id),{locale:'zh-CN',revision:2,payload:{...chinese,locale:'zh-CN'}});
+  const client=center.client('device-a'),queued=await enqueueStoreOnlyTranslate({client,workId:work.id,revision:2});
+  let produced=0;const events=[];
+  const producer=async({directory,locale,source,origin,claim})=>{
+    produced++;
+    const value=notebook();value.blockNotes.body={supplement:'A private note'};
+    const output=JSON.stringify({notebook:value,summary:'Summary'});
+    await writeFile(join(directory,locale+'.agent-output.txt'),output,{mode:0o600});
+    await persistGenerationEvidence({directory,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature:deviceSignature(),source,agentId:'codex',demandId:claim.id,generation:claim.generation,workerId:claim.workerId||claim.payload?.storeOnlyWorkerId});
+    return parseCenterEdition(output,{source,locale,origin,workspaceId:WORKSPACE,signature:deviceSignature()});
+  };
+  const options={client,home,agentId:'codex',workspaceIds:[WORKSPACE],sectionIds:['forums'],demandId:queued.id,storeOnly:true,producer,onEvent:event=>events.push(event)};
+  await assert.rejects(runProductionTurn(options),/行间备注格式无效/);
+  const result=await runProductionTurn({...options,resume:true});
+  assert.equal(produced,1);assert.equal(result.state,'accepted');
+  assert.equal(events.filter(event=>event.type==='notebook_repaired').length,1);
+  const job=join(home,'jobs',(await readdir(join(home,'jobs')))[0]);
+  const edition=JSON.parse(await readFile(join(job,'en.result.json'),'utf8'));
+  assert.equal(edition.metadata.notebook.blockNotes.body.notes.supplement,'A private note');
+  assert.equal(edition.metadata.notebook.modelSignatures.at(-1).runId,'run-synthetic-media');
+});
+
 test('unsigned retained raw fails closed as unrecoverable and does not re-run the model',async t=>{
   const home=await temp(t);
   const first=await stageMedia({directory:join(home,'media'),origin:ORIGIN,workspaceId:WORKSPACE,bytes:await webpPixel('#467f65'),name:'one.webp'});

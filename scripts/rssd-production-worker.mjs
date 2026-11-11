@@ -303,7 +303,7 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
             const evidence=scoped?await sourceStage.restore({claim,slot:sourceSlot,directory,signal}):null;
             if(scoped){sourceProof(evidence,null);if(typeof evidence.prompt!=='string'||!evidence.prompt)throw Error('原任务来源正文材料缺失');}
             const bibliography=scoped?await prepareVerifiedBibliography({snapshot:evidence.snapshot,directory,signal}):null;
-            if(recovered?.edition)output=recovered.edition;
+            if(recovered?.edition){output=recovered.edition;if(recovered.repair)onEvent({type:'notebook_repaired',demandId:claim.id,locale,repair:recovered.repair});}
             else{
             let imageInstructions;if(scoped?.imagePlanRequired&&locale==='en'){if(!chinesePacket)throw Error('英文稿缺少原中文稿图片凭据');await attest(chinesePacket,claim);const originalReceipt=await read(join(directory,'zh-CN.image-receipt.json'));imageInstructions=imageTranslationInstructions({edition:chinesePacket.editions[0],images:originalReceipt.images});}
             output=await producer({claim,locale,workId,source,directory,agentId,origin:client.origin,...(scoped?{expectedModel:scoped.modelId,verifiedSourcePrompt:evidence.prompt,verifiedSourceSnapshotHash:evidence.snapshot.snapshotHash,verifiedSourceSelectionHash:evidence.selectionHash,verifiedSourceBindingHash:evidence.bindingHash}:{}),...(scoped?.imagePlanRequired&&locale==='zh-CN'?{imagePlanRequired:true}:{}),...(imageInstructions?{imageTranslationInstructions:imageInstructions}:{}),...(bibliography?{verifiedBibliographyInstructions:VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS}:{}),signal,onEvent,writingPolicy:context.writingPolicy});

@@ -3,6 +3,7 @@ import {join} from 'node:path';
 import protocol from '../contracts/rssd-v1.cjs';
 import {writeCenterJson} from './rssd-center-client.mjs';
 import {trustedCenterOrigin} from './rssd-center-media-ref.mjs';
+import {INTERNAL_NOTE_FIELDS} from '../contracts/article-internal-notes.mjs';
 
 export const GENERATION_EVIDENCE_KIND='center-generation-evidence';
 export const GENERATION_UNRECOVERABLE='generation_unrecoverable';
@@ -90,13 +91,34 @@ export async function recoverPersistedCenterEdition({directory,locale,source,ori
   const expectedBind=sourceBindFrom(source);
   if(protocol.canonical(evidence.sourceBind)!==protocol.canonical(expectedBind))fail('生成证明的原稿绑定与当前 source 不一致，不能恢复');
   if(sourceHash&&evidence.sourceBind.hash!==sourceHash)fail('生成证明的原稿 hash 与当前 demand 绑定不一致，不能恢复');
-  const {parseCenterEdition}=await import('../desktop/scripts/agent/center-producer.mjs');
-  let edition;
+  const {parseCenterEdition,parseCenterResult}=await import('../desktop/scripts/agent/center-producer.mjs');
+  const context={source,locale,sectionId:sectionId||evidence.sectionId,signature:evidence.signature,origin:evidence.origin,workspaceId:evidence.workspaceId,strictRegisteredImages};
+  let edition,repair;
   try{
-    edition=parseCenterEdition(raw,{source,locale,sectionId:sectionId||evidence.sectionId,signature:evidence.signature,origin:evidence.origin,workspaceId:evidence.workspaceId,strictRegisteredImages});
+    try{edition=parseCenterEdition(raw,context);}
+    catch(originalError){
+      // Some providers return the five private note fields directly under a
+      // block id. Only repair that unambiguous missing wrapper. Unknown keys,
+      // mixed structures and non-string values must still fail validation.
+      const parsed=parseCenterResult(raw),notes=parsed?.notebook?.blockNotes,repaired=[];
+      if(!notes||typeof notes!=='object'||Array.isArray(notes))throw originalError;
+      for(const [id,entry] of Object.entries(notes)){
+        if(!entry||typeof entry!=='object'||Array.isArray(entry)||Object.hasOwn(entry,'notes'))continue;
+        const fields=Object.entries(entry);
+        if(fields.length&&fields.every(([key,value])=>Object.hasOwn(INTERNAL_NOTE_FIELDS,key)&&typeof value==='string')){
+          notes[id]={notes:entry};repaired.push(id);
+        }
+      }
+      if(!repaired.length)throw originalError;
+      edition=parseCenterEdition(JSON.stringify(parsed),context);
+      repair={version:1,kind:'wrap-flat-block-notes',originalOutputSha256:evidence.outputSha256,blockIds:repaired};
+      const file=join(directory,locale+'.normalization.json'),prior=await readJson(file);
+      if(prior&&protocol.canonical(prior)!==protocol.canonical(repair))fail('原备注修复记录不一致，已保留等待核对');
+      if(!prior)await writeCenterJson(file,repair);
+    }
   }catch(error){
     if(error.code===GENERATION_UNRECOVERABLE)throw error;
     fail('保留的模型输出无法按原证明解析，不能重跑模型');
   }
-  return {edition,recovered:true,evidence};
+  return {edition,recovered:true,evidence,...(repair?{repair}:{})};
 }
