@@ -189,3 +189,13 @@ RSSD MCP 地址是中心地址下的 `/api/rssd/v1/mcp`，通过原生桥接使�
 未包含：线上部署（需负责人逐步批准）、其余桌面界面迁移、无头版状态页、Obsidian 插件、个人数据、桌面应用退役。`center` 子模块指针已更新到 `d0bc05a2`（包含副本，即 2026-11-11 上线的中心镜像对应提交），公共检查 `products.yml` 在 `desktop:check` 之后运行 `center:ui:check`。此后修改 `desktop/src/center/preview/` 时，需同步中心副本并更新指针，否则该检查失败。
 
 验证：桌面 `src/center` 34 项测试与类型检查通过；中心前端类型检查、5 组界面测试（12 项，新增 `rssd/live-center.ui.test.tsx`）和 `next build` 通过。在中心自身的 Next 开发服务器中以示例数据检查了五个标签、任务抽屉与需求修改、管理界面、深浅主题和 375 像素窄屏。未连接真实中心账号与数据，未在 Postiz 完整外壳内验收。
+
+## 工作中心界面改由线上中心维护（2026-11-11）
+
+第一步上线后，负责人指出线上中心呈现为“Postiz 外壳套 RSSD 中心”，并有多处日历，属于拼接而非融合。第二轮改为：工作中心成为线上中心的首页和独立外壳，只保留一个发布日历，原“作品与管理”各界面按用途并入（见 `center/rssd/UI.md`）。
+
+由此，界面的归属发生变化：
+
+- 线上中心的 `center/apps/frontend/src/components/rssd/view/` 是今后演进的界面源文件，由 `rssd-center` 仓库维护。
+- 桌面应用已冻结，保留 `desktop/src/center/preview/` 的现有副本，只修复缺陷；两处不再同步。
+- 因此删除 `scripts/sync-center-ui.mjs`、`center:ui:sync`、`center:ui:check` 及公共检查中的对应步骤。上一节关于“副本不手工修改”和同步检查的说明自本节起失效。
