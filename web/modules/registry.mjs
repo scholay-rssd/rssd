@@ -9,8 +9,9 @@ import {validateDisplay} from '../../contracts/display-modules.mjs';
 // enabled views; no module receives databases, credentials or private RSS.
 export const DISPLAY_MODULES=Object.freeze({calendar:calendarModule,gallery:galleryModule,graph:graphModule,showcase:showcaseModule,roadmap:roadmapModule});
 export function resolveDisplay(site){
-  const defaults={calendar:{enabled:site.id!=='personal'},gallery:{enabled:site.id==='piggytuck',columns:4},graph:{enabled:site.id==='pets'}};
-  const config=validateDisplay(site.display||{version:1,modules:defaults});
+  // A profile without display settings gets the calendar only. Which modules
+  // a site shows is the profile's decision, never inferred from its name.
+  const config=validateDisplay(site.display||{version:1,modules:{calendar:{enabled:true}}});
   return {...config,modules:Object.fromEntries(Object.keys(DISPLAY_MODULES).map(id=>[id,config.modules[id]||{enabled:false}]))};
 }
 export function createDisplayHost(content){
