@@ -22,10 +22,12 @@ async function imageData(url,signal){
  const blob=await response.blob();if(!blob.type.startsWith('image/')||blob.size>30*1024*1024)throw Error('配图格式或尺寸暂不支持：'+url);
  return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('配图读取失败'));reader.readAsDataURL(blob);});
 }
-export async function embedImages(host,{signal}={}){
+// `load(url,signal)` returns a data URL for an image. A host without network access to its pictures (a
+// vault, an app bundle) passes its own; the default fetches the public URL.
+export async function embedImages(host,{signal,load=imageData}={}){
  const cached=new Map();for(const img of host.querySelectorAll('img')){
   signal?.throwIfAborted();const original=img.getAttribute('src');if(!original)throw Error('配图缺少可读取的地址');
-  img.dataset.originalSrc=original;if(!cached.has(original))cached.set(original,await imageData(original,signal));img.src=cached.get(original);img.removeAttribute('srcset');img.loading='eager';
+  img.dataset.originalSrc=original;if(!cached.has(original))cached.set(original,await load(original,signal));img.src=cached.get(original);img.removeAttribute('srcset');img.loading='eager';
   await img.decode();if(!img.naturalWidth||img.naturalWidth*img.naturalHeight>48e6)throw Error('配图像素尺寸过大：'+original);
   img.width=img.naturalWidth;img.height=img.naturalHeight;
  }
@@ -68,11 +70,13 @@ function fragment(node,body){
  const text=node.textContent||'';for(let i=best.index;i>Math.max(0,best.index-40);i--)if(/\s/.test(text[cuts[i]-1])){const split=splitAt(node,cuts[i]);body.append(split[0]);const fit=fits(body);split[0].remove();if(fit){best.split=split;break;}}
  return best.split;
 }
-export async function paginate(frame,model,{signal,onProgress=()=>{}}={}){
+// `pause` yields between pages so the host stays responsive; a host whose window may be hidden (where
+// animation frames stop) passes one that cannot stall.
+export async function paginate(frame,model,{signal,onProgress=()=>{},loadImage,pause=tick}={}){
  const doc=frame.contentDocument,t=model.templates.pages;doc.open();doc.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');doc.close();
  const style=doc.createElement('style');style.textContent=templateStyles(t);doc.head.append(style);
  const original=fullArticle(doc,model);original.style.height='auto';original.style.width='624px';doc.body.append(original);
- await embedImages(original,{signal});await doc.fonts.ready;
+ await embedImages(original,{signal,...(loadImage?{load:loadImage}:{})});await doc.fonts.ready;
  for(const node of [...original.childNodes])if(node.nodeType===3&&!node.textContent.trim())node.remove();
  const expected=original.textContent||'',expectedImages=[...original.querySelectorAll('img')].map(x=>x.dataset.originalSrc).sort();
  const queue=[...original.childNodes].map(n=>n.cloneNode(true));original.remove();
@@ -88,8 +92,8 @@ export async function paginate(frame,model,{signal,onProgress=()=>{}}={}){
   signal?.throwIfAborted();const node=queue.shift();body.append(node);
   if(fits(body))continue;node.remove();
   const heading=/^H[1-6]$/.test(node.nodeName);
-  if(!heading){const split=fragment(node,body);if(split){body.append(split[0]);queue.unshift(split[1]);next();onProgress(pages.length);await tick();continue;}}
-  if(body.childNodes.length){queue.unshift(node);next();onProgress(pages.length);await tick();continue;}
+  if(!heading){const split=fragment(node,body);if(split){body.append(split[0]);queue.unshift(split[1]);next();onProgress(pages.length);await pause();continue;}}
+  if(body.childNodes.length){queue.unshift(node);next();onProgress(pages.length);await pause();continue;}
   // An indivisible figure or formula may be larger than the paper. Scale that
   // whole atom; text-bearing paragraphs must have been split above.
   body.append(node);const width=node.scrollWidth||node.getBoundingClientRect?.().width||624,height=node.scrollHeight||node.getBoundingClientRect?.().height||1;
