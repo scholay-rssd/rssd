@@ -10,7 +10,7 @@
 [submodule "center"]
 	path = center
 	url = https://github.com/scholay-rssd/rssd-center.git
-	branch = rssd
+	branch = main
 [submodule "obsidian"]
 	path = obsidian
 	url = https://github.com/scholay-rssd/rssd-obsidian.git
