@@ -26,6 +26,8 @@ async function homepage(source,site,{real=false}={}){
 test('site settings are explicit, independent from Theme, and reject unsupported options',()=>{
  assert.equal(resolveDisplay(profiles.find(s=>s.id==='personal')).modules.calendar.enabled,false);
  assert.equal(resolveDisplay({...lingxi,themeId:'portfolio'}).modules.gallery.enabled,false);
+ // Without display settings every site gets the same default, whatever its name.
+ for(const id of ['personal','piggytuck','pets']){const {display:_,...bare}=profiles.find(s=>s.id===id);assert.deepEqual(Object.entries(resolveDisplay(bare).modules).filter(([,m])=>m.enabled).map(([name])=>name),['calendar']);}
  assert.deepEqual(validateSite({...lingxi,display:display(false,true,{columns:3})}).display,display(false,true,{columns:3}));
  for(const bad of [{version:2,modules:{}},{version:1,modules:{login:{enabled:true}}},display(true,true,{columns:10}),{version:1,modules:{calendar:{enabled:true,script:'https://evil.test/plugin.js'}}}])assert.throws(()=>validateSite({...lingxi,display:bad}));
 });
