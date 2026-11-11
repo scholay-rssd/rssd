@@ -56,6 +56,30 @@ test('browser ZIP preserves numbered files, exact PNG bytes and standard CRC val
  assert.deepEqual(names,['0001.png','0002.png']);assert.equal(view.getUint32(offset,true),0x02014b50);assert.equal(view.getUint32(zip.length-22,true),0x06054b50);
 });
 
+test('native MathML paints in live articles, portable articles and page exports',{skip:!process.env.RSSD_BROWSER_EXECUTABLE,timeout:30000},async t=>{
+ const {articleStyles}=await import('../web/engine/browser-export/article-style.mjs');
+ const {templateStyles}=await import('../web/engine/browser-export/styles.mjs');
+ const {renderMathText,mathAssetBase}=await import('../web/engine/article-math.mjs');
+ const {writeMathAssets}=await import('../web/engine/math-assets.mjs');
+ const sharp=(await import('sharp')).default;
+ const root=await mkdtemp(join(tmpdir(),'rssd-math-visible-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ await writeMathAssets(root);const mathCss=await readFile(join(root,mathAssetBase.slice(1),'math.css'),'utf8');
+ const require=createRequire(new URL('../desktop/runtime/package.json',import.meta.url)),{chromium}=require('playwright-core');
+ const browser=await chromium.launch({executablePath:process.env.RSSD_BROWSER_EXECUTABLE,headless:true});t.after(()=>browser.close());
+ const page=await browser.newPage({viewport:{width:1000,height:900},colorScheme:'light'});
+ await page.route('**/*',route=>route.abort());
+ const template=exportTemplate({siteId:'metho',sectionId:'statistics',format:'wechat'});
+ const formulas=renderMathText(String.raw`\[\hat f(x)=\frac{1}{nh}\sum_{i=1}^{n}K\left(\frac{x-X_i}{h}\right)\]`)+renderMathText(String.raw`\(x^2+1\)`);
+ for(const [label,css] of [['live',articleStyles(template,'.rssd-article',{live:true})],['portable',articleStyles(template)],['pages',templateStyles(template)]]){
+  await page.setContent(`<style>${mathCss}${css}</style><article class="rssd-article"><div class="rssd-body">${formulas}</div></article>`);
+  for(const selector of ['.math-block','.math-inline']){
+   const {data,info}=await sharp(await page.locator(selector+' math').screenshot()).removeAlpha().raw().toBuffer({resolveWithObject:true});
+   let ink=0;for(let i=0;i<data.length;i+=info.channels)if(data[i]<180&&data[i+1]<180&&data[i+2]<180)ink++;
+   assert.ok(ink>20,`${label} ${selector} must paint formula glyphs, got ${ink} dark pixels`);
+  }
+ }
+});
+
 test('article sharing is lazy, preserves complete content and exports standalone HTML and PNG ZIP',{skip:!process.env.RSSD_BROWSER_EXECUTABLE,timeout:180000},async t=>{
  const root=await mkdtemp(join(tmpdir(),'rssd-share-'));let output;
  const types={'.html':'text/html;charset=utf-8','.json':'application/json','.mjs':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml'};
