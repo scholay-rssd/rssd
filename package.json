@@ -20,6 +20,8 @@
     "desktop:build:web": "pnpm --dir desktop build",
     "desktop:build": "pnpm --dir desktop build:desktop",
     "desktop:release": "bash scripts/install-desktop-macos.sh",
+    "center:ui:sync": "node scripts/sync-center-ui.mjs",
+    "center:ui:check": "node scripts/sync-center-ui.mjs --check",
     "headless": "node desktop/scripts/agent/headless/cli.mjs",
     "headless:produce": "node desktop/scripts/agent/headless/produce.mjs",
     "headless:verify": "node desktop/scripts/agent/headless/verify.mjs",

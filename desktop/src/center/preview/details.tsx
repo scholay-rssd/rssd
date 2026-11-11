@@ -23,7 +23,8 @@ export function TaskDetail({
   space: PreviewSpace;
   onClose: () => void;
   onUpdate: (task: PreviewDemand) => void;
-  onClaim: () => void;
+  /** Absent where tasks cannot be started from this screen. */
+  onClaim?: () => void;
 }) {
   const [priority, setPriority] = useState(task.priority),
     [due, setDue] = useState(task.due);
@@ -113,9 +114,11 @@ export function TaskDetail({
             </label>
           </div>
           <footer>
-            <button type="button" disabled={!editable} onClick={onClaim}>
-              {tr(liveMode?"本机认领并执行":"模拟认领")}
-            </button>
+            {onClaim && (
+              <button type="button" disabled={!editable} onClick={onClaim}>
+                {tr(liveMode?"本机认领并执行":"模拟认领")}
+              </button>
+            )}
             <button className="cp-primary" disabled={!editable}>
               {tr(liveMode?"保存到中心":"应用到预览")}
             </button>

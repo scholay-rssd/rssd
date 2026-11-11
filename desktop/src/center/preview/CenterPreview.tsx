@@ -29,9 +29,15 @@ const tabs: Array<[PreviewTab, string]> = [
 ];
 export type { LiveCenterActions } from "./live";
 const legacyTab: [PreviewTab, string] = ["legacy", "作品与本机执行"];
-export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
+export default function CenterPreview({
+  live,
+  initialTab = "overview",
+}: {
+  live?: LiveCenterActions;
+  initialTab?: PreviewTab;
+}) {
   const [data, setData] = useState(() => live?.data || createPreviewData()),
-    [tab, setTab] = useState<PreviewTab>("overview");
+    [tab, setTab] = useState<PreviewTab>(initialTab);
   const [scope, setScope] = useState<string[]>(() =>
     (live?.data || createPreviewData()).spaces.map((s) => s.id),
   );
@@ -237,7 +243,7 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
         </div>
       </header>
       <nav className="cp-tabs" aria-label={tr("中心功能")}>
-        {(live?.legacy ? [...tabs, legacyTab] : tabs).map(([id, label]) => (
+        {(live?.legacy ? [...tabs, [legacyTab[0], live.legacyLabel || legacyTab[1]] as [PreviewTab, string]] : tabs).map(([id, label]) => (
           <button
             key={id}
             aria-current={tab === id ? "page" : undefined}
@@ -382,8 +388,8 @@ export default function CenterPreview({ live }: { live?: LiveCenterActions }) {
             setSelectedTask(null);
             setNotice(tr("任务调整已应用到预览，未提交中心。"));
           }}
-          onClaim={() => {
-            if(live){void live.claim(task).then(()=>{setSelectedTask(null);setNotice(tr("已请求本机执行，请查看实际认领状态。"));}).catch(e=>setNotice(String(e)));return;}
+          onClaim={live && !live.claim ? undefined : () => {
+            if(live){void live.claim!(task).then(()=>{setSelectedTask(null);setNotice(tr("已请求本机执行，请查看实际认领状态。"));}).catch(e=>setNotice(String(e)));return;}
             setData((old) => ({
               ...old,
               demands: old.demands.map((d) =>

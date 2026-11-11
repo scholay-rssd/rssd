@@ -1,25 +1,6 @@
 import AppIcon from "../../components/Icon";
 import type { PreviewTab } from "./model";
-import academic from "../../../../sites/branding/academic.png";
-import facebook from "./assets/facebook.svg";
-import linkedin from "./assets/linkedin.svg";
-import x from "./assets/x.svg";
-import telegram from "./assets/telegram.svg";
-import discourse from "./assets/discourse.svg";
-
-// Static local assets only; no connector or workspace runtime imports.
-const siteImages = import.meta.glob("../../../../sites/branding/*-bw-v8.webp", {
-  eager: true,
-  query: "?url",
-  import: "default",
-}) as Record<string, string>;
-const platformImages: Record<string, string> = {
-  Facebook: facebook,
-  LinkedIn: linkedin,
-  X: x,
-  Telegram: telegram,
-  Discourse: discourse,
-};
+import { platformImage, siteImage } from "./assets";
 
 export function WorkspaceIcon({
   workspaceId,
@@ -28,10 +9,7 @@ export function WorkspaceIcon({
   workspaceId: string;
   size?: number;
 }) {
-  const src =
-    workspaceId === "academic"
-      ? academic
-      : siteImages["../../../../sites/branding/" + workspaceId + "-bw-v8.webp"];
+  const src = siteImage(workspaceId);
   return (
     <span
       className="cp-brand cp-workspace-brand"
@@ -56,7 +34,7 @@ export function DestinationIcon({
   workspaceId?: string;
   size?: number;
 }) {
-  const src = platformImages[name];
+  const src = platformImage(name);
   if (!src && workspaceId)
     return <WorkspaceIcon workspaceId={workspaceId} size={size} />;
   return (

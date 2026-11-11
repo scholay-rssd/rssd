@@ -173,3 +173,19 @@ RSSD MCP 地址是中心地址下的 `/api/rssd/v1/mcp`，通过原生桥接使�
 待中心侧配合：为 `demands` 增加状态筛选参数后，状态筛选即可与计数完全一致，无需逐页加载。
 
 验证：新增测试覆盖日历切换只读日历、列表内加载下一页、中心搜索、标题栏执行状态、登录状态与助手轮询间隔。隔离预览页确认拆分后五个标签在示例数据下正常显示。标题栏状态、列表页脚和中心搜索只在连接真实中心时出现，目前仅有测试覆盖，安装包内尚未验收。
+
+## 桌面工作中心界面成为线上中心界面，第一步（2026-11-11）
+
+方向调整（负责人，2026-11-11）：以桌面“工作中心”的界面和视觉为基准，线上 RSSD 中心采用同一套界面。此前“以线上 `/rssd` 为视觉基准、桌面向其对齐”的要求由本节取代。桌面应用此后只修复缺陷，不再增加功能；本机生产由无头版承担，稿件在 Obsidian 插件中查看和编辑。个人阅读数据（订阅、阅读状态、笔记）本轮不上线，桌面应用在其余界面迁移完成前继续可用。
+
+本轮范围：
+
+- `desktop/src/center/preview/` 仍是唯一源文件。`npm run center:ui:sync` 将其复制到 `center/apps/frontend/src/components/rssd/desktop-ui/`，同时生成中心侧的 `uiText.ts`（直接显示中文原文）、`center/preview/assets.ts`（品牌图片改由 `/rssd-ui/` 提供）、`tokens.css`（桌面 Paper 配色的深浅两套变量，限定在 `.rssd-desktop` 内）和 `fonts.css`（Inter Tight 拉丁字集）。`npm run center:ui:check` 校验副本与当前源文件一致。副本不手工修改。
+- 为便于复用，`mapLiveCenter` 移到 `preview/mapLive.ts`（`LiveCenter.tsx` 继续导出），依赖 Vite 的图片引用移到 `preview/assets.ts`。`LiveCenterActions.claim` 改为可选：浏览器中没有本机执行端，线上不显示“本机认领并执行”；桌面行为不变。新增可选的 `legacyLabel` 和 `CenterPreview` 的 `initialTab`。
+- 线上页面在 `center/apps/frontend/src/components/rssd/live-center.tsx`：用账号会话读取 `/rssd/v1/coordination/overview|channels|calendar` 与 `/demands`，需求修改走 `PATCH /demands/:id/definition`，重试沿用同一请求编号。中心接口未改。
+- 原线上管理界面（作品库与编辑器、发布记录、执行设备、发布渠道、工作空间、目标、排期、运行状况、留言审核、流量标签）作为最后一个标签“作品与管理”保留，逻辑未改，配色改用桌面变量；首次打开时才读取数据。
+- 链接：`/rssd` 默认进入总览；`/rssd?view=demands|calendar|channels|assistant` 进入新界面对应标签；原有 `/rssd?tab=…`（`overview` 除外）仍进入对应管理界面，桌面和设备授权使用的链接不变。
+
+未包含：线上部署（需负责人逐步批准）、其余桌面界面迁移、无头版状态页、Obsidian 插件、个人数据、桌面应用退役。合并后需将 `center` 子模块指针更新到包含副本的提交，届时可把 `center:ui:check` 加入检查。
+
+验证：桌面 `src/center` 34 项测试与类型检查通过；中心前端类型检查、5 组界面测试（12 项，新增 `rssd/live-center.ui.test.tsx`）和 `next build` 通过。在中心自身的 Next 开发服务器中以示例数据检查了五个标签、任务抽屉与需求修改、管理界面、深浅主题和 375 像素窄屏。未连接真实中心账号与数据，未在 Postiz 完整外壳内验收。
