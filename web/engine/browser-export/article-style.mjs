@@ -67,7 +67,7 @@ ${s} .rssd-article-heading .rssd-byline{margin:0}
 ${s} .record-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:18px;font:14px/1.8 ${fonts.sans};padding:20px;background:${soft};border:0;margin:28px 0} ${s} .record-facts dt{font-size:12px;color:${muted}} ${s} .record-facts dd{margin:4px 0 0}
 ${s} .article-endnotes{font:14px/1.9 ${fonts.sans};color:${muted};margin-top:44px;padding-top:24px;border-top:1px solid ${line}} ${s} .article-endnotes h2{font:650 18px/1.6 ${fonts.sans};border:0;padding:0;margin:0 0 18px}
 ${s} .sources{background:${soft};border:0;padding:20px;margin:28px 0;color:${muted}}
-${s} .katex-html{display:none} ${s} .katex-mathml{position:static!important;clip:auto!important;width:auto!important;height:auto!important} ${s} .math-block{display:block;margin:26px 0;overflow:auto}
+${s} .katex-html{display:none} ${s} .katex-mathml{position:static!important;clip:auto!important;-webkit-clip-path:none!important;clip-path:none!important;overflow:visible!important;width:auto!important;height:auto!important} ${s} .math-block{display:block;margin:26px 0;overflow:auto}
 ${['pill'].includes(t.header)?`${s} .rssd-kicker{display:table;background:${soft};padding:5px 12px;border-radius:20px;letter-spacing:.06em}`:''}
 ${t.identity==='laboratory'||t.identity==='technical'?`${s} .rssd-kicker{font-family:ui-monospace,SFMono-Regular,${fonts.sans};letter-spacing:.05em}${s} pre{background:${c('#edf3f2','#101c19')};border-color:${line}}`:''}
 ${t.identity==='classical'?`${s} .rssd-kicker{display:table;border:0;background:${soft};padding:5px 10px;letter-spacing:.18em}${s} blockquote{font-family:${fonts.serif};border-left:1px solid ${accent};background:transparent}`:''}
