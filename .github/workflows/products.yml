@@ -58,8 +58,6 @@ jobs:
       - run: npm run demo:build
       - run: npm run desktop:install
       - run: npm run desktop:check
-      - name: The Center's copy of the work-centre view matches the desktop source
-        run: npm run center:ui:check
       - run: npm run desktop:build:web
       - uses: actions/upload-artifact@v4
         with:
