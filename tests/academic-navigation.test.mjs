@@ -16,7 +16,7 @@ test('academic news and the two calendars share atomic articles, frozen URLs and
  const before=JSON.stringify(snapshot);
  await buildSiteRelease({source:process.cwd(),target,site:DEFAULT_SITE,job:{id:'navigation-test',snapshot,snapshot_hash:'test'}});
  assert.equal(JSON.stringify(snapshot),before);
- assert.deepEqual(navigationForSite(DEFAULT_SITE).map(n=>n.label),['首页','今日学术','昔日学术','学术新闻','留言板']);
+ assert.deepEqual(navigationForSite(DEFAULT_SITE).map(n=>n.label),['今日学术','昔日学术','学界犀闻','学者观察','全部文章','留言板','关于']);
  assert.equal(sectionsForSite(DEFAULT_SITE).find(s=>s.id==='calendar').name,'今日学术');
  assert.equal(sectionsForSite(DEFAULT_SITE).find(s=>s.id==='history').name,'昔日学术');
  const json=async path=>JSON.parse(await readFile(join(target,path),'utf8'));
@@ -37,7 +37,7 @@ test('academic news and the two calendars share atomic articles, frozen URLs and
  assert(!index.sections.find(s=>s.slug==='observations').members.includes('history'));
  for(const path of ['index.html','archive/index.html','archive/calendar/index.html','archive/history/index.html','calendar/frozen-deadline/index.html','history/frozen-discovery/index.html','news/frozen-observation/index.html']){
   const html=await readFile(join(target,path),'utf8'),nav=html.match(/<!-- site-navigation:start -->([\s\S]*?)<!-- site-navigation:end -->/)[1];
-  assert.deepEqual([...nav.matchAll(/<a[^>]*>(.*?)<\/a>/g)].map(m=>m[1]),['首页','今日学术','昔日学术','学术新闻','留言板'],path);
+  assert.deepEqual([...nav.matchAll(/<a[^>]*>(.*?)<\/a>/g)].map(m=>m[1]),['今日学术','昔日学术','学界犀闻','学者观察','全部文章','留言板','关于'],path);
  }
  const observations=await readFile(join(target,'archive/observations/index.html'),'utf8');assert(!observations.includes('frozen-discovery'));
  assert.match(await readFile(join(target,'archive/calendar/index.html'),'utf8'),/在今日学术日历中浏览/);

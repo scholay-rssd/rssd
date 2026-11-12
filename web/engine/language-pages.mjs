@@ -42,7 +42,7 @@ function EnglishShell(template,{site,names,title,summary,route,body,sourceRoute,
  const themeButton=academic?(template.match(/<button\b[^>]*\bid="theme-toggle"[^>]*>[\s\S]*?<\/button>/)?.[0]||''):'';
  const siteLinks=academic?(template.match(/<div\b[^>]*\bclass="site-links"[^>]*>[\s\S]*?<\/div>/)?.[0]||''):'';
  if(academic&&index)body=body.replace('class="hero compact"','class="collection-hero"').replace('class="entries"','class="record-grid"').replace(/class="entry"/g,'class="record-card"').replace(/class="entry-meta"/g,'class="eyebrow"').replace(/class="read"/g,'class="read-more"');
- const brandLink=academic?`<a class="app-bar-brand" href="/en/"><span>${esc(brand.name)}</span></a>`:`<a class="brand" href="/en/"><span class="brand-monogram" aria-hidden="true">${esc(brand.name[0])}</span><span>${esc(brand.name)}</span></a>`;
+ const brandLink=academic?`<a class="app-bar-brand" href="/en/"><span>${esc(brand.name)}</span></a>`:`<a class="brand" href="/en/" aria-label="${esc(brand.name)} · Home" title="Home"><span class="brand-monogram" aria-hidden="true">${esc(brand.name[0])}</span><span>${esc(brand.name)}</span></a>`;
  let html=template.replace(/<html\b[^>]*>/,'<html lang="en">')
   .replace(/<title>[\s\S]*?<\/title>/,`<title>${esc(title===brand.name?title:title+' · '+brand.name)}</title>`)
   .replace(/<meta\b[^>]*name=["']description["'][^>]*>/,`<meta name="description" content="${esc(summary)}">`)

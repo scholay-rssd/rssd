@@ -73,7 +73,8 @@ test('read-only host scopes collections, rejects cross-site and collisions, and 
  for(const path of ['gallery/index.html','display/gallery/client.js'])assert.throws(()=>homepagePath(path));
 });
 test('design gallery reuses all 200 real images and preserves every authored homepage byte',async t=>{
- const source=await workspace(t),site=profiles.find(s=>s.id==='piggytuck'),home=await homepage(source,site,{real:true}),target=join(source,'output');
+ // The gallery is offline on piggytuck (its stickers live on the series pages); the module itself still works.
+ const source=await workspace(t),pig=profiles.find(s=>s.id==='piggytuck'),site={...pig,display:{...pig.display,modules:{...pig.display.modules,gallery:{enabled:true,columns:4}}}},home=await homepage(source,site,{real:true}),target=join(source,'output');
  const job={id:'design-test',snapshot:{news:[],data:{year:[],history:[]},openSource:{items:[]},permalinks:{}},snapshot_hash:'fixture'};
  const manifest=await buildSiteRelease({source,target,site,job});
  const document=JSON.parse(await readFile(join(target,'published-content.json')));
