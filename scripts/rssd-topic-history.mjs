@@ -5,7 +5,7 @@ import {fetchPublicText} from './rssd-topic-public.mjs';
 
 const sites=Object.freeze({
  'scholay-today':['academic','https://today.scholay.com','academic'],
- lingxi:['lingxi','https://xsime.com','journal'],piggytuck:['design','https://www.piggytuck.com','journal'],
+ xsime:['xsime','https://xsime.com','journal'],piggytuck:['design','https://www.piggytuck.com','journal'],
  personal:['personal','https://pm.scholay.com','journal'],pets:['pets','https://pet.piggytuck.com','journal'],
  legis:['legis','https://legis.wiki','journal'],metho:['metho','https://metho.scholay.com','journal'],
  enter:['enter','https://enter.scholay.com','journal'],xsiching:['xsiching','https://xsiching.com','journal'],study:['study','https://study.scholay.com','journal']

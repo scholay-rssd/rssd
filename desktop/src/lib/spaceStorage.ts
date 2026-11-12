@@ -1,4 +1,5 @@
 import { tr } from "../uiText";
+import {SITE_RENAMES} from "../../../contracts/site-renames.mjs";
 // Each space also owns restored tabs and UI preferences in the webview. Save
 // the previous snapshot before changing keys; preserve the original academic
 // snapshot on the first switch and never delete the snapshots themselves.
@@ -27,4 +28,16 @@ export function consumeSpaceReaderEntry(storage:Storage,id:string){
  const key='scholay.space-storage.open-rss';
  if(storage.getItem(key)!==id)return false;
  storage.setItem('papr.workspace.v2','rss');storage.removeItem(key);return true;
+}
+
+/** Carry the UI snapshot of a renamed space over to its new ID, once. */
+export function renameSpaceStorage(storage:Storage,renames:Record<string,string>=SITE_RENAMES){
+  const prefix='scholay.space-storage.',marker=prefix+'active',open=prefix+'open-rss';
+  for(const [from,to] of Object.entries(renames)){
+    const saved=storage.getItem(prefix+from);
+    if(saved!==null&&storage.getItem(prefix+to)===null)storage.setItem(prefix+to,saved);
+    if(saved!==null)storage.removeItem(prefix+from);
+    if(storage.getItem(marker)===from)storage.setItem(marker,to);
+    if(storage.getItem(open)===from)storage.setItem(open,to);
+  }
 }

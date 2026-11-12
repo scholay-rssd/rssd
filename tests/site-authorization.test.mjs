@@ -26,8 +26,8 @@ test('portable authorization rejects malformed, oversized, non-HTTPS and identit
 
 test('new installations start with one space and imports do not change an existing registry',t=>{
  const data=fixture(t);assert.equal(registry(data).sites.length,1);
- writeFileSync(join(data,'spaces.json'),JSON.stringify({version:1,activeSpaceId:'lingxi',sites:profiles.slice(0,5)}));
- assert.equal(registry(data).sites.length,5);assert.equal(registry(data).activeSpaceId,'lingxi');
+ writeFileSync(join(data,'spaces.json'),JSON.stringify({version:1,activeSpaceId:'xsime',sites:profiles.slice(0,5)}));
+ assert.equal(registry(data).sites.length,5);assert.equal(registry(data).activeSpaceId,'xsime');
 });
 
 test('live identity is checked without a token, then authorization is checked without modifying local state',async t=>{
@@ -68,7 +68,7 @@ test('conflicting IDs, domains, and orphaned directories are rejected before cre
 });
 
 test('supported old domains are verified separately and remain unchanged for existing publication receipts',async t=>{
- const data=fixture(t),canonical=profiles.find(s=>s.id==='lingxi'),old={...canonical,origin:canonical.aliases[0],aliases:[]};importSite(data,old);
+ const data=fixture(t),canonical=profiles.find(s=>s.id==='xsime'),old={...canonical,origin:canonical.aliases[0],aliases:[]};importSite(data,old);
  const calls=[];const result=await verifyAuthorization(data,authorization({site:canonical}),async(url,options)=>{calls.push(url);return fakeSite(url.startsWith(old.origin)?old:canonical)(url,options);});
  assert.equal(calls.length,4);assert.equal(result.site.origin,old.origin);assert.equal(authorizationTarget(data,canonical).existing,true);
 });

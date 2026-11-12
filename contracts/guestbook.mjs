@@ -10,7 +10,7 @@ export const FORMS={
   {id:'course',label:'课程与培训线索',fields:[field('organizer','主办方',true),field('schedule','课程日期与时区',true),field('source','官网与费用说明',true)]},
   {id:'message',label:'交流与建议',fields:[]}
  ],
- lingxi:[
+ xsime:[
   {id:'bug',label:'问题反馈',fields:[field('platform','系统与版本',true),field('version','输入法版本 / 方案',true),field('steps','复现步骤',true,2000),field('expected','期望结果',true),field('actual','实际结果',true)]},
   {id:'feature',label:'功能建议',fields:[field('scenario','使用场景',true)]},
   {id:'group-buy',label:'键盘开团线索',fields:[field('organizer','发起方',true),field('source','公告链接',true),field('schedule','开团与截止时间、时区',true)]},

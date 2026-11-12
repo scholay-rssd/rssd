@@ -116,7 +116,7 @@ test('inline contents needs three headings and shares anchors with the rail',asy
 test('skins: eight sites own a stylesheet, piggytuck and the others never get one, and sites keep their existing preset',async()=>{
   const {SKINNED_SITES,blogPreset,BLOG_SITES}=await import('../web/themes/journal/blog-presets.mjs');
   const {access,readFile}=await import('node:fs/promises');const {profiles}=await import('../scripts/site-config.mjs');
-  assert.deepEqual([...SKINNED_SITES].sort(),['enter','legis','lingxi','metho','personal','pets','study','xsiching']);
+  assert.deepEqual([...SKINNED_SITES].sort(),['enter','legis','metho','personal','pets','study','xsiching','xsime']);
   for(const id of SKINNED_SITES){
     await access(new URL(`../web/themes/journal/skins/${id}.css`,import.meta.url));
     const css=await readFile(new URL(`../web/themes/journal/skins/${id}.css`,import.meta.url),'utf8');

@@ -27,6 +27,6 @@ export async function standingPages({organization,content,target,homepage}){
   if(content.siteId==='piggytuck'){
     pages.unshift({route:'/works/',title:'作品系列',body:`<section class="hero compact"><p class="eyebrow">作品与系列</p><h1>每个角色，都有自己的故事。</h1><p>作品图片、系列介绍与持续记录。</p></section>${cards(hubs)}`});nav.push({route:'/works/',label:'作品系列'});
   }
-  if(content.siteId==='lingxi')nav.push({route:'/projects/lingxi/',label:'项目介绍'});
+  if(content.siteId==='xsime')nav.push({route:'/projects/xsime/',label:'项目介绍'});
   return {hubs,pages,files,nav,cards};
 }

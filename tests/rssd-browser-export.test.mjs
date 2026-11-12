@@ -15,7 +15,7 @@ import {buildDemoVariant} from '../scripts/build-demo.mjs';
 import {DEMO_VARIANTS} from '../web/demo/variants.mjs';
 
 test('each configured and migrated site section owns explicitly registered page and WeChat templates',()=>{
- const migratedSites=new Set(['piggytuck','lingxi','personal','pets']),migratedSections=['archive','calendar','history','open-source'];
+ const migratedSites=new Set(['piggytuck','xsime','personal','pets']),migratedSections=['archive','calendar','history','open-source'];
  const ids=new Set(),catalog=new Set();for(const site of profiles){
   const sections=new Map(sectionsForSite(site).map(section=>[section.id,section]));
   for(const id of migratedSections)if(!sections.has(id))sections.set(id,{id,name:id});
