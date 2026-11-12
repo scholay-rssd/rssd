@@ -90,8 +90,8 @@ test('academic guestbook retains the same navigation destinations without changi
  const academic=await fixture(t,'scholay-today'),other=await fixture(t,'xsime');
  const html=(await academic.app.inject('/guestbook/')).body;
  const nav=html.match(/<nav class="academic-nav"[^>]*>([\s\S]*?)<\/nav>/)[1];
- assert.deepEqual([...nav.matchAll(/<a[^>]*>(.*?)<\/a>/g)].map(m=>m[1]),['首页','今日学术','昔日学术','学术新闻','留言板']);
- assert.match(nav,/data-nav="guestbook" class="active" aria-current="page"/);
+ assert.deepEqual([...nav.matchAll(/<a[^>]*>(.*?)<\/a>/g)].map(m=>m[1]),['今日学术','昔日学术','学界犀闻','学者观察','全部文章','留言板','关于']);
+ assert.match(nav,/data-nav="guestbook" data-group="entrance" class="active" aria-current="page"/);
  assert.doesNotMatch((await other.app.inject('/guestbook/')).body,/academic-nav/);
 });
 test('guestbook is opt-in and independent of publication database in real admin application',async t=>{

@@ -5,7 +5,7 @@ import {visible} from '../contracts/rssd-publication.cjs';
 export function preflightAcademicNews(value,site){
   if(site.id!=='scholay-today'||value.locale!=='zh-CN'||!visible(value)||value.content.metadata.record)return;
   const fail=message=>{throw Object.assign(new Error(message),{statusCode:400,code:'invalid_academic_news'});};
-  if(!/^\/(?:calendar|history|open-source|news)\/[a-zA-Z0-9-]+\/$/.test(value.route))fail('文章路径不符合今日学术的路由格式');
+  if(!/^\/(?:calendar|history|open-source|news)\/[a-zA-Z0-9-]+\/$/.test(value.route))fail('文章路径不符合 Today 的路由格式');
   const {content}=value,metadata=content.metadata;
   const field=(input,max,name)=>{
     if(typeof input!=='string'||input.length>max)fail(name+'为空或超过长度限制');
