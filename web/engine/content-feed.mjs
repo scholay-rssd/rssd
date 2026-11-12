@@ -6,15 +6,20 @@ export const feedRoute=(base,page=1)=>page===1?base:base+'page/'+page+'/';
 export function createFeedIndex(content){
  const sections=content.collections.filter(c=>c.route!=='/archive/').map(c=>({...c,members:[...collectionIds(content.collections,c.id)]}));
  const records=content.records.slice().sort((a,b)=>String(b.publication.date||'').localeCompare(String(a.publication.date||''))||a.id.localeCompare(b.id)).map(r=>({
-  id:r.id,title:r.title,summary:r.summary||'',route:r.route,section:r.collectionId,
+  id:r.id,title:r.title,summary:plainSummary(r.summary),route:r.route,section:r.collectionId,
   ...(r.media?.[0]?.src?{cover:{src:r.media[0].src,alt:r.media[0].alt||''}}:{}),
   dateLabel:r.event?.mode==='historical'?`${r.event.year} 年 · ${r.event.monthDay}`:r.event?.mode==='annual'?'每年 '+r.event.recurrence.monthDay:r.event?.start?[r.event.start,r.event.end].filter(Boolean).join(' — '):r.publication.date||'',
  }));
  return {version:1,siteId:content.siteId,sections,records};
 }
+// Listing excerpts are plain text: a summary may open with a Markdown picture or
+// links, which would otherwise show as raw syntax in every listing.
+export function plainSummary(value){
+ return String(value||'').replace(/!\[[^\]]*\]\([^)]*\)/g,'').replace(/\[([^\]]+)\]\([^)]*\)/g,'$1').replace(/<[^>]*>/g,'').replace(/[#*_`>]/g,'').replace(/\s+/g,' ').trim();
+}
 export function feedCard(record,index){
  const label=index.sections.find(s=>s.id===record.section)?.name||'';
- return `<article class="feed-entry">${record.cover?`<a class="feed-cover" href="${esc(record.route)}" tabindex="-1" aria-hidden="true"><img src="${esc(record.cover.src)}" alt="" width="640" height="400" loading="lazy" decoding="async"></a>`:''}<div class="entry-meta"><span>${esc(label)}</span><time>${esc(record.dateLabel)}</time></div><h2><a href="${esc(record.route)}">${esc(record.title)}</a></h2><p>${esc(record.summary.slice(0,240))}</p></article>`;
+ return `<article class="feed-entry" data-section="${esc(record.section||'')}">${record.cover?`<a class="feed-cover" href="${esc(record.route)}" tabindex="-1" aria-hidden="true"><img src="${esc(record.cover.src)}" alt="" width="640" height="400" loading="lazy" decoding="async"></a>`:''}<div class="entry-meta"><span>${esc(label)}</span><time>${esc(record.dateLabel)}</time></div><h2><a href="${esc(record.route)}">${esc(record.title)}</a></h2><p>${esc(record.summary.slice(0,240))}</p></article>`;
 }
 export function renderFeed(index,{label,section='',page=1}={}){
  const selected=index.sections.find(s=>s.id===section),members=selected?.members||[section];
