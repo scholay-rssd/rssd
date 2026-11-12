@@ -12,6 +12,7 @@ import {attachBrowserExports} from './browser-export/build.mjs';
 import {attachGuestbook} from './guestbook-page.mjs';
 import {prepareSnapshotAssets} from './publication-assets.mjs';
 import {attachDisplayImages} from './display-images.mjs';
+import {loadLanguagePack} from './language-pack.mjs';
 export {annualDate} from '../themes/journal/render.mjs';
 const renderers={'academic-v1':renderAcademic,'journal-v1':renderJournal};
 export async function buildSiteRelease({job,target,site=SITE,source,previousRoot,now=new Date()}){
@@ -26,10 +27,11 @@ export async function buildSiteRelease({job,target,site=SITE,source,previousRoot
  const theme=resolveTheme(site,content);
  const manifest=await renderers[theme.renderer]({job:sourceJob,target,site,source,previousRoot,now,theme,content,organization});
  manifest.byteHashes={...manifest.byteHashes,...assetHashes};
- const localized=await renderLanguagePages({job,target,site,previousRoot,now,manifest});
+ const languagePack=await loadLanguagePack(source,site.id);
+ const localized=await renderLanguagePages({job,target,site,previousRoot,now,manifest,languagePack});
  const navigated=await finalizeLanguageNavigation({target,site,manifest:localized});
  await attachGuestbook({target,site,manifest:navigated});
- const exported=await attachBrowserExports({target,site,manifest:navigated,snapshot:job.snapshot});
+ const exported=await attachBrowserExports({target,site,manifest:navigated,snapshot:job.snapshot,languagePack});
  // Last, so every page that shows an oversized image points at its display copy.
  return attachDisplayImages({target,manifest:exported,previousRoot});
 }

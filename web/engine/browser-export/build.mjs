@@ -10,10 +10,11 @@ import {courseLabels} from '../../themes/academic/archive-pages.mjs';
 import {articleStyles,articleHeading} from './article-style.mjs';
 import {shareShell} from './share-shell.mjs';
 import {sectionsForSite} from '../../../contracts/site-sections.mjs';
+import {localeNames,localeSection,localeAuthor} from '../language-pack.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const key=route=>createHash('sha256').update(route).digest('hex').slice(0,24);
 const base='/assets/rssd-export/v1/';
-export async function attachBrowserExports({target,site,manifest,snapshot}){
+export async function attachBrowserExports({target,site,manifest,snapshot,languagePack=null}){
  const write=async(path,bytes)=>{await mkdir(dirname(join(target,path)),{recursive:true});await writeFile(join(target,path),bytes);manifest.hashes[path]=digest(bytes);if(Object.hasOwn(manifest.byteHashes||{},path))manifest.byteHashes[path]=byteHash(bytes);};
  const content=JSON.parse(await readFile(join(target,'published-content.json'),'utf8'));
  let english=[];try{english=JSON.parse(await readFile(join(target,'en/published-content.json'),'utf8')).records;}catch(error){if(error.code!=='ENOENT')throw error;}
@@ -24,7 +25,7 @@ export async function attachBrowserExports({target,site,manifest,snapshot}){
   const rawSection=record.sectionId||original?.sectionId||record.collectionId||'articles';
   const sectionId=/^(articles|extra-\d+)$/.test(rawSection)?'archive':({'column-1':'archive','column-2':'archive','column-3':'open-source','column-4':'calendar','column-5':'history'})[rawSection]||rawSection;
   const sectionName=sections.find(s=>s.id===sectionId)?.name||content.collections?.find(c=>c.id===sectionId)?.name||original?.category||site.name;
-  const locale=record.locale||'zh-CN',en=locale==='en';
+  const locale=record.locale||'zh-CN',en=locale==='en',names=locale==='zh-CN'?null:localeNames(languagePack,locale);
   const selected=Object.fromEntries(['pages','wechat'].map(format=>[format,exportTemplate({siteId:site.id,workspaceId:site.spaceId,sectionId,sectionName,format})]));
   Object.values(selected).forEach(t=>templates.add(t.id));
   let markdown=record.bodyMarkdown||'';
@@ -41,8 +42,9 @@ export async function attachBrowserExports({target,site,manifest,snapshot}){
   const endnotes=rendered.endnotes?`<div class="article-body article-endnotes">${rendered.endnotes}</div>`:'';
   const course=record.course?`<p class="rssd-byline">${courseLabels(record.course)}</p>`:'';
   const html=course+facts+rendered.body+sourcePanel+endnotes;
-  const model={version:1,site:{id:site.id,name:site.name,origin:site.origin},sectionName,title:record.title,locale,url:site.origin+route,
-   date:record.publication?.date||record.date||'',author:record.publication?.author||site.author||'',html,templates:selected};
+  // A page in another language names the site, its section and its default author in that language.
+  const model={version:1,site:{id:site.id,name:names?.name||site.name,origin:site.origin},sectionName:localeSection(names,sectionId,sectionName),title:record.title,locale,url:site.origin+route,
+   date:record.publication?.date||record.date||'',author:localeAuthor(names,record.publication?.author||site.author||'',site),html,templates:selected};
   const path='export/'+key(route)+'/';await write(path+'content.json',JSON.stringify(model));
   // Keep existing export bookmarks usable, but reading and sharing live on the
   // canonical article. No separate public preview or eager pagination.
@@ -58,8 +60,8 @@ export async function attachBrowserExports({target,site,manifest,snapshot}){
    const extras=[...old.matchAll(/<aside class="sources">[\s\S]*?<\/aside>|<p class="interaction-link">[\s\S]*?<\/p>/g)].map(x=>x[0]).filter(x=>/关联|interaction-link/.test(x)).join('');
    const oldBack=priorBack||old.match(/<a class="back"[^>]*>[\s\S]*?<\/a>/)?.[0];
    const stale=old.match(/<p class="muted">This English edition[\s\S]*?<\/p>/)?.[0]||'';
-   const sourceRoute=old.match(/data-community-source-route="([^"]*)"/)?.[1];
-   return `<nav class="rssd-reading-nav" aria-label="${en?'Article navigation':'文章导航'}">${oldBack||`<a class="back" href="${en?'/en/':'/archive/'}">← ${en?'All articles':'全部文章'}</a>`}</nav><article class="rssd-article" data-article-template="${esc(selected.wechat.id)}"${sourceRoute?` data-community-source-route="${sourceRoute}"`:''}>${articleHeading(model)}${course}${stale}${facts}<div class="article-body">${rendered.body}</div>${sourcePanel}${endnotes}${extras}</article>`;
+   const sourceRoute=old.match(/data-community-source-route="([^"]*)"/)?.[1],versionState=old.match(/data-source-version-state="([a-z_]+)"/)?.[1];
+   return `<nav class="rssd-reading-nav" aria-label="${en?'Article navigation':'文章导航'}">${oldBack||`<a class="back" href="${en?'/en/':'/archive/'}">← ${en?'All articles':'全部文章'}</a>`}</nav><article class="rssd-article" data-article-template="${esc(selected.wechat.id)}"${sourceRoute?` data-community-source-route="${sourceRoute}"`:''}${versionState?` data-source-version-state="${versionState}"`:''}>${articleHeading(model)}${course}${stale}${facts}<div class="article-body">${rendered.body}</div>${sourcePanel}${endnotes}${extras}</article>`;
   }).replace(/<aside class="reading-aside">[\s\S]*?<\/aside>/g,'').replace('</head>',`<link rel="stylesheet" href="/${path}article.css"><link rel="stylesheet" href="${base}share.css"></head>`)
     .replace('</body>',shareShell(model,'/'+path+'content.json')+`<script type="module" src="${base}share.mjs"></script></body>`);
   await write(articlePath,article);count++;
