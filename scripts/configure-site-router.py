@@ -41,7 +41,14 @@ location ^~ /guestbook/ {{
 }}
 '''
 
-for route in ['journal','calendar','gallery','graph','showcase','roadmap','display','works','projects','project-notes','organization','archive','news','history','open-source','article-media']:
+# Retired pages (navigation standard, 2026-11-12): 橱窗 and 关系图 go to 全部文章;
+# piggytuck's 表情图库 now lives on its series pages.
+retired={'showcase':'/archive/','graph':'/archive/'}
+if site_id=='piggytuck': retired['gallery']='/works/'
+for route,target in retired.items():
+ content+=f'location ^~ /{route}/ {{ return 301 {target}; }}\n'
+for route in ['journal','calendar','gallery','roadmap','display','works','projects','project-notes','organization','archive','news','history','open-source','article-media','about']:
+ if route in retired: continue
  content+=f'location ^~ /{route}/ {{ root {base}/web/current; index index.html; try_files $uri $uri/ =404; add_header Cache-Control "no-cache"; }}\n'
 for file in ['site-theme.css','site-calendar.js','site-content.json','published-content.json','site-logo.png','site-logo.webp','site-logo.jpg','site-logo.svg','sitemap-content.xml','content-feed.xml','release.json']:
  content+=f'location = /{file} {{ root {base}/web/current; try_files $uri =404; add_header Cache-Control "no-cache"; }}\n'

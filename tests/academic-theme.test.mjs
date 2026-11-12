@@ -72,7 +72,7 @@ test('academic front page: instant HTML on "/", free of build-date content, cale
   route:{news:x=>'/news/'+x.id+'/',openSource:()=>'/open-source/tool/'},sectionName:()=>'学界犀闻',sections:[{name:'学界犀闻',route:'/archive/observations/'}]};
  const html=renderFrontPage(input);
  assert.match(html,/^<div class="fp" data-front>/);
- assert.match(html,/<h1>今日学术<\/h1>/);
+ assert.match(html,/<h1>Today<\/h1>/);
  assert.match(html,/class="fp-lead"><p class="fp-kicker">学界犀闻 · 2026-10-20<\/p><h2><a href="\/news\/a\/">较新的 &lt;b&gt;资讯&lt;\/b&gt;<\/a>/);
  assert.doesNotMatch(html,/<b>|!\[|\]\(http/);
  assert.match(html,/href="\/#\/year"[^>]*>进入科研日历/);assert.match(html,/href="\/#\/history"/);

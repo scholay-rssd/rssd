@@ -31,6 +31,26 @@ export const FORMS={
   {id:'event',label:'展赛与节日线索',fields:[field('organizer','主办方',true),field('source','官方链接',true),field('schedule','日期、时区与地点',true)]},
   {id:'correction',label:'百科纠错',fields:[field('source','文章与核验来源',true)]},
   {id:'collaboration',label:'合作需求',fields:[field('need','合作方向',true)]}
+ ],
+ // Forms for the four sites whose guestbooks open with the navigation standard (owner-approved 2026-11-12).
+ legis:[
+  {id:'lead',label:'案例与法规线索',fields:[field('source','判决书或法规原文链接',true),field('region','适用地区 / 法院')]},
+  {id:'correction',label:'纠错指正',fields:[field('source','文章链接',true),field('detail','需要更正的内容与依据',true,2000)]},
+  {id:'message',label:'交流与建议',fields:[]}
+ ],
+ metho:[
+  {id:'request',label:'想看的方法',fields:[field('method','方法名称',true),field('context','研究场景')]},
+  {id:'correction',label:'纠错指正',fields:[field('source','文章链接',true),field('detail','需要更正的内容与依据',true,2000)]},
+  {id:'message',label:'交流与建议',fields:[]}
+ ],
+ xsiching:[
+  {id:'correction',label:'原文与版本指正',fields:[field('source','文章链接',true),field('edition','原文版本与出处',true)]},
+  {id:'message',label:'读书交流',fields:[]}
+ ],
+ study:[
+  {id:'resource',label:'推荐课程或资源',fields:[field('source','官方链接',true),field('audience','适用人群')]},
+  {id:'correction',label:'信息过期 / 纠错',fields:[field('source','文章链接',true),field('detail','需要更新的信息',true)]},
+  {id:'message',label:'交流与建议',fields:[]}
  ]
 };
 export function guestbookConfig(site){
