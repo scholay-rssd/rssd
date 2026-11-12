@@ -260,3 +260,21 @@ test('licensed original uses real verifier and restricted registrar without star
  const [image]=await stage.prepare(args);assert.equal(image.provenance.kind,'licensed-source');assert.equal(image.provenance.license,'CC0 1.0');assert.equal(image.uploaded,true);
  const state=await inspectCursorGalleryOrphan(f.root);assert.equal(state.phase,'closed');assert.equal(state.tasks.length,1);assert.equal(state.tasks[0].phase,'settled');assert.equal(state.tasks[0].runId,undefined);
 });
+
+test('bridge child that creates the workbench first cannot loosen the registrar directories',async t=>{
+ const {mkdir,lstat}=await import('node:fs/promises'),{createOriginalGalleryRegistrar}=await import('../scripts/rssd-original-gallery-registrar.mjs');
+ const f=await fixture(t),workspace=join(f.root,'workspace');await mkdir(join(workspace,'_ops/inventory'),{recursive:true,mode:0o700});await mkdir(join(workspace,'articles'),{mode:0o700});await writeFile(join(workspace,'_ops/inventory/article-index.json'),JSON.stringify({version:1,articles:{},annexColumns:[]}));
+ // The real bridge's task store creates .local/workbench with default modes,
+ // and generation lets it create gallery/. Pin the usual umask so a directory
+ // the child creates first is 0755, the mode the registrar refuses.
+ const umask=process.umask(0o022);t.after(()=>process.umask(umask));
+ const mode=dir=>lstat(join(workspace,dir)).then(s=>(s.mode&0o777).toString(8),e=>e.code);
+ await withCursorGalleryBridge({...f,fixtureCommand:{command:process.execPath,args:[resolve('desktop/scripts/agent/bridge.mjs')],callTimeout:6000}},async bridge=>{
+  // Returning means the child has already run its task-store mkdir; no timing.
+  assert.deepEqual(await bridge.call('task_list'),[]);
+  assert.deepEqual({local:await mode('.local'),workbench:await mode('.local/workbench'),gallery:await mode('.local/workbench/gallery')},{local:'700',workbench:'700',gallery:'700'});
+  const registrar=createOriginalGalleryRegistrar({workspace,bridge});
+  assert.deepEqual(await registrar.lookup({requestId:'race-one',scope:{slot:'hero'}}),{status:'pending',reason:'original_request_not_found'});
+ });
+ assert.equal((await inspectCursorGalleryOrphan(f.root)).phase,'closed');
+});
