@@ -89,7 +89,10 @@ export async function paginate(frame,model,{signal,onProgress=()=>{},loadImage,p
  }
  next();
  while(queue.length){
-  signal?.throwIfAborted();const node=queue.shift();body.append(node);
+  signal?.throwIfAborted();const node=queue.shift();
+  // An explicit break (<hr class="rssd-page-break">) starts a new page and is not itself laid out.
+  if(node.nodeType===1&&node.classList?.contains('rssd-page-break')){if(body.childNodes.length){next();onProgress(pages.length);await pause();}continue;}
+  body.append(node);
   if(fits(body))continue;node.remove();
   const heading=/^H[1-6]$/.test(node.nodeName);
   if(!heading){const split=fragment(node,body);if(split){body.append(split[0]);queue.unshift(split[1]);next();onProgress(pages.length);await pause();continue;}}

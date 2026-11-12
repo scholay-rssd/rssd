@@ -80,6 +80,41 @@ test('native MathML paints in live articles, portable articles and page exports'
  }
 });
 
+test('page templates size formula pictures apart from ordinary images',async()=>{
+ const {templateStyles}=await import('../web/engine/browser-export/styles.mjs');
+ const css=templateStyles(exportTemplate({siteId:'metho',sectionId:'statistics',format:'pages'}));
+ assert.match(css,/img\.rssd-math\{display:inline-block;[^}]*max-height:none/);
+ assert.match(css,/img\.rssd-math-block\{display:block;[^}]*max-height:none/);
+});
+
+test('an explicit page break starts a new page without an empty page or a visible rule',{skip:!process.env.RSSD_BROWSER_EXECUTABLE,timeout:30000},async t=>{
+ const dir=resolve(import.meta.dirname,'../web/engine/browser-export');
+ const server=createServer(async(req,res)=>{try{
+  const name=new URL(req.url,'http://localhost').pathname;
+  if(name==='/'){res.writeHead(200,{'content-type':'text/html;charset=utf-8'});res.end('<!doctype html><title>pages</title>');return;}
+  const path=resolve(dir,'.'+name);if(!path.startsWith(dir+sep)||extname(path)!=='.mjs')throw Error('path');
+  res.writeHead(200,{'content-type':'text/javascript'});res.end(await readFile(path));
+ }catch{res.writeHead(404);res.end();}});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>server.close(r)));
+ const require=createRequire(new URL('../desktop/runtime/package.json',import.meta.url)),{chromium}=require('playwright-core');
+ const browser=await chromium.launch({executablePath:process.env.RSSD_BROWSER_EXECUTABLE,headless:true});t.after(()=>browser.close());
+ const page=await browser.newPage();await page.goto('http://127.0.0.1:'+server.address().port+'/');
+ const template=exportTemplate({siteId:'metho',sectionId:'statistics',format:'pages'});
+ const pages=await page.evaluate(async template=>{
+  const {paginate}=await import('./pagination.mjs');
+  const frame=document.createElement('iframe');frame.style.cssText='position:fixed;left:-10000px;width:1200px;height:1600px';document.body.append(frame);
+  const cut='<hr class="rssd-page-break">';
+  // Two breaks in a row must not leave an empty page between them.
+  const model={version:1,site:{id:'metho',name:'Metho',origin:'https://example.test'},sectionName:'统计',title:'分页',locale:'zh-CN',url:'https://example.test/a',
+   date:'',author:'',html:'<p>ALPHA</p>'+cut+'<p>BETA</p>'+cut+cut+'<p>GAMMA</p>',templates:{pages:template}};
+  const result=await paginate(frame,model,{pause:()=>Promise.resolve()});
+  return result.pages.map(p=>({text:p.querySelector('.rssd-body').textContent,rules:p.querySelectorAll('hr').length}));
+ },template);
+ assert.equal(pages.length,3,JSON.stringify(pages));
+ assert.match(pages[0].text,/ALPHA/);assert.match(pages[1].text,/BETA/);assert.match(pages[2].text,/GAMMA/);
+ assert.ok(pages.every(p=>p.rules===0),'a page break is never laid out as a rule');
+});
+
 test('article sharing is lazy, preserves complete content and exports standalone HTML and PNG ZIP',{skip:!process.env.RSSD_BROWSER_EXECUTABLE,timeout:180000},async t=>{
  const root=await mkdtemp(join(tmpdir(),'rssd-share-'));let output;
  const types={'.html':'text/html;charset=utf-8','.json':'application/json','.mjs':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml'};
