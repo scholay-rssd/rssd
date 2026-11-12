@@ -22,6 +22,8 @@ async function privateRoot(input){
 }
 async function read(file){try{return JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw e;}}
 const save=durableWriteJson;
+const unsafeIsolation=()=>Error('Gallery isolation directory is unsafe');
+async function privateDirectory(dir,fail){await mkdir(dir,{recursive:true,mode:0o700});const info=await lstat(dir);if(!info.isDirectory()||info.isSymbolicLink()||(info.mode&0o077)!==0||typeof process.getuid==='function'&&info.uid!==process.getuid())throw fail();}
 
 async function rejectExisting(paths){for(const path of paths){try{await lstat(path);throw stopped();}catch(error){if(error.code!=='ENOENT')throw error;}}}
 async function requireRegularFileInside(path,root){const info=await lstat(path),actual=await realpath(path);if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1||!actual.startsWith(root+'/'))throw stopped();}
@@ -144,7 +146,7 @@ export async function withCursorGalleryBridge({root,mode='production',enabled=fa
   }
   const state={version:1,phase:'starting',tasks:previous?.tasks||[],ownerPid:process.pid};
   const home=join(root,'home'),workspace=join(root,'workspace'),tmp=join(root,'tmp');
-  for(const dir of [home,workspace,tmp]){await mkdir(dir,{recursive:true,mode:0o700});const info=await lstat(dir);if(!info.isDirectory()||info.isSymbolicLink()||(info.mode&0o077)!==0||typeof process.getuid==='function'&&info.uid!==process.getuid())throw Error('Gallery isolation directory is unsafe');}
+  for(const dir of [home,workspace,tmp])await privateDirectory(dir,unsafeIsolation);
   if(mode==='production'){
    const index=join(workspace,'_ops/inventory/article-index.json');let value=await readPrivate(index,workspace);
    if(!value){if((await readdir(workspace)).length)throw stopped();await mkdir(join(workspace,'_ops/inventory'),{recursive:true,mode:0o700});await mkdir(join(workspace,'articles'),{mode:0o700});value={version:1,articles:{},annexColumns:[]};await writeFile(index,JSON.stringify(value),{mode:0o600,flag:'wx'});}
@@ -159,12 +161,16 @@ export async function withCursorGalleryBridge({root,mode='production',enabled=fa
    const userHome=userInfo().homedir;if(/["\\\n\r]/.test(userHome))throw stopped();
    const config=join(root,'config'),data=join(workspace,'.cursor-runtime'),xdg=join(root,'xdg');
    await rejectExisting([join(config,'mcp.json'),join(workspace,'.cursor'),join(home,'agents.json')]);
-   for(const dir of [config,data,xdg]){await mkdir(dir,{recursive:true,mode:0o700});const info=await lstat(dir);if(!info.isDirectory()||info.isSymbolicLink()||(info.mode&0o077)!==0||typeof process.getuid==='function'&&info.uid!==process.getuid())throw stopped();}
+   for(const dir of [config,data,xdg])await privateDirectory(dir,stopped);
    await privateCursorConfig(config);
    const profile=cursorGallerySandboxProfile({userHome,root});
    env={HOME:userHome,PATH:join(userHome,'.local/bin')+':/usr/bin:/bin:/usr/sbin:/sbin',TMPDIR:tmp,CURSOR_CONFIG_DIR:config,CURSOR_DATA_DIR:data,XDG_CONFIG_HOME:xdg,SCHOLAY_EDITORIAL_ROOT:workspace,SCHOLAY_APP_DATA:home,SCHOLAY_GLOBAL_APP_DATA:home};
    command='/usr/bin/sandbox-exec';args=['-p',profile,expectedRuntime.files.node.path,expectedRuntime.files.bridge.path];
   }
+  // The child's task store and gallery create these with default modes, and the
+  // original registrar refuses group- or other-accessible ones. Create them
+  // privately before the child exists so neither start order can loosen them.
+  for(const dir of ['.local','.local/workbench','.local/workbench/gallery'])await privateDirectory(join(workspace,dir),unsafeIsolation);
   // Initialization errors must not replace the original lifecycle journal.
   await save(file,state);
   const child=spawn(command,args,{cwd:workspace,env,stdio:['pipe','pipe','pipe'],windowsHide:true});
