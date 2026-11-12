@@ -43,7 +43,7 @@ export async function createReceiver({config,build=buildAndActivate}) {
     sites.set(site.id,{site,base,tokenHash,accepting:entry.accepting!==false,baselineSha256:baselineBytes?p.hash(baselineBytes):null,baseline:baselineBytes?JSON.parse(baselineBytes):{},store:new ReceiverStore(join(home,site.id,'receiver.sqlite'),site),media:new ReceiverMedia(join(home,site.id,'media'))});
     const configured=sites.get(site.id);configured.store.seedLegacyHeads(configured.baseline);
     configured.bindings=new BindingStore({db:configured.store.db,keys:bindingKeys,siteId:site.id,workspaceId:site.spaceId,orgId:bindingOrgId,destinationId:bindingDestinationId,lookupPacket:id=>{const r=configured.store.db.prepare('SELECT payload FROM requests WHERE id=?').get(id);return r?JSON.parse(r.payload):null;}});
-    if(entry.guestbook)configured.guestbook=new GuestbookMirror({...entry.guestbook,siteId:site.id,directory:join(base,'services','guestbook')});
+    if(entry.guestbook)configured.guestbook=new GuestbookMirror({...entry.guestbook,siteId:site.id,root:base,directory:join(base,'services','guestbook')});
     if(entry.community)configured.community=new CommunityMirror({...entry.community,siteId:site.id,directory:join(base,'services','community')});
   }
   const app=Fastify({logger:false,bodyLimit:8*1024*1024});

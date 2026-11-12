@@ -1,15 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,readFile,rm,access} from 'node:fs/promises';
+import {mkdtemp,readFile,rm,access,stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {GuestbookMirror} from '../receiver/guestbook.mjs';
 import {attachGuestbook} from '../web/engine/guestbook-page.mjs';
 import {profiles} from '../scripts/site-config.mjs';
 test('approved-message replica strips private fields, keeps the last good copy during failure and rejects invalid replacements',async t=>{
- const directory=await mkdtemp(join(tmpdir(),'rssd-wall-'));t.after(()=>rm(directory,{recursive:true,force:true}));let now=0,body={messages:[{id:'message-1',kind:'message',name:'Synthetic',message:'Approved text',created:1,contact:'never public',details:{private:'never public'},visitor:'private identity'}]},failure=false;
- const mirror=new GuestbookMirror({siteId:'fixture',origin:'https://center.example.org',token:'fixture-token-'.repeat(4),directory},{now:()=>now,fetchImpl:async(url,options)=>{assert.equal(new URL(url).pathname,'/api/rssd/public/v1/guestbooks/fixture/messages');assert(options.headers['x-rssd-site-token']);if(failure)throw Error('offline');return new Response(JSON.stringify(body));}});
- await mirror.tick();const target=join(directory,'messages.json'),original=await readFile(target,'utf8');assert(!original.includes('private'));assert(!original.includes('contact'));
+ let directory=await mkdtemp(join(tmpdir(),'rssd-wall-'));const cleanup=directory;t.after(()=>rm(cleanup,{recursive:true,force:true}));let now=0,body={messages:[{id:'message-1',kind:'message',name:'Synthetic',message:'Approved text',created:1,contact:'never public',details:{private:'never public'},visitor:'private identity'}]},failure=false;
+ const root=directory;directory=join(root,'services','guestbook');
+ const mirror=new GuestbookMirror({siteId:'fixture',origin:'https://center.example.org',token:'fixture-token-'.repeat(4),root,directory},{now:()=>now,fetchImpl:async(url,options)=>{assert.equal(new URL(url).pathname,'/api/rssd/public/v1/guestbooks/fixture/messages');assert(options.headers['x-rssd-site-token']);if(failure)throw Error('offline');return new Response(JSON.stringify(body));}});
+ const umask=process.umask(0o027);try{await mirror.tick();}finally{process.umask(umask);}const target=join(directory,'messages.json'),original=await readFile(target,'utf8');
+ // Receivers run with umask 0027; the web server must still read the replica.
+ assert.equal((await stat(target)).mode&0o777,0o644);for(const folder of [directory,join(root,'services')])assert.equal((await stat(folder)).mode&0o777,0o755);assert.equal((await stat(root)).mode&0o777,0o700,'the public root itself is left alone');assert(!original.includes('private'));assert(!original.includes('contact'));
  failure=true;now+=60001;await assert.rejects(mirror.tick(),/offline/);assert.equal(await readFile(target,'utf8'),original);
  failure=false;body={messages:[{id:'bad',kind:'message',name:'Synthetic',message:'x'.repeat(3001),created:2}]};now+=60001;await assert.rejects(mirror.tick(),/message/);assert.equal(await readFile(target,'utf8'),original);
 });
