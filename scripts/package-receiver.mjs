@@ -19,7 +19,7 @@ export async function packageReceiver(target){
  try{await access(target);throw Error('Refusing to overlay an existing receiver artifact');}catch(error){if(error.code!=='ENOENT')throw error;}
  await mkdir(target,{recursive:true});await packageWebEngine(target,{academic:true});
  const copy=async name=>{if(!/^(receiver|contracts|scripts|admin|web|sites)(?:\/|$)/.test(name)||name.includes('..')||name.includes('/homepage/'))throw Error('Unexpected runtime input: '+name);await mkdir(dirname(join(target,name)),{recursive:true});await cp(join(root,name),join(target,name),{recursive:true});};
- for(const name of ['receiver','contracts','sites/profiles.json','sites/site-theme.css','sites/site-calendar.js','sites/branding','sites/organization','sites/about'])await copy(name);
+ for(const name of ['receiver','contracts','sites/profiles.json','sites/site-theme.css','sites/site-calendar.js','sites/branding','sites/organization','sites/about','sites/language'])await copy(name);
  // Follow only literal relative module imports. Content seeds, editorial sources,
  // Next homepage projects, private configuration and repository metadata are never inputs.
  const checked=new Set();
