@@ -11,7 +11,7 @@ import {registerGuestbook} from '../admin/guestbook/api.mjs';
 import {guestbookConfig,FORMS} from '../admin/guestbook/config.mjs';
 import {profiles} from '../scripts/site-config.mjs';
 import {createApp} from '../admin/server.mjs';
-async function fixture(t,id='lingxi',{english=false}={}){
+async function fixture(t,id='xsime',{english=false}={}){
  const dir=await mkdtemp(join(tmpdir(),'today-guestbook-'));const path=join(dir,'guestbook.sqlite');
  const publicRoot=join(dir,'public');if(english){await mkdir(join(publicRoot,'current/en'),{recursive:true});await writeFile(join(publicRoot,'current/en/index.html'),'<h1>English</h1>');}
  let time=Date.parse('2026-10-14T15:59:00Z'),db,app;
@@ -46,13 +46,13 @@ test('moderation hides drafts, contact and all private details; requires admin s
 test('signed visitor cookies, same-origin and strict field validation protect submission',async t=>{
  const f=await fixture(t);assert.match(f.who.response.headers['set-cookie'],/HttpOnly/);assert.match(f.who.response.headers['set-cookie'],/Secure/);assert.match(f.who.response.headers['set-cookie'],/SameSite=Strict/);
  assert.equal((await f.post(f.payload(),{origin:'https://other.example'})).statusCode,403);
- assert.equal((await f.post(f.payload(),{cookie:'__Host-today-guest-lingxi=forged'})).statusCode,403);
+ assert.equal((await f.post(f.payload(),{cookie:'__Host-today-guest-xsime=forged'})).statusCode,403);
  assert.equal((await f.post(f.payload(),{'x-guestbook-csrf':'中'.repeat(64)})).statusCode,403);
  for(const p of [f.payload({details:{}}),f.payload({message:''}),f.payload({kind:'story'}),f.payload({contact:'x'.repeat(201)}),f.payload({details:{unknown:'x'}}),{...f.payload(),status:'approved'}])assert.equal((await f.post(p)).statusCode,400);
  assert.equal((await f.post(f.payload())).json().remaining,1);
 });
 test('all configured guestbook sites have their own forms and separate visitor quotas; store cannot be reused for another site',async t=>{
- for(const site of profiles.filter(s=>FORMS[s.id])){const f=await fixture(t,site.id);const p=f.payload();assert.equal((await f.post(p)).statusCode,201);assert.equal((await f.post(f.payload())).statusCode,201);assert.equal((await f.post(f.payload())).statusCode,429);assert.throws(()=>openGuestbook(f.path,site.id==='pets'?'lingxi':'pets'),/another site/);}
+ for(const site of profiles.filter(s=>FORMS[s.id])){const f=await fixture(t,site.id);const p=f.payload();assert.equal((await f.post(p)).statusCode,201);assert.equal((await f.post(f.payload())).statusCode,201);assert.equal((await f.post(f.payload())).statusCode,429);assert.throws(()=>openGuestbook(f.path,site.id==='pets'?'xsime':'pets'),/another site/);}
 });
 
 test('public guestbooks share the current site identity while the private inbox stays private',async t=>{
@@ -65,7 +65,7 @@ test('public guestbooks share the current site identity while the private inbox 
  }
 });
 test('dynamic guestbooks use the shared control only for English content that actually exists',async t=>{
- const bilingual=await fixture(t,'enter',{english:true}),untranslated=await fixture(t,'lingxi');
+ const bilingual=await fixture(t,'enter',{english:true}),untranslated=await fixture(t,'xsime');
  const html=(await bilingual.app.inject('/guestbook/')).body;
  assert.equal((html.match(/class="site-language-control"/g)||[]).length,1);assert.match(html,/href="\/site-language\.css"/);assert.match(html,/href="\/en\/"/);assert.match(html,/<small>目录<\/small>/);
  const unavailable=(await untranslated.app.inject('/guestbook/')).body;assert.match(unavailable,/aria-disabled="true"/);assert.doesNotMatch(unavailable,/href="\/en\/"/);
@@ -87,7 +87,7 @@ test('guestbooks retain their base stylesheet and serve navigation styles allowe
 });
 
 test('academic guestbook retains the same navigation destinations without changing other sites',async t=>{
- const academic=await fixture(t,'scholay-today'),other=await fixture(t,'lingxi');
+ const academic=await fixture(t,'scholay-today'),other=await fixture(t,'xsime');
  const html=(await academic.app.inject('/guestbook/')).body;
  const nav=html.match(/<nav class="academic-nav"[^>]*>([\s\S]*?)<\/nav>/)[1];
  assert.deepEqual([...nav.matchAll(/<a[^>]*>(.*?)<\/a>/g)].map(m=>m[1]),['首页','今日学术','昔日学术','学术新闻','留言板']);

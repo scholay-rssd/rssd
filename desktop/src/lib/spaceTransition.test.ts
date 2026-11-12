@@ -56,7 +56,7 @@ it('drains an old native write, rejects new work during switching, and stamps re
 it('coalesces repeated clicks instead of racing two native selections',async()=>{
  let finish!:()=>void;const switcher=vi.fn(()=>new Promise<void>(resolve=>{finish=resolve;}));
  configureSpaceTransition(switcher);
- const first=selectCreativeSpace('pets'),second=selectCreativeSpace('lingxi');
+ const first=selectCreativeSpace('pets'),second=selectCreativeSpace('xsime');
  expect(first).toBe(second);expect(switcher).toHaveBeenCalledTimes(1);
  finish();await first;
 });

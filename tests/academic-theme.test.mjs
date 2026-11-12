@@ -14,7 +14,7 @@ test('all ten profiles select Themes and old academic configuration retains its 
  assert.equal(themeForSite({...DEFAULT_SITE,legacy:false}).id,'academic');
  // Without a themeId only the declared legacy flag selects a Theme, never the site name.
  assert.equal(themeForSite({...old,legacy:false}).id,'journal');
- for(const id of ['lingxi','pets']){const {themeId:_,...unnamed}=profiles.find(site=>site.id===id);assert.equal(themeForSite(unnamed).id,'journal');}
+ for(const id of ['xsime','pets']){const {themeId:_,...unnamed}=profiles.find(site=>site.id===id);assert.equal(themeForSite(unnamed).id,'journal');}
 });
 test('academic Theme preserves frozen links, eligibility, original data and timestamps through the common entrypoint',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'academic-theme-'));t.after(()=>rm(dir,{recursive:true,force:true}));

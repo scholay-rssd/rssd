@@ -20,9 +20,9 @@ test('ten site sections match confirmed scope without changing the five legacy p
  const pets=await loadOrganization(process.cwd(),'pets');assert.deepEqual(pets.sections.map(s=>s.name),['宠物资讯','每日一猫','每日一狗','异宠大全']);
 });
 test('one primary section and explicit associations preserve original prose, links, old sections and input',async()=>{
- const site=profiles.find(s=>s.id==='lingxi'),s={...empty,news:[note('old','输入札记'),note('new','中文输入方案')],permalinks:{'news:old':'/news/old-permanent/'}};
+ const site=profiles.find(s=>s.id==='xsime'),s={...empty,news:[note('old','输入札记'),note('new','中文输入方案')],permalinks:{'news:old':'/news/old-permanent/'}};
  const content=adaptPublishedSnapshot(s,site),before=JSON.stringify(content),o=await loadOrganization(process.cwd(),site.id);
- o.bindings=[{recordId:'news:new',sectionId:'input-schemes',tags:['拼音'],related:[{id:'lingxi',role:'tutorial'}]}];
+ o.bindings=[{recordId:'news:new',sectionId:'input-schemes',tags:['拼音'],related:[{id:'xsime',role:'tutorial'}]}];
  const result=organizeContent(content,o);assert.equal(result.records[1].collectionId,'input-schemes');assert.equal(result.records[0].route,'/news/old-permanent/');assert(result.collections.find(c=>c.id==='column-2').legacy);
  assert.equal(JSON.stringify(content),before);assert.equal(result.records[1].bodyMarkdown,s.news[1].markdown);assert.deepEqual(result.records[1].tags,['拼音']);
  assert(!result.records[0].related); // Titles never create associations.
@@ -72,7 +72,7 @@ test('academic collaboration and course sections preserve old routes and render 
 });
 
 test('retired catalog sections retain imported article routes without reopening a production column',async()=>{
- const site=profiles.find(s=>s.id==='lingxi'),organization=await loadOrganization(process.cwd(),site.id);
+ const site=profiles.find(s=>s.id==='xsime'),organization=await loadOrganization(process.cwd(),site.id);
  const configured={...site,sectionCatalog:{version:1,revision:'migration',sections:[...organization.sections.map(s=>({id:s.id,name:s.name})),{id:'archive',name:'历史文章',enabled:false,writable:false}]}};
  const snapshot={...empty,news:[{...note('old-import','历史文章'),sectionId:'archive'}],permalinks:{'news:old-import':'/news/permanent-original/'}};
  const content=adaptPublishedSnapshot(snapshot,configured),before=JSON.stringify(content),result=organizeContent(content,organization);

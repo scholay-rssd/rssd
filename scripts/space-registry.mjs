@@ -5,12 +5,15 @@ import {randomUUID} from 'node:crypto';
 import {profiles,DEFAULT_SITE,validateSite} from './site-config.mjs';
 import {refreshSiteBrand} from '../contracts/site-branding.mjs';
 import {siteWithCachedSections,syncSectionCatalog} from './site-section-catalog.mjs';
+import {migrateRenamedSpaces} from './space-rename.mjs';
 
 const json=file=>JSON.parse(readFileSync(file,'utf8'));
 function saveBytes(file,value){const tmp=file+'.'+randomUUID()+'.tmp';try{writeFileSync(tmp,value,{mode:0o600,flag:'wx'});renameSync(tmp,file);}finally{rmSync(tmp,{force:true});}}
 function save(file,value){saveBytes(file,JSON.stringify(value,null,2)+'\n');}
 export function registry(data,initialize=true){
   const file=join(data,'spaces.json');
+  // Retired space IDs move to their new names before anything reads them.
+  if(initialize)migrateRenamedSpaces(data);
   const value=existsSync(file)?json(file):{version:1,activeSpaceId:DEFAULT_SITE.spaceId,sites:[DEFAULT_SITE]};
   if(value.version!==1||!Array.isArray(value.sites))throw Error('空间配置版本无效');
   const oldBrands=value.sites.map(s=>JSON.stringify([s.name,s.author,s.slogan]));

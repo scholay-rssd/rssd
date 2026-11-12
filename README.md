@@ -96,7 +96,7 @@ RSSD 把个人写作设备、内容中心与独立站点接在一起，适合持
 </tr>
 <tr>
 <td width="50%"><a href="https://pet.piggytuck.com/"><img src="docs/images/readme/sites/pets.webp" alt="小猪萌宠首页"><br><strong>小猪萌宠</strong></a><br>物种百科、照护资料与宠物资讯</td>
-<td width="50%"><a href="https://xsime.com/"><img src="docs/images/readme/sites/lingxi.webp" alt="犀术 IME 首页"><br><strong>犀术 IME</strong></a><br>产品介绍、使用文档与开发记录</td>
+<td width="50%"><a href="https://xsime.com/"><img src="docs/images/readme/sites/xsime.webp" alt="犀术 IME 首页"><br><strong>犀术 IME</strong></a><br>产品介绍、使用文档与开发记录</td>
 </tr>
 <tr>
 <td width="50%"><a href="https://www.piggytuck.com/"><img src="docs/images/readme/sites/piggytuck.webp" alt="小猪盖被首页"><br><strong>小猪盖被</strong></a><br>设计作品、表情图库与创作手记</td>

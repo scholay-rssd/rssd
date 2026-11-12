@@ -60,7 +60,7 @@ it('shows one current logo and opens the registered-space picker without switchi
  expect(choices()[0].getAttribute('aria-current')).toBe('true');expect(invoke).not.toHaveBeenCalled();
  await act(async()=>choices()[0].click());expect(invoke).not.toHaveBeenCalled();expect(choices()).toHaveLength(0);
  await act(async()=>trigger().click());
- await act(async()=>choices()[1].click());expect(invoke).toHaveBeenLastCalledWith('space_select',{spaceId:'lingxi'});
+ await act(async()=>choices()[1].click());expect(invoke).toHaveBeenLastCalledWith('space_select',{spaceId:'xsime'});
  expect(choices()).toHaveLength(0);expect(hasBlockingOverlay()).toBe(false);
 });
 it('shows the current space without navigating when the native registry has one space',async()=>{

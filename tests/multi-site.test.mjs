@@ -12,9 +12,9 @@ test('spaces preserve academic paths and isolate workspaces, subscriptions and p
  const data=await mkdtemp(join(tmpdir(),'site-spaces-'));t.after(()=>rm(data,{recursive:true,force:true}));
  await writeFile(join(data,'editorial-workspace.json'),JSON.stringify({path:join(data,'original-editorial')}));
  const legacy=spaceContext(data);assert.equal(legacy.workspaceRoot,join(data,'original-editorial'));assert.equal(legacy.stateDirectory,data);
- const first=importSite(data,profiles.find(s=>s.spaceId==='lingxi')),second=importSite(data,profiles.find(s=>s.spaceId==='pets'));assert.notEqual(first.workspaceRoot,second.workspaceRoot);assert.notEqual(first.stateDirectory,second.stateDirectory);
+ const first=importSite(data,profiles.find(s=>s.spaceId==='xsime')),second=importSite(data,profiles.find(s=>s.spaceId==='pets'));assert.notEqual(first.workspaceRoot,second.workspaceRoot);assert.notEqual(first.stateDirectory,second.stateDirectory);
  assert.equal(publicationDirectory(legacy.workspaceRoot),join(legacy.workspaceRoot,'.local/today'));
- assert.equal(publicationDirectory(first.workspaceRoot),join(first.workspaceRoot,'.local/sites/lingxi'));
+ assert.equal(publicationDirectory(first.workspaceRoot),join(first.workspaceRoot,'.local/sites/xsime'));
  const before=await readFile(join(first.workspaceRoot,'_ops/inventory/article-index.json'),'utf8');selectSpace(data,'pets');selectSpace(data,'academic');assert.equal(await readFile(join(first.workspaceRoot,'_ops/inventory/article-index.json'),'utf8'),before);
  assert.throws(()=>importSite(data,{...profiles[1],origin:'https://elsewhere.example'}),/已存在/);
  assert.throws(()=>validateOrigin('https://example.com/path'),/HTTPS/);assert.throws(()=>validateOrigin('http://example.com'),/HTTPS/);

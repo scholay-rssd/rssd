@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import {flushSync} from "react-dom";
 import {configureSpaceTransition,trackNativeWork,waitForSpacePreparation} from "./lib/spaceTransition";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {activateSpaceStorage,consumeSpaceReaderEntry} from "./lib/spaceStorage";
+import {activateSpaceStorage,consumeSpaceReaderEntry,renameSpaceStorage} from "./lib/spaceStorage";
 import {invoke,isTauri,nativeTransport} from "./lib/nativeCore";
 import { isMac } from "./lib/platform";
 // Bundle the three UI / reader fonts so Windows and Linux render with the
@@ -39,7 +39,7 @@ async function boot(){
  let context=isTauri()?await invoke<{site:import('../../scripts/site-profile.mjs').SiteProfile;spaceId:string;runtimeEpoch:number}>('space_context'):null;
  if(context){
    nativeWork?.setEpoch(context.runtimeEpoch);
-   (globalThis as any).__SCHOLAY_SITE=context.site;activateSpaceStorage(localStorage,context.spaceId);consumeSpaceReaderEntry(localStorage,context.spaceId);
+   (globalThis as any).__SCHOLAY_SITE=context.site;renameSpaceStorage(localStorage);activateSpaceStorage(localStorage,context.spaceId);consumeSpaceReaderEntry(localStorage,context.spaceId);
  }
  const {setLanguage,detectLanguage}=await import('./i18n');
  const {setActiveSite}=await import('../../scripts/site-profile.mjs');

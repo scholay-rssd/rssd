@@ -15,7 +15,7 @@ ALLOWED = {
     'web/themes/academic/render.mjs', 'web/themes/academic/public/app.js',
     'web/themes/academic/public/styles.css',
 }
-IDS = ['scholay-today', 'lingxi', 'piggytuck', 'personal', 'pets',
+IDS = ['scholay-today', 'xsime', 'piggytuck', 'personal', 'pets',
        'legis', 'metho', 'enter', 'xsiching', 'study']
 NODE = '/opt/scholay-admin/runtime/bin/node'
 

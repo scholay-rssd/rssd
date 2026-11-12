@@ -18,7 +18,7 @@ import sys
 import time
 import urllib.request
 
-SITES = ('scholay-today', 'lingxi', 'piggytuck', 'personal', 'pets',
+SITES = ('scholay-today', 'xsime', 'piggytuck', 'personal', 'pets',
          'legis', 'metho', 'enter', 'xsiching', 'study')
 RECEIVER_SITES = Path('/opt/rssd-public/sites')
 CONFIG = Path('/etc/scholay-retention/config.json')

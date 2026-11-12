@@ -50,7 +50,7 @@ export const SITE_SECTIONS={
       "writable": false
     }
   ],
-  "lingxi": [
+  "xsime": [
     {
       "id": "tutorials",
       "name": "使用教程",

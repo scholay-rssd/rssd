@@ -20,7 +20,7 @@ const withGraph=()=>({...content,knowledge:clone(input)});
 test('every node and relation needs explicit evidence, attribution and valid endpoints',()=>{
  assert.equal(validateKnowledgeGraph(input),input);
  for(const edit of [x=>x.nodes[0].evidence=[],x=>x.relations[0].evidence=[],x=>x.relations[0].from='invented',x=>x.relations[0].attribution='scientific-proof',x=>x.relations[0].evidence=[{...proof,sourceUrl:'javascript:alert(1)'}],x=>x.relations.push(x.relations[0]),x=>x.relations[0].id=x.nodes[0].id]){const bad=clone(input);edit(bad);assert.throws(()=>validateKnowledgeGraph(bad));}
- assert.throws(()=>bindKnowledgeGraph(content,{...input,siteId:'lingxi'}),/another site/);
+ assert.throws(()=>bindKnowledgeGraph(content,{...input,siteId:'xsime'}),/another site/);
 });
 test('missing, stale, unrelated and unpublished evidence fails closed without mutating manuscripts',()=>{
  const before=JSON.stringify(content),valid=bindKnowledgeGraph(content,input);assert.equal(valid.graph.relations.length,1);

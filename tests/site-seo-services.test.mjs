@@ -60,7 +60,7 @@ test('method and portal releases index real content and consolidate empty or dup
 });
 
 test('old domain identity is returned only for an explicit exact alias',()=>{
-  const site=validateSite(profiles.find(s=>s.id==='lingxi'));
+  const site=validateSite(profiles.find(s=>s.id==='xsime'));
   assert.equal(siteDescriptorForHost('lingx.club',site).origin,'https://lingx.club');
   for(const host of ['xsime.com','evil.test','lingx.club.evil.test','lingx.club:81',undefined])assert.equal(siteDescriptorForHost(host,site).origin,'https://xsime.com');
 });

@@ -11,8 +11,8 @@ import {resolveDisplay,createDisplayHost,renderDisplayModules} from '../web/modu
 import {eventMatches} from '../web/modules/calendar/model.mjs';
 import {homepageFiles,byteHash,homepagePath} from '../web/engine/theme-homepage.mjs';
 import {portfolioMedia} from '../web/engine/portfolio-media.mjs';
-const lingxi=profiles.find(s=>s.id==='lingxi');
-const snapshot={news:[{id:'human-note',title:'已有稿件',category:lingxi.columns[1],markdown:'# 已有稿件\n\n手写正文\n\n![保留原图注](https://example.org/image.png)',date:'2026-10-13'}],data:{year:[{id:'event',title:'跨年活动',start:'2026-12-30',end:'2027-01-02',summary:'旧摘要'}],history:[]},openSource:{items:[]},permalinks:{'news:human-note':'/news/frozen-link/','year:event':'/calendar/frozen-event/'}};
+const xsime=profiles.find(s=>s.id==='xsime');
+const snapshot={news:[{id:'human-note',title:'已有稿件',category:xsime.columns[1],markdown:'# 已有稿件\n\n手写正文\n\n![保留原图注](https://example.org/image.png)',date:'2026-10-13'}],data:{year:[{id:'event',title:'跨年活动',start:'2026-12-30',end:'2027-01-02',summary:'旧摘要'}],history:[]},openSource:{items:[]},permalinks:{'news:human-note':'/news/frozen-link/','year:event':'/calendar/frozen-event/'}};
 const display=(calendar,gallery=false,extra={})=>({version:1,modules:{calendar:{enabled:calendar},gallery:{enabled:gallery,...extra}}});
 async function workspace(t){const root=await mkdtemp(join(tmpdir(),'today-modules-'));t.after(()=>rm(root,{recursive:true,force:true}));await cp('sites',join(root,'sites'),{recursive:true});await mkdir(join(root,'web/themes'),{recursive:true});await cp('web/themes/content.css',join(root,'web/themes/content.css'));return root;}
 async function homepage(source,site,{real=false}={}){
@@ -25,17 +25,17 @@ async function homepage(source,site,{real=false}={}){
 }
 test('site settings are explicit, independent from Theme, and reject unsupported options',()=>{
  assert.equal(resolveDisplay(profiles.find(s=>s.id==='personal')).modules.calendar.enabled,false);
- assert.equal(resolveDisplay({...lingxi,themeId:'portfolio'}).modules.gallery.enabled,false);
+ assert.equal(resolveDisplay({...xsime,themeId:'portfolio'}).modules.gallery.enabled,false);
  // Without display settings every site gets the same default, whatever its name.
  for(const id of ['personal','piggytuck','pets']){const {display:_,...bare}=profiles.find(s=>s.id===id);assert.deepEqual(Object.entries(resolveDisplay(bare).modules).filter(([,m])=>m.enabled).map(([name])=>name),['calendar']);}
- assert.deepEqual(validateSite({...lingxi,display:display(false,true,{columns:3})}).display,display(false,true,{columns:3}));
- for(const bad of [{version:2,modules:{}},{version:1,modules:{login:{enabled:true}}},display(true,true,{columns:10}),{version:1,modules:{calendar:{enabled:true,script:'https://evil.test/plugin.js'}}}])assert.throws(()=>validateSite({...lingxi,display:bad}));
+ assert.deepEqual(validateSite({...xsime,display:display(false,true,{columns:3})}).display,display(false,true,{columns:3}));
+ for(const bad of [{version:2,modules:{}},{version:1,modules:{login:{enabled:true}}},display(true,true,{columns:10}),{version:1,modules:{calendar:{enabled:true,script:'https://evil.test/plugin.js'}}}])assert.throws(()=>validateSite({...xsime,display:bad}));
 });
 test('calendar disable preserves article bodies, frozen URLs, exports and old calendar entry; assets load only on their view',async t=>{
  const source=await workspace(t),before=JSON.stringify(snapshot),job={id:'local-test',snapshot,snapshot_hash:'fixture'},outputs={};
  for(const enabled of [true,false]){
   const target=join(source,String(enabled));outputs[enabled]=target;
-  const result=await buildSiteRelease({source,target,job,site:{...lingxi,display:display(enabled,true)},now:new Date('2026-10-14T00:00:00Z')});
+  const result=await buildSiteRelease({source,target,job,site:{...xsime,display:display(enabled,true)},now:new Date('2026-10-14T00:00:00Z')});
   assert.equal(result.display.modules.calendar.enabled,enabled);
   for(const route of Object.values(snapshot.permalinks))await access(join(target,route,'index.html'));
   const page=await readFile(join(target,'calendar/index.html'),'utf8');
@@ -62,13 +62,13 @@ test('event projection handles ranges, leap days, historical dates and publicati
  assert(!eventMatches(range,'2026-12-30','history'));
 });
 test('read-only host scopes collections, rejects cross-site and collisions, and never exposes raw blobs',async()=>{
- const content=adaptPublishedSnapshot(snapshot,lingxi),host=createDisplayHost(content);
+ const content=adaptPublishedSnapshot(snapshot,xsime),host=createDisplayHost(content);
  assert.equal(host.records({collections:['column-2']}).length,1);
  assert.throws(()=>host.records()[0].title='changed',TypeError);assert.equal(host.media()[0].alt,'保留原图注');
  assert(!JSON.stringify(host.records()).includes('base64'));
- await assert.rejects(renderDisplayModules({site:{...lingxi,id:'pets'},content}),/another site/);
- await assert.rejects(renderDisplayModules({site:{...lingxi,display:display(true,true,{collections:['nonexistent']})},content}),/Unknown module collection/);
- await assert.rejects(renderDisplayModules({site:lingxi,content:{...content,records:[{...content.records[0],route:'/gallery/'}]}}),/conflicts/);
+ await assert.rejects(renderDisplayModules({site:{...xsime,id:'pets'},content}),/another site/);
+ await assert.rejects(renderDisplayModules({site:{...xsime,display:display(true,true,{collections:['nonexistent']})},content}),/Unknown module collection/);
+ await assert.rejects(renderDisplayModules({site:xsime,content:{...content,records:[{...content.records[0],route:'/gallery/'}]}}),/conflicts/);
  for(const src of ['javascript:alert(1)','//example.org/x','/../private','file:///tmp/x'])assert.throws(()=>validatePublicMedia([{id:'x',src,alt:'x'}]));
  for(const path of ['gallery/index.html','display/gallery/client.js'])assert.throws(()=>homepagePath(path));
 });

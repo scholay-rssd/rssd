@@ -15,9 +15,9 @@ test('approved-message replica strips private fields, keeps the last good copy d
 });
 test('enabled guestbooks have static pages and public form definitions, with no administration files',async t=>{
  const directory=await mkdtemp(join(tmpdir(),'rssd-wall-page-'));t.after(()=>rm(directory,{recursive:true,force:true}));
- const site={...profiles.find(s=>s.id==='lingxi'),services:{guestbook:{enabled:true}}},manifest={hashes:{}};
+ const site={...profiles.find(s=>s.id==='xsime'),services:{guestbook:{enabled:true}}},manifest={hashes:{}};
  await attachGuestbook({target:directory,site,manifest});assert.match(await readFile(join(directory,'guestbook/index.html'),'utf8'),/留言板/);
- const config=JSON.parse(await readFile(join(directory,'guestbook/config.json'),'utf8'));assert.equal(config.siteId,'lingxi');assert.equal(config.dailyLimit,2);assert.equal(Object.keys(manifest.hashes).length,4);
+ const config=JSON.parse(await readFile(join(directory,'guestbook/config.json'),'utf8'));assert.equal(config.siteId,'xsime');assert.equal(config.dailyLimit,2);assert.equal(Object.keys(manifest.hashes).length,4);
  await assert.rejects(access(join(directory,'guestbook/moderate.html')));
  const disabled={hashes:{}};await attachGuestbook({target:directory,site:{...site,services:{guestbook:{enabled:false}}},manifest:disabled});assert.deepEqual(disabled.hashes,{});
 });

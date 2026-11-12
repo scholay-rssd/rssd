@@ -4,7 +4,7 @@ import {adaptPublishedSnapshot} from '../web/engine/published-content.mjs';
 import {resolveTheme} from '../web/themes/registry.mjs';
 import {validatePublishedContent} from '../contracts/published-content.mjs';
 import {profiles} from '../scripts/site-config.mjs';
-const site=profiles.find(s=>s.id==='lingxi');
+const site=profiles.find(s=>s.id==='xsime');
 const snapshot={news:[{id:'human-note',title:'人工整理',category:site.columns[1],markdown:'# 人工整理\n\n正文',date:'2026-10-13'}],data:{year:[],history:[]},openSource:{items:[]},permalinks:{}};
 test('themes consume the same read-only publication model without modifying sources or identity',()=>{
  const before=JSON.stringify(snapshot),content=adaptPublishedSnapshot(snapshot,site);
