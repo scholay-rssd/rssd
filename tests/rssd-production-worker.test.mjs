@@ -134,3 +134,33 @@ test('a resumed task retains its original common writing policy across runtime u
   }});
   assert.equal(done.state,'accepted');
 });
+
+const bylineProfiles=[{id:'research-site',spaceId:'research',author:'研究方法',sections:[{id:'methods',name:'方法百科'}]}];
+test('a new work takes its byline and category from the site in both languages, never from the agent',async t=>{
+  const f=await fixture(t);
+  const result=await runProductionTurn({...f,profiles:bylineProfiles,agentId:'example',workspaceIds:['research'],producer:async({locale,source})=>{
+    if(locale==='en')assert.deepEqual([source.payload.metadata.author,source.payload.metadata.category],['研究方法','方法百科']);
+    return {title:locale,bodyMarkdown:locale==='zh-CN'?'中文全文':'Complete English text',metadata:{author:'Codex',category:'AI',date:'2026-11-12'}};
+  }});
+  assert.equal(result.state,'accepted');assert.equal(f.packets.length,2);
+  for(const packet of f.packets)assert.deepEqual(packet.editions[0].metadata,{author:'研究方法',category:'方法百科',date:'2026-11-12'});
+});
+test('an update keeps the byline and category of its source edition and fills only blank ones from the site',async t=>{
+  const f=await fixture(t),source={workId:'existing-work',locale:'zh-CN',revision:3};
+  Object.assign(f.task,{kind:'update'});Object.assign(f.task.payload,{requiredLocales:['zh-CN'],source});
+  const edition={locale:'zh-CN',revision:3,payload:{title:'旧稿',bodyMarkdown:'旧文',metadata:{author:'特约作者',category:''}}};
+  f.client.work=async()=>({id:'existing-work',editions:[edition]});f.client.request=async()=>edition;
+  const submit=f.client.submit;f.client.submit=async packet=>{const receipt=await submit(packet);receipt.editions=receipt.editions.map(e=>({...e,revision:packet.baseRevisions[e.locale]+1}));return receipt;};
+  await runProductionTurn({...f,profiles:bylineProfiles,agentId:'example',workspaceIds:['research'],producer:async()=>({title:'新稿',bodyMarkdown:'新文',metadata:{author:'Codex'}})});
+  assert.equal(f.packets.length,1);assert.equal(f.packets[0].workId,'existing-work');
+  assert.deepEqual([f.packets[0].editions[0].metadata.author,f.packets[0].editions[0].metadata.category],['特约作者','方法百科']);
+});
+test('a packet saved before the byline rule is submitted unchanged',async t=>{
+  const f=await fixture(t);f.task.payload.requiredLocales=['zh-CN'];
+  const directory=join(f.home,'jobs',protocol.hash(f.task.id+':'+f.task.generation));
+  await assert.rejects(runProductionTurn({...f,profiles:bylineProfiles,agentId:'example',workspaceIds:['research'],producer:async()=>{throw Error('interrupted');}}),/interrupted/);
+  const saved=protocol.submission({requestId:'saved-blank',workId:'work-saved',workspaceId:'research',sectionId:'methods',demandId:f.task.id,claimToken:f.task.claimToken,baseRevisions:{'zh-CN':0},editions:[{locale:'zh-CN',title:'Saved',bodyMarkdown:'Saved body'}]});
+  await writeFile(join(directory,'zh-CN.packet.json'),JSON.stringify(saved));
+  await runProductionTurn({...f,profiles:bylineProfiles,agentId:'example',workspaceIds:['research'],resume:true,producer:async()=>{throw Error('must not regenerate');}});
+  assert.equal(f.packets.length,1);assert.equal(protocol.hash(f.packets[0]),protocol.hash(saved));assert.deepEqual(f.packets[0].editions[0].metadata,{});
+});

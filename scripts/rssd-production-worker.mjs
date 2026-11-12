@@ -18,6 +18,8 @@ import {prepareVerifiedBibliography,applyVerifiedBibliography,verifyVerifiedBibl
 import {assertBoundSourceCurrent,assertStoreOnlyReceipt,requireStoreOnlyContract,requireTranslateClaim,requireTranslatePacket,storeOnlyClaimBody} from './rssd-translate-continuation.mjs';
 import {parseCenterMediaRef} from './rssd-center-media-ref.mjs';
 import {recoverPersistedCenterEdition} from './rssd-center-generation-evidence.mjs';
+import {siteByline,withEditionByline} from '../contracts/edition-byline.mjs';
+import {profiles as siteProfiles} from './site-config.mjs';
 
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};
 const save=writeCenterJson;
@@ -76,7 +78,7 @@ function requireScopedPacket(packet,scope){
   requireScopedSkills(packet.editions[0]);
   verifyAutomatedReferences(packet.editions[0]);
 }
-export async function runProductionTurn({client,home,producer,agentId,workspaceIds,sectionIds=[],demandId,resume=false,storeOnly=false,requiredModel,productionScope,writingSkillScope,sourceStage,verifyReady,signal,onEvent=()=>{},writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}}){
+export async function runProductionTurn({client,home,producer,profiles=siteProfiles,agentId,workspaceIds,sectionIds=[],demandId,resume=false,storeOnly=false,requiredModel,productionScope,writingSkillScope,sourceStage,verifyReady,signal,onEvent=()=>{},writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}}){
   if(requiredModel&&(requiredModel!=='gpt-6.1-terra'||agentId!=='codex'||workspaceIds?.length!==1||workspaceIds[0]!=='metho'||sectionIds.length!==1||sectionIds[0]!=='methods'))throw Error('自动试点的模型或工作范围不匹配');
   if(requiredModel&&productionScope)throw Error('不能同时使用两种生产守卫');
   if(storeOnly){
@@ -316,6 +318,8 @@ export async function runProductionTurn({client,home,producer,agentId,workspaceI
           if(requiredModel||scoped)requirePilotEdition(output);
           if(scoped){const evidence=await sourceStage.restore({claim,slot:sourceSlot,directory,signal});await requireSourceProof(join(directory,locale+'.result-source-binding.json'),evidence,output);requireScopedSkills(output);verifyAutomatedReferences(output);const verifiedEdition={...output,locale};await verifyVerifiedBibliography({snapshot:evidence.snapshot,directory,edition:verifiedEdition,signal});const credits=await imageCreditContext({directory,claim,client,edition:verifiedEdition});if((await sourceStage.verifyEdition({claim,slot:sourceSlot,directory,edition:verifiedEdition,signal,...credits}))?.ok!==true)throw Error('原稿来源核验未通过');}
           output=await prepareEditionMedia({edition:output,home,directory,client,workspaceId:claim.workspaceId,signal,source:chinesePacket?.editions[0]||source?.payload||source});
+          // New packets only: a saved packet keeps its exact bytes and request hash.
+          output=withEditionByline(output,{source,site:siteByline(profiles,claim.workspaceId,claim.sectionId)});
           packet=protocol.submission({requestId:randomUUID(),workId,workspaceId:claim.workspaceId,sectionId:claim.sectionId,
             demandId:claim.id,claimToken:claim.claimToken,baseRevisions:{[locale]:context.baseRevisions[locale]||0},
             editions:[{...output,locale,translationOf}]});
