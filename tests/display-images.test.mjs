@@ -46,3 +46,20 @@ test('oversized images get a display copy; originals, links and feeds keep the o
   await attachDisplayImages({target:next,manifest:{hashes:{'index.html':digest(html)},byteHashes:{}},previousRoot:target,encoder});
   assert.deepEqual(await readFile(join(next,'article-media',copy)),derived);
 });
+
+test('stated image proportions follow the real picture; the stated width is kept',async t=>{
+  const root=await mkdtemp(join(tmpdir(),'display-images-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const target=join(root,'release');await mkdir(join(target,'article-media'),{recursive:true});
+  const wide=await sharp({create:{width:300,height:200,channels:3,background:'#fff'}}).png().toBuffer(),name=sha(wide)+'.png';
+  await writeFile(join(target,'article-media',name),wide);
+  const html=`<img src="/article-media/${name}" width="640" height="400" alt="a"><img alt="b" height="10" src="/article-media/${name}" width="15"><img src="/article-media/${name}" alt="c"><img src="/other.png" width="640" height="400">`;
+  await writeFile(join(target,'index.html'),html);
+  const manifest={hashes:{'index.html':digest(html)},byteHashes:{}};
+  await attachDisplayImages({target,manifest});
+  const page=await readFile(join(target,'index.html'),'utf8');
+  assert.match(page,/<img src="\/article-media\/[a-f0-9]{64}\.png" width="640" height="427" alt="a">/,'height follows 3:2');
+  assert.match(page,/<img alt="b" height="10" src="[^"]+" width="15">/,'already proportional within a pixel');
+  assert.match(page,/<img src="\/article-media\/[a-f0-9]{64}\.png" alt="c">/,'no attributes are added');
+  assert.match(page,/<img src="\/other.png" width="640" height="400">/,'other pictures are untouched');
+  assert.equal(manifest.hashes['index.html'],digest(page));
+});
