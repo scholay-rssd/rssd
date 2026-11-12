@@ -32,7 +32,7 @@ export const FORMS={
   {id:'correction',label:'百科纠错',fields:[field('source','文章与核验来源',true)]},
   {id:'collaboration',label:'合作需求',fields:[field('need','合作方向',true)]}
  ],
- // Draft forms for the four sites whose guestbooks open with the navigation standard (pending owner approval).
+ // Forms for the four sites whose guestbooks open with the navigation standard (owner-approved 2026-11-12).
  legis:[
   {id:'lead',label:'案例与法规线索',fields:[field('source','判决书或法规原文链接',true),field('region','适用地区 / 法院')]},
   {id:'correction',label:'纠错指正',fields:[field('source','文章链接',true),field('detail','需要更正的内容与依据',true,2000)]},
