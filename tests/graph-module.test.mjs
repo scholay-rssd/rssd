@@ -10,7 +10,8 @@ import {profiles,validateSite} from '../scripts/site-config.mjs';
 import {createDisplayHost,renderDisplayModules} from '../web/modules/registry.mjs';
 import {buildSiteRelease} from '../web/engine/render-site.mjs';
 import {homepagePath} from '../web/engine/theme-homepage.mjs';
-const site=profiles.find(s=>s.id==='pets'),url='https://example.org/source';
+// The graph is offline on every site; these tests switch it on explicitly.
+const pets=profiles.find(s=>s.id==='pets'),site={...pets,display:{version:1,modules:{...pets.display?.modules,graph:{enabled:true}}}},url='https://example.org/source';
 const markdown='# 验收百科\n\n来源把轮换玩具列为丰富化做法。没有实验数据。\n\n[来源]('+url+')';
 const snapshot={news:[{id:'qa-article',title:'验收百科',date:'2026-10-14',category:site.columns[1],markdown}],data:{year:[],history:[]},openSource:{items:[]},permalinks:{'news:qa-article':'/news/existing-permalink/'}};
 const content=adaptPublishedSnapshot(snapshot,site),proof={recordId:'news:qa-article',bodySha256:bodyHash(markdown),quote:'来源把轮换玩具列为丰富化做法。',sourceUrl:url};
@@ -64,7 +65,7 @@ test('optional graph preserves existing article and calendar routes, content exp
   assert.deepEqual(validateSite(configured).display,configured.display);
   const manifest=await buildSiteRelease({source:root,target,site:configured,job});assert.equal(manifest.snapshotHash,'unchanged');
   await access(join(target,'news/existing-permalink/index.html'));await access(join(target,'calendar/index.html'));
-  if(enabled){await access(join(target,'graph/index.html'));assert.match(await readFile(join(target,'sitemap-content.xml'),'utf8'),/graph\//);assert.match(await readFile(join(target,'journal/index.html'),'utf8'),/关系图/);}
+  if(enabled){await access(join(target,'graph/index.html'));assert.match(await readFile(join(target,'sitemap-content.xml'),'utf8'),/graph\//);assert.match(await readFile(join(target,'graph/index.html'),'utf8'),/关系图/);}
   else{await assert.rejects(access(join(target,'graph/index.html')));await assert.rejects(access(join(target,'display/graph/client.js')));assert.doesNotMatch(await readFile(join(target,'journal/index.html'),'utf8'),/href="\/graph\/"/);}
  }
  for(const file of ['published-content.json','site-content.json','content-feed.xml'])assert.equal(await readFile(join(root,'true',file),'utf8'),await readFile(join(root,'false',file),'utf8'));

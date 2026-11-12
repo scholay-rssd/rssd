@@ -1,5 +1,5 @@
 import {profiles} from '../../scripts/site-config.mjs';
-import {validateNavigation,navigationMatches} from '../../contracts/site-navigation.mjs';
+import {validateNavigation,navigationMatches,navigationMatchLength} from '../../contracts/site-navigation.mjs';
 import {escapeHtml as esc} from '../modules/shared.mjs';
 
 export function navigationForSite(site){
@@ -16,7 +16,18 @@ export function githubNavLink(){
  return `<a class="github-mark" href="${RSSD_SOURCE}" target="_blank" rel="noopener noreferrer" aria-label="RSSD 源代码" title="RSSD 源代码">${GITHUB_MARK}</a>`;
 }
 export function renderNavigation(site,path='/'){
- return navigationForSite(site).map(item=>`<a href="${esc(item.href)}" data-nav="${esc(item.id)}"${navigationMatches(item,path)?' class="active" aria-current="page"':''}>${esc(item.label)}</a>`).join('');
+ const items=navigationForSite(site);
+ // Only the most specific match is current: a section page highlights its
+ // section, not the all-articles entrance that also covers /archive/.
+ const best=Math.max(0,...items.map(item=>navigationMatchLength(item,path)));
+ let previous=null;
+ return items.map(item=>{
+  const current=best>0&&navigationMatchLength(item,path)===best;
+  // A thin divider separates the sections from the fixed entrances.
+  const divider=previous==='section'&&item.group==='entrance'?'<span class="nav-divider" aria-hidden="true"></span>':'';
+  previous=item.group||previous;
+  return `${divider}<a href="${esc(item.href)}" data-nav="${esc(item.id)}"${item.group?` data-group="${esc(item.group)}"`:''}${current?' class="active" aria-current="page"':''}>${esc(item.label)}</a>`;
+ }).join('');
 }
 // The authored Theme keeps its surrounding layout; only this explicit slot is filled.
 export function fillNavigationSlot(html,site,path='/'){
