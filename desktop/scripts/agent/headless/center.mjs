@@ -9,10 +9,13 @@ import {deviceLogin} from '../../../../scripts/rssd-device-login.mjs';
 import {enqueueStoreOnlyTranslate,enqueueTranslateContinuation,requireStoreOnlyContract,storeOnlyClaimBody} from '../../../../scripts/rssd-translate-continuation.mjs';
 
 import {centerHome} from '../../runtime/center-home.mjs';
+import {migrateCenterCache} from '../../../../scripts/space-rename.mjs';
 export {centerHome};
 export const CENTER_WORK_PRODUCER=produceCenterEdition;
 export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify(value))}={}){
   const [command,...args]=argv,home=centerHome();
+  // A renamed workspace must not keep failing local access checks on this machine.
+  for(const moved of migrateCenterCache(home))if(moved.stale.length)console.error(`Center files still name ${moved.from} (left unchanged): ${moved.stale.join(', ')}`);
   const flag=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};
   const values=name=>args.flatMap((value,i)=>value===name?[args[i+1]]:[]).filter(Boolean);
   if(command==='login'){

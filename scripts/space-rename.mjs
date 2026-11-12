@@ -1,6 +1,7 @@
 // One-time migration of desktop spaces whose site/space ID was retired
 // (contracts/site-renames.mjs). Runs before the registry is read and is safe
-// to run again: once nothing carries the old ID it does nothing.
+// to run again: once nothing carries the old ID it does nothing. The Center
+// connection cache beside the spaces is migrated too (migrateCenterCache).
 //
 // The old space folder is copied to spaces/.<old>-before-rename-<time> before
 // anything changes, so the user can recover it by hand.
@@ -49,9 +50,51 @@ function renameSite(site,to){
   return next;
 }
 
+// Center's device identity (connection.json) and workspace registry cache
+// (registry.json) carry workspace and destination IDs. The identity is only
+// refreshed on reconnect, and the app uses its workspaceIds for local access
+// checks, so both follow a rename. Queued work, drafts and jobs are bound to
+// the IDs they were created with: they are reported, never rewritten.
+const CENTER_FILES=['connection.json','registry.json'];
+function rewriteCenter(value,from,to,key=''){
+  if(typeof value==='string'){
+    if(value===from&&(ID_KEYS.has(key)||key==='id'))return to;
+    if(value==='site-'+from&&(key==='destinationId'||key==='id'))return 'site-'+to;
+    return value;
+  }
+  if(Array.isArray(value))return value.map(item=>rewriteCenter(item,from,to,key==='workspaceIds'||key==='siteIds'?'siteId':key==='destinationIds'?'destinationId':''));
+  if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,rewriteCenter(v,from,to,k)]));
+  return value;
+}
+function staleCenterFiles(dir,from,root=dir,found=[]){
+  for(const entry of readdirSync(dir,{withFileTypes:true})){
+    const path=join(dir,entry.name);if(entry.isSymbolicLink())continue;
+    if(entry.isDirectory()){staleCenterFiles(path,from,root,found);continue;}
+    if(!entry.name.endsWith('.json')||(dir===root&&CENTER_FILES.includes(entry.name)))continue;
+    const text=readFileSync(path,'utf8');if(text.includes(`"${from}"`)||text.includes(`"site-${from}"`))found.push(path.slice(root.length+1));
+  }
+  return found;
+}
+export function migrateCenterCache(home,renames=SITE_RENAMES){
+  const report=[];if(!home||!existsSync(home))return report;
+  for(const [from,to] of Object.entries(renames)){
+    let files=0;
+    for(const name of CENTER_FILES){
+      const file=join(home,name);if(!existsSync(file))continue;
+      let value;try{value=read(file);}catch{continue;}
+      const next=rewriteCenter(value,from,to);
+      if(JSON.stringify(next)!==JSON.stringify(value)){write(file,next);files++;}
+    }
+    const stale=staleCenterFiles(home,from);
+    if(files||stale.length)report.push({from,to,center:home,files,stale});
+  }
+  return report;
+}
+
 export function migrateRenamedSpaces(data,{now=()=>new Date()}={}){
   const file=join(data,'spaces.json');if(!existsSync(file))return [];
-  const report=[];
+  // The Center cache may lag behind spaces that were already migrated.
+  const report=migrateCenterCache(join(data,'center'));
   for(const [from,to] of Object.entries(SITE_RENAMES)){
     const registry=read(file);
     const index=registry.sites?.findIndex(s=>s.id===from||s.spaceId===from)??-1;

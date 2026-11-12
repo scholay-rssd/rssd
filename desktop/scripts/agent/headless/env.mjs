@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {parseAuthorization} from '../../../../contracts/site-authorization.mjs';
 import {DEFAULT_SITE,profiles,setSiteContext,validateSite} from '../../../../scripts/site-config.mjs';
 import {useSharedPublicationQueue} from '../../../../scripts/publication-queue-client.mjs';
+import {renamedSiteId} from '../../../../contracts/site-renames.mjs';
 
 export const repoRoot=resolve(dirname(fileURLToPath(import.meta.url)),'../../../..');
 
@@ -38,6 +39,8 @@ export function siteConfigPath(spaceId){
 }
 export function canonicalSiteId(siteKey){
  if(siteKey==='today')return 'scholay-today';
+ // Retired IDs (lingxi -> xsime) keep working in commands and briefs.
+ siteKey=renamedSiteId(siteKey);
  if(typeof siteKey!=='string'||!/^[a-z][a-z0-9-]{1,48}$/.test(siteKey))throw Error('unknown site');
  if(!profiles.some(s=>s.id===siteKey))throw Error('unknown site');
  return siteKey;
