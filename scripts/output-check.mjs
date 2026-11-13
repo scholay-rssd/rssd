@@ -4,6 +4,8 @@
 //   RSSD_CENTER_TOKEN=... node scripts/output-check.mjs                 the Center's records, every space
 //   node scripts/output-check.mjs --vaults <folder of vaults>          local Obsidian copies (provisional)
 //   options: --space <workspaceId> (repeatable)  --out <folder>  --origin <Center origin>
+//            --editorial  read through the editorial view (legacy article IDs, deleted works left out); it
+//                         rescans the whole space per request, so a large space takes hours
 //
 // It only sends GET requests and only writes its report, by default under git-ignored
 // .local/output-check/<time>/: report.json (everything), summary.md (per site), articles.csv (one line per
@@ -23,7 +25,7 @@ const IMAGE=/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g;
 
 /** Everything the spec says about one article in one language. Pure. */
 export function checkArticle(record,site){
- const s=sourceRecord(record),{errors,warnings,notes}=checkSource(record),findings=[];
+ const s=sourceRecord(record),{errors,warnings,notes}=checkSource(record,{site}),findings=[];
  for(const [level,list] of [['error',errors],['warning',warnings],['note',notes]])for(const f of list)findings.push({level,code:f.code,message:f.message});
  const fields={};
  if(!errors.length)for(const [destination,{format}] of Object.entries(OUTPUT_DESTINATIONS)){
@@ -41,12 +43,16 @@ export function shorterTitle(title,limit){
  return head&&head!==title&&characters(head)<=limit&&characters(head)>=4?{value:head,from:'the title before its subtitle; check it still says enough'}:{value:fitText(title,limit),from:'the title cut at '+limit+' characters; needs an editor'};
 }
 
-/** What to fill at the source for one article, with the proposed value and where it comes from. Pure. */
+/**
+ * What to fill at the source for one article, with the proposed value and where it comes from. Pure.
+ * A missing author or category is derived at output (owner's decision, 2026-11-12) and listed only when the
+ * site has no author or the section no name to derive it from.
+ */
 export function fillItems(record,site){
  const s=sourceRecord(record),items=[],section=sectionsForSite(site||{}).find(x=>x.id===s.sectionId);
- if(!s.author)items.push({field:'author',proposed:site?.author||'',from:site?.author?'the site profile author (sites/profiles.json)':'no site author; needs a decision'});
+ if(!s.author){if(!site?.author)items.push({field:'author',proposed:'',from:'no site author to derive it from; needs a decision'});}
  else if(characters(s.author)>OUTPUT_DESTINATIONS['wechat-official-account'].limits.author&&site?.author&&site.author!==s.author)items.push({field:'author (WeChat only)',current:s.author,proposed:site.author,from:'the site profile author, which fits the limit'});
- if(!s.category)items.push({field:'category',proposed:section?.name||'',from:section?'the name of section '+s.sectionId:'section '+(s.sectionId||'(none)')+' is not in the site profile; needs a decision'});
+ if(!s.category&&!section?.name)items.push({field:'category',proposed:'',from:'section '+(s.sectionId||'(none)')+' is not in the site profile; needs a decision'});
  for(const match of s.markdown.matchAll(IMAGE))if(!match[1].trim()){
   const after=s.markdown.slice(match.index+match[0].length).split('\n').map(l=>l.trim()).find(Boolean)||'';
   const caption=/^(?:\*[^*]+\*|_[^_]+_|图\s*\d+|Figure\s*\d+)/i.test(after)?after.replace(/^[*_]|[*_]$/g,'').slice(0,120):'';
@@ -90,17 +96,60 @@ async function* vaultSource(root,profiles,only){
  }
 }
 
-/** GET only: this command has no way to send a write. */
-export function centerReader({origin,token,fetcher=fetch,timeoutMs=180000}){
+/**
+ * GET only: this command has no way to send a write. A transport failure, a gateway error or a body that is
+ * not JSON is retried (a read is safe to repeat); a Center refusal (4xx) is not.
+ */
+export function centerReader({origin,token,fetcher=fetch,timeoutMs=180000,retryDelaysMs=[5000,20000],sleep=ms=>new Promise(r=>setTimeout(r,ms))}){
  const url=new URL(origin);
  if(url.protocol!=='https:'&&!['127.0.0.1','localhost'].includes(url.hostname))throw Error('The Center address must use HTTPS');
  if(!/^rssd_device_[A-Za-z0-9_-]{48}$/.test(token||''))throw Error('Set RSSD_CENTER_TOKEN to a Center device credential that can read the spaces to check');
- return async path=>{
-  const response=await fetcher(url.origin+'/api/rssd/v1'+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(timeoutMs)});
+ const once=async path=>{
+  let response;
+  try{response=await fetcher(url.origin+'/api/rssd/v1'+path,{method:'GET',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'application/json'},signal:AbortSignal.timeout(timeoutMs)});}
+  catch(error){throw Object.assign(Error('Center unreachable ('+(error.name||'network error')+')'),{status:0,code:'network_error',retry:true});}
   const value=await response.json().catch(()=>null);
-  if(!response.ok)throw Object.assign(Error(value?.message||'Center request failed ('+response.status+')'),{status:response.status,code:value?.code||'http_error'});
+  if(!response.ok)throw Object.assign(Error(value?.message||'Center request failed ('+response.status+')'),{status:response.status,code:value?.code||'http_error',retry:response.status>=500||response.status===429});
+  if(!value||typeof value!=='object')throw Object.assign(Error('Center response could not be read ('+response.status+')'),{status:response.status,code:'invalid_response',retry:true});
   return value;
  };
+ return async path=>{
+  for(let attempt=0;;attempt++){
+   try{return await once(path);}
+   catch(error){if(!error.retry||attempt>=retryDelaysMs.length)throw error;await sleep(retryDelaysMs[attempt]);}
+  }
+ };
+}
+/**
+ * A Center edition (protocol v1) as a source record. The editorial view derives the same author, category and
+ * date from edition metadata; its legacy article IDs are not on the work, so the stable ID is used where it
+ * exists and the work ID otherwise.
+ */
+export function editionRecord(work,edition){
+ const e=edition.payload||{},m=e.metadata||{},kind=m.record?.kind||'news';
+ return {id:m.editorial?.articleId||m.stableId||work.id,workId:work.id,locale:e.locale||edition.locale,sectionId:work.sectionId,kind,title:e.title,summary:e.summary,
+  author:m.author||'',date:m.date||String(edition.createdAt||'').slice(0,10),category:m.category||'',markdown:e.bodyMarkdown,
+  media:(e.media||[]).map(item=>'/api/rssd/v1/media/'+item.id+'/raw'),version:edition.revision};
+}
+// One request per work (both languages), without the editorial view's scan of the whole space per request.
+async function* worksSource(get,profiles,only,log,concurrency=4){
+ const registry=await get('/registry');
+ for(const workspace of registry.workspaces||[]){
+  if(only.length&&!only.includes(workspace.id))continue;
+  const site=profiles.find(p=>p.id===workspace.siteId)||{id:workspace.siteId||workspace.id,spaceId:workspace.id,name:workspace.name,author:''};
+  const ids=new Set();
+  for(let offset=0;;offset+=200){const page=await get('/works?'+new URLSearchParams({workspaceId:workspace.id,limit:'200',offset:String(offset)}));if(!Array.isArray(page))throw Error('Invalid works page');page.forEach(w=>ids.add(w.id));if(page.length<200)break;}
+  const list=[...ids];log(workspace.id+': '+list.length+' works');
+  let done=0;
+  for(let i=0;i<list.length;i+=concurrency){
+   const results=await Promise.all(list.slice(i,i+concurrency).map(id=>get('/works/'+encodeURIComponent(id)).then(work=>({work}),error=>({id,error}))));
+   for(const {work,id,error} of results){
+    if(error){yield {site,unreadable:{articleId:id,locale:'',code:error.code||'http_error',message:error.message}};continue;}
+    for(const edition of work.editions||[])yield {site,record:editionRecord(work,edition)};
+   }
+   done+=results.length;if(done%200<concurrency)log(workspace.id+': '+done+' / '+list.length);
+  }
+ }
 }
 const centerRecord=detail=>({...detail.data,locale:detail.locale,kind:detail.data.record?.kind||'news',version:detail.version,publishedVersion:detail.publishedVersion});
 async function* centerSource(get,profiles,only,log){
@@ -120,9 +169,14 @@ async function* centerSource(get,profiles,only,log){
     if(!changed)break;
    }
    log(workspace.id+' '+locale+': '+ids.length+' works');
+   const single=async articleId=>{try{return {articleId,ok:true,detail:await get(space+'cloud/'+encodeURIComponent(articleId)+'?'+new URLSearchParams({locale,media:'referenced'}))};}catch(error){return {articleId,ok:false,error:{code:error.code||'http_error',message:error.message}};}};
    for(let i=0;i<ids.length;i+=BATCH){
-    const batch=await get(space+'cloud/batch/read?'+new URLSearchParams({locale,ids:ids.slice(i,i+BATCH).join(','),media:'referenced'}));
-    for(const item of batch.items||[]){
+    const chunk=ids.slice(i,i+BATCH);let items;
+    // A batch that still fails after its retries is read one work at a time, so one bad answer loses nothing.
+    try{items=(await get(space+'cloud/batch/read?'+new URLSearchParams({locale,ids:chunk.join(','),media:'referenced'}))).items;if(!Array.isArray(items))throw Error('no items');}
+    catch(error){if(error.status>=400&&error.status<500&&error.status!==429)throw error;log(workspace.id+' '+locale+': batch at '+i+' failed ('+error.message+'); reading its works one by one');items=[];for(const id of chunk)items.push(await single(id));}
+    if((i/BATCH)%25===24)log(workspace.id+' '+locale+': '+Math.min(i+BATCH,ids.length)+' / '+ids.length);
+    for(const item of items){
      let detail=item.ok?item.detail:null,problem=item.error;
      if(!detail&&problem?.code==='batch_response_limit')try{detail=await get(space+'cloud/'+encodeURIComponent(item.articleId)+'?'+new URLSearchParams({locale,media:'referenced'}));}catch(error){problem={code:error.code||'http_error',message:error.message};}
      yield detail?{site,record:centerRecord(detail)}:{site,unreadable:{articleId:item.articleId,locale,code:problem?.code||'unreadable',message:problem?.message||'The Center could not return this work'}};
@@ -173,7 +227,9 @@ async function main(argv){
   if(!origin){const {centerHome}=await import('../desktop/scripts/runtime/center-home.mjs');
    for(const home of [centerHome(),join(process.env.HOME||'','Library/Application Support/com.thomas.papr/center')])try{origin=JSON.parse(await readFile(join(home,'connection.json'),'utf8')).origin;if(origin)break;}catch{}}
   if(!origin)throw Error('Give the Center address with --origin or RSSD_CENTER_ORIGIN');
-  source=centerSource(centerReader({origin,token:process.env.RSSD_CENTER_TOKEN}),profiles,only,line=>console.error(line));label='Center '+new URL(origin).origin+' (latest edition of every work, drafts included)';
+  const get=centerReader({origin,token:process.env.RSSD_CENTER_TOKEN}),log=line=>console.error(line),editorial=argv.includes('--editorial');
+  source=editorial?centerSource(get,profiles,only,log):worksSource(get,profiles,only,log);
+  label='Center '+new URL(origin).origin+(editorial?' editorial view (latest edition of every work, drafts included, deleted excluded)':' works (latest edition of every work in every language, drafts included; withdrawn or deleted works are not told apart)');
  }
  const report=await buildReport(source,{source:label,createdAt}),out=resolve(option('out')[0]||join(root,'.local/output-check',createdAt.replace(/[:.]/g,'-')));
  const {summary,csv,fill}=renderReport(report);await mkdir(out,{recursive:true});

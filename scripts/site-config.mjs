@@ -31,10 +31,12 @@ export function validateSite(input){
   if(input.services!==undefined&&(!input.services||Object.keys(input.services).some(k=>k!=='guestbook')||typeof input.services.guestbook?.enabled!=='boolean'||Object.keys(input.services.guestbook).some(k=>k!=='enabled')))throw Error('站点服务配置无效');
   if(input.articleFeatures!==undefined&&(!input.articleFeatures||Object.keys(input.articleFeatures).some(k=>k!=='inputScheme')||typeof input.articleFeatures.inputScheme!=='boolean'))throw Error('文章功能配置无效');
   if(input.aliases!==undefined&&(!Array.isArray(input.aliases)||input.aliases.some(x=>validateOrigin(x)!==x||x===input.origin)||new Set(input.aliases).size!==input.aliases.length))throw Error('旧域名配置无效');
+  // Default cover for outputs of articles with no image (contracts/output-package.mjs): a path on the site.
+  if(input.cover!==undefined&&(typeof input.cover!=='string'||!/^\/[\w./-]+$/.test(input.cover)||input.cover.split('/').includes('..')))throw Error('站点默认封面无效');
   if(input.legacy&&input.id!==DEFAULT_SITE.id)throw Error('只有默认学术站能使用旧版兼容配置');
   try{new Intl.DateTimeFormat('en',{timeZone:input.timezone});}catch{throw Error('站点时区无效');}
   const keys=['version','id','spaceId','name','domain','description','author','timezone','columns','yearCategories','sourceCategories','accent','homeMode'];
-  return {...Object.fromEntries(keys.map(key=>[key,input[key]])),...Object.fromEntries(['slogan','publicColumns','navigation','layout','services','articleFeatures','aliases','languages','sectionCatalog','sections'].filter(key=>input[key]!==undefined).map(key=>[key,structuredClone(input[key])])),...(input.themeId?{themeId:input.themeId}:{}),...(input.display?{display:validateDisplay(input.display)}:{}),legacy:input.legacy===true,retainLocal:input.retainLocal!==false,origin:validateOrigin(input.origin)};
+  return {...Object.fromEntries(keys.map(key=>[key,input[key]])),...Object.fromEntries(['slogan','publicColumns','navigation','layout','services','articleFeatures','aliases','languages','sectionCatalog','sections','cover'].filter(key=>input[key]!==undefined).map(key=>[key,structuredClone(input[key])])),...(input.themeId?{themeId:input.themeId}:{}),...(input.display?{display:validateDisplay(input.display)}:{}),legacy:input.legacy===true,retainLocal:input.retainLocal!==false,origin:validateOrigin(input.origin)};
 }
 export function loadSite(file=process.env.SCHOLAY_SITE_CONFIG){return file?validateSite(JSON.parse(readFileSync(file,'utf8'))):DEFAULT_SITE;}
 export let SITE=loadSite();

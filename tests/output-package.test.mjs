@@ -18,6 +18,11 @@ test('a source record is normalized and its gaps are sorted by what they block',
  assert.equal(bare.warnings.at(-1).count,2);assert.deepEqual(bare.notes.map(n=>n.code),['no_chapters']);
  assert.deepEqual(checkSource({...source,markdown:'正文',summary:'长'.repeat(121),date:''}).notes.map(n=>n.code),['no_chapters','no_images','summary_longer_than_digest']);
  assert.deepEqual(checkSource({...source,markdown:' '}).errors.map(e=>e.code),['missing_body']);
+ // With the site profile, a missing author or category is taken from the site and section at output.
+ const unsigned={...source,author:'',category:'',sectionId:'methods'},metho={id:'metho',author:'研究方法'};
+ const derived=checkSource(unsigned,{site:metho});
+ assert.deepEqual([derived.warnings.map(w=>w.code),derived.notes.filter(n=>n.value).map(n=>[n.code,n.value])],[[],[['author_from_site','研究方法'],['category_from_section','方法百科']]]);
+ assert.deepEqual(checkSource({...unsigned,sectionId:'gone'},{site:{id:'none'}}).warnings.map(w=>w.code),['missing_author','missing_category']);
 });
 test('text is fitted to a platform limit by characters, not bytes',()=>{
  assert.equal(characters('汉😀a'),3);assert.equal(fitText('  短  文 ',10),'短 文');
@@ -32,6 +37,11 @@ test('platform fields are derived from the source and report what was shortened 
  assert.equal(outputFields('wechat-article',source,{cover:'site.png'}).fields.cover,'site.png');
  assert.equal(outputFields('wechat-article',{...source,author:''},{site:{author:'研究方法'}}).fields.author,'研究方法');
  assert.equal(outputFields('wechat-article',source,{site:{author:'研究方法'}}).fields.author,'作者');
+ // Cover: the one given, else the first image, else the site's default cover.
+ const imageless={...source,markdown:'正文',media:[]},siteCover={site:{cover:'/social-preview.png'}};
+ assert.deepEqual(outputFields('wechat-article',imageless,siteCover),{fields:{title:'标题',digest:'摘要',author:'作者',cover:'/social-preview.png'},warnings:[]});
+ assert.equal(outputFields('wechat-article',source,siteCover).fields.cover,'a.png');
+ assert.equal(outputFields('wechat-article',source,{...siteCover,cover:'given.png'}).fields.cover,'given.png');
  assert.equal(outputFields('wechat-article',{...source,author:''}).fields.author,'');
  assert.deepEqual(sourceRecord({...source,media:undefined,assets:[{path:'/article-media/a.png',data:'AA=='},{},null]}).media,['/article-media/a.png']);
  assert.deepEqual(sourceRecord({...source,media:['a.png',{path:'b.png'}],assets:[{path:'c.png'}]}).media,['a.png','b.png']);

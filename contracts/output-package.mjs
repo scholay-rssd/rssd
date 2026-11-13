@@ -2,10 +2,11 @@
 // exported many ways: an article view, a card view, plain text. Each export is a package:
 // a manifest (this file's shape) plus the files it lists. The manifest says what was exported, from which
 // version of the source, in which style, and what a platform asks for besides the body (title, digest,
-// cover). No Node or browser API is used here, so the website, the desktop app and the Obsidian plugin can
+// cover). No Node or browser API is used here (the only import, site-sections.mjs, uses none either), so the website, the desktop app and the Obsidian plugin can
 // all import it; callers compute hashes themselves.
 //
 // Keep it small: a field belongs here only when an engine reads it.
+import {sectionsForSite} from './site-sections.mjs';
 export const OUTPUT_SPEC_VERSION=1;
 export const OUTPUT_LOCALES=Object.freeze(['zh-CN','en']);
 
@@ -20,7 +21,8 @@ export const OUTPUT_FORMATS=Object.freeze({
 // Limits count characters, not bytes; exceeding one is a warning, never an error.
 // WeChat (checked 2026-11-11 against the official draft/add page, last edited 2026-11-02): author 16 and
 // digest 120 are documented. The title is 64 in the editor the article is pasted into, which no official page
-// states; the draft/add API documents 32, so an engine that posts through the API must use 32.
+// states; the draft/add API documents 32, so an engine that posts through the API must use 32. The owner chose
+// 64 on 2026-11-12, because articles are pasted into the editor rather than posted through the API.
 // Xiaohongshu publishes no limits; title 20, caption 1000 and tags 10 are unconfirmed working values.
 export const OUTPUT_DESTINATIONS=Object.freeze({
  'wechat-official-account':Object.freeze({label:'WeChat official account',format:'article',fields:Object.freeze(['title','digest','author','cover']),limits:Object.freeze({title:64,digest:120,author:16})}),
@@ -40,6 +42,7 @@ export function outputProfile(format,destination){
 }
 
 const text=value=>typeof value==='string'?value.trim():'';
+const sectionsOf=site=>site&&typeof site==='object'?sectionsForSite(site):[];
 /** Length as a reader counts it: one for 汉, one for an emoji. */
 export const characters=value=>[...String(value??'')].length;
 const item=(code,message,extra)=>({code,message,...extra});
@@ -64,17 +67,21 @@ const IMAGE=/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g;
 /**
  * What a source record lacks. `errors` stop any output; `warnings` are fields worth filling at the source;
  * `notes` are facts an engine handles by itself when it builds an output and need no change to the article.
+ * With `site` (a site profile), an article with no author or category is not a gap: outputs take the site's
+ * author and the section's name, as the website already does, so these become notes. Without `site` they stay
+ * warnings, because the caller cannot supply them.
  */
-export function checkSource(value){
+export function checkSource(value,{site=null}={}){
  const s=sourceRecord(value),errors=[],warnings=[],notes=[];
+ const siteAuthor=text(site?.author),sectionName=text(sectionsOf(site).find(x=>x?.id===s.sectionId)?.name);
  if(!s.id)errors.push(item('missing_id','The article has no ID'));
  if(!OUTPUT_LOCALES.includes(s.locale))errors.push(item('invalid_locale','The language must be one of '+OUTPUT_LOCALES.join(', ')));
  if(!s.sectionId)errors.push(item('missing_section','The article has no section'));
  if(!s.title)errors.push(item('missing_title','The article has no title'));
  if(!s.markdown.trim())errors.push(item('missing_body','The article has no body'));
  if(!s.summary)warnings.push(item('missing_summary','No summary: a digest cannot be derived'));
- if(!s.author)warnings.push(item('missing_author','No author'));
- if(!s.category)warnings.push(item('missing_category','No category'));
+ if(!s.author)(siteAuthor?notes:warnings).push(siteAuthor?item('author_from_site','No author: outputs use the site author',{value:siteAuthor}):item('missing_author','No author'));
+ if(!s.category)(sectionName?notes:warnings).push(sectionName?item('category_from_section','No category: outputs use the section name',{value:sectionName}):item('missing_category','No category'));
  if(!/^\d{4}-\d{2}-\d{2}$/.test(s.date)||Number.isNaN(Date.parse(s.date)))warnings.push(item(s.date?'invalid_date':'missing_date',s.date?'The date is not YYYY-MM-DD':'No date'));
  const images=[...s.markdown.matchAll(IMAGE)],withoutAlt=images.filter(match=>!match[1].trim()).length;
  if(withoutAlt)warnings.push(item('image_without_alt',withoutAlt+' image'+(withoutAlt===1?'':'s')+' without a description',{count:withoutAlt}));
@@ -97,7 +104,8 @@ export function fitText(value,limit){
  * The fields an output carries besides its files, derived from the source and never stored back: the title
  * alone for a format with no destination, or what `destination` (a key of OUTPUT_DESTINATIONS) asks for, fitted to its limits. Returns
  * {fields,warnings}; a value that had to be shortened or is missing is reported, not hidden. An article
- * without an author takes the site's (`site.author`), as the website and the social drafts already do.
+ * without an author takes the site's (`site.author`), as the website and the social drafts already do; one
+ * without an image takes the site's default cover (`site.cover`, a path the engine resolves) when the site has one.
  */
 export function outputFields(format,source,{cover=null,site=null,destination}={}){
  const spec=outputProfile(format,destination);if(!spec)throw Error(outputProfile(format)?'Unknown destination for '+format+': '+destination:'Unknown output format: '+format);
@@ -112,7 +120,8 @@ export function outputFields(format,source,{cover=null,site=null,destination}={}
   else if(name==='digest'||name==='caption')fields[name]=fit(name,s.summary);
   else if(name==='author')fields.author=fit('author',s.author||text(site?.author));
   else if(name==='tags')fields.tags=[];
-  else if(name==='cover'){fields.cover=text(cover)||s.media[0]||null;if(!fields.cover)warnings.push(item('missing_cover','No cover image: the article has no image and none was given'));}
+  // Cover rule (owner, 2026-11-12): the cover given, else the article's first image, else the site's default cover (`site.cover`).
+  else if(name==='cover'){fields.cover=text(cover)||s.media[0]||text(site?.cover)||null;if(!fields.cover)warnings.push(item('missing_cover','No cover image: the article has no image, none was given and the site has no default cover'));}
  }
  return {fields,warnings};
 }
