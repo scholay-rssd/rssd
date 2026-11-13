@@ -1,12 +1,18 @@
 name: Public product checks
+# Same triggers as the headless workflow: every push, fork pull requests,
+# superseded branch runs cancelled.
 on:
   push:
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main' }}
 jobs:
   public-boundary:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -19,6 +25,7 @@ jobs:
       - name: No private overlays, data, receipts or credentials
         run: node scripts/check-public-boundary.mjs
   secrets-schema:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -36,6 +43,7 @@ jobs:
       - name: Every secret read is declared in rssd-secrets
         run: node .local/rssd-secrets/scripts/coverage.mjs .
   public-build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

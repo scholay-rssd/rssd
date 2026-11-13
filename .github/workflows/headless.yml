@@ -1,9 +1,17 @@
 name: Headless packages
+# Every push is checked and its artifacts carry that commit. A pull request
+# from a branch of this repository is already checked by the push run on the
+# same commit, so pull_request runs check forks only. Superseded runs on a
+# branch are cancelled; runs on main and manual dispatches always finish.
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref != 'refs/heads/main' }}
 jobs:
   package:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     strategy:
       fail-fast: false
       matrix:

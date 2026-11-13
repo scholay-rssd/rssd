@@ -1,7 +1,20 @@
 name: Desktop packages
+# The desktop app is frozen to bug fixes, so this native build runs on main
+# only when its own inputs change: desktop sources, the contracts and site
+# catalog compiled into it, and the root install. Shared scripts are packaged
+# by the same workbench step that the headless workflow runs on every push.
+# To package any other main commit, dispatch this workflow on main
+# (scripts/sign-desktop-update.mjs signs only successful runs on main).
 on:
   push:
     branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'contracts/**'
+      - 'sites'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop-packages.yml'
   workflow_dispatch:
 permissions:
   contents: read
