@@ -1,6 +1,6 @@
 [package]
 name = "papr"
-version = "0.16.11"
+version = "0.16.12"
 description = "RSSD — a local-first RSS and trends reader"
 authors = ["you"]
 edition = "2021"
