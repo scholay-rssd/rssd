@@ -97,6 +97,27 @@ rule identity, Notebook structure, alt bounds and any explicit body budget. It
 reports body and private-note counts separately; it does not conduct an AI prose review or
 grant publication permission. A failed check returns a nonzero CLI status.
 
+An unsigned file draft can obtain bounded machine feedback:
+
+```sh
+npm --silent run headless -- writing-defaults --feedback raw-output.txt --file-draft --context context.json --brief brief.txt --assets assets.json --output feedback.txt
+```
+
+`revision-requested` writes a complete request containing the exact validation
+errors and unchanged raw candidate. Give it to the same writing client and save
+its next response as a separate file; the tool does not repair or edit article
+bytes. `writing-feedback.json` binds the context, brief, asset manifest and actual
+image bytes, retains at most two feedback requests, and reuses a request for the
+same candidate. `ready` means the candidate passed the checks; `exhausted` stops
+without delivery. Failed/revision-needed states return a nonzero CLI status.
+Keep every attempt and actual client receipt. Do not reset the ledger to obtain
+more retries or label a later success as first-pass compliance.
+
+This path rejects signed, claimed, revisioned or protected inputs. Center claims
+and their original packets, request keys and generation evidence continue through
+the existing recovery flow. The feedback command does not invoke a model, submit
+an article or add publication authority.
+
 Baseline text, local adjustments, source hashes and task snapshots remain private
 run evidence. Runtime-generated signatures record the baseline reference; models
 must not invent those signatures. Center-bound new publications reject a wrong

@@ -8,6 +8,7 @@ summary、blocks、sources、blockNotes、internalNotes 都属于同一个最外
 title 须为不超过120字的字符串；合法原作标题不得截断凑长度。blocks 按正文顺序使用 paragraph、markdown、heading（level 1–3）、image、annotation（role=caption/endnote）；每行有唯一 id、state=ready、text、sourceIds 数组。列表、表格和代码可用 markdown 行。正文须完整，不能用摘要替代全文。
 image.text 使用真实公开图片URL，或本任务已经登记的 /api/rssd/v1/media/<id>/raw；本地文件草稿按任务给出的实际图片路径及资产清单交付。翻译须按原顺序保留原稿已登记图片，不伪造媒体ID。
 sources 每条含 id、title、url、summary、acquiredVia（rss/web/record）、reviewed=false；正文 sourceIds 引用真实来源ID。blockNotes[行ID].notes 与 internalNotes 使用项目协议的五类私有字段。需要平台内容时保留 metadata.platformContent。
+sources.url 须为实际已读、不含凭证的HTTP(S)原文链接；本地计算/渲染记录放私有verification/images，正文可引真实方法或图标原文，不伪造公网网址，不把file:或本地路径作为sources.url。
 不填写 modelSignatures、meta 或运行记录。发布/模型身份仍由程序维护。`;
 
 export function normalizeNotebookResult(value){
