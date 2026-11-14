@@ -7,7 +7,7 @@ import {COLUMN_RULES} from './editorial-column-policy.mjs';
 import {writableSectionsForSite} from './site-sections.mjs';
 import contract from './writing-defaults-v1.cjs';
 
-export const WRITING_DEFAULTS_VERSION='2026-11-15.1';
+export const WRITING_DEFAULTS_VERSION='2026-11-15.2';
 export const WRITING_DOMAIN_IDS=['academic','metho','pets','enter','study','xsiching','legis','design','xsime','personal'];
 const elements={
  'academic/calendar':['一项年度惯例事项及依据','惯例与当年日期的区别','适用人群和官方行动入口'],

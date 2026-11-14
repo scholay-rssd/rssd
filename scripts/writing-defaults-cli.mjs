@@ -10,9 +10,13 @@ import {writingDraftRequest} from './writing-draft-request.mjs';
 export async function writingDefaultsCommand(argv,{emit=value=>console.log(JSON.stringify(value))}={}){
  const options={};
  for(let i=0;i<argv.length;i++){
-  const key=argv[i];if(key==='--list'){options.list=true;continue;}
-  if(!['--workspace','--section','--session','--overrides','--center-home','--origin','--output','--install','--check','--context','--assets','--request','--brief'].includes(key)||!argv[i+1]||argv[i+1].startsWith('--')||options[key]!==undefined)throw Error('Usage: writing-defaults --workspace <id> --section <id> [--session <id>] [--overrides <file.json>] [--output <context.json>] [--origin <https://center>] | --list | --install <workspace> --workspace <id> | --request <context.json> --brief <brief.txt> --output <request.txt> | --check <draft.json> --context <context.json> --assets <assets.json>');
+  const key=argv[i];if(key==='--list'){options.list=true;continue;}if(key==='--file-draft'){options.fileDraft=true;continue;}
+  if(!['--workspace','--section','--session','--overrides','--center-home','--origin','--output','--install','--check','--context','--assets','--request','--brief','--feedback'].includes(key)||!argv[i+1]||argv[i+1].startsWith('--')||options[key]!==undefined)throw Error('Usage: writing-defaults --workspace <id> --section <id> [--session <id>] [--overrides <file.json>] [--output <context.json>] [--origin <https://center>] | --list | --install <workspace> --workspace <id> | --request <context.json> --brief <brief.txt> --output <request.txt> | --check <draft.json> --context <context.json> --assets <assets.json> | --feedback <raw-output.txt> --file-draft --context <context.json> --brief <brief.txt> --assets <assets.json> --output <feedback.txt>');
   options[key]=argv[++i];
+ }
+ if(options['--feedback']){
+  if(!options['--context']||!options['--brief']||!options['--assets']||!options['--output']||options['--request']||options['--check']||options.list||options['--install'])throw Error('--feedback requires --file-draft, --context, --brief, --assets and --output as a separate operation');
+  const {writingFeedback}=await import('./writing-feedback.mjs');const result=await writingFeedback({draftFile:resolve(options['--feedback']),contextFile:resolve(options['--context']),briefFile:resolve(options['--brief']),assetsFile:resolve(options['--assets']),outputFile:resolve(options['--output']),fileDraft:options.fileDraft});emit(result);return result;
  }
  if(options['--request']){
   if(!options['--brief']||!options['--output']||options['--check']||options.list||options['--install'])throw Error('--request requires --brief and --output as a separate operation');
