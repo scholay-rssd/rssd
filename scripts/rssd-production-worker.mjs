@@ -2,6 +2,7 @@ import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import protocol from '../contracts/rssd-v1.cjs';
+import writingDefaults from '../contracts/writing-defaults-v1.cjs';
 import {withFileLock} from './editorial-lock.mjs';
 import {CenterOutbox,clearCompletedClaim,writeCenterJson} from './rssd-center-client.mjs';
 import {prepareEditionMedia,completeStoredEdition} from './rssd-device-media.mjs';
@@ -318,6 +319,11 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
           if(requiredModel||scoped)requirePilotEdition(output);
           if(scoped){const evidence=await sourceStage.restore({claim,slot:sourceSlot,directory,signal});await requireSourceProof(join(directory,locale+'.result-source-binding.json'),evidence,output);requireScopedSkills(output);verifyAutomatedReferences(output);const verifiedEdition={...output,locale};await verifyVerifiedBibliography({snapshot:evidence.snapshot,directory,edition:verifiedEdition,signal});const credits=await imageCreditContext({directory,claim,client,edition:verifiedEdition});if((await sourceStage.verifyEdition({claim,slot:sourceSlot,directory,edition:verifiedEdition,signal,...credits}))?.ok!==true)throw Error('原稿来源核验未通过');}
           output=await prepareEditionMedia({edition:output,home,directory,client,workspaceId:claim.workspaceId,signal,source:chinesePacket?.editions[0]||source?.payload||source});
+          if(claim.payload.writingDefaults){
+            const baseline=writingDefaults.snapshot(claim.payload.writingDefaults,{workspaceId:claim.workspaceId,sectionId:claim.sectionId});
+            if(output.metadata?.writingDefaults?.baselineHash!==baseline.hash)throw Object.assign(Error('稿件缺少原认领的线上写作基线'),{code:'writing_defaults_conflict'});
+            const issues=writingDefaults.deliveryIssues(output.metadata?.notebook,baseline);if(issues.length)throw Object.assign(Error(issues.join('；')),{code:'writing_delivery_incomplete'});
+          }
           // New packets only: a saved packet keeps its exact bytes and request hash.
           output=withEditionByline(output,{source,site:siteByline(profiles,claim.workspaceId,claim.sectionId)});
           packet=protocol.submission({requestId:randomUUID(),workId,workspaceId:claim.workspaceId,sectionId:claim.sectionId,

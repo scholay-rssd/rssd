@@ -2,6 +2,8 @@ import {activeNotebookTurn,notebookAgentTask,writeAgentNotebook,prepareNotebookT
 import {notebookPreparation} from './notebook-completion.mjs';
 import {validateSectionId,sectionsForSite} from '../../../contracts/site-sections.mjs';
 import {resolveSkillMounts} from './writing-skill-catalog.mjs';
+import {managedWritingWorkspace,workspaceWritingContext} from '../../../scripts/rssd-writing-defaults.mjs';
+import writingDefaults from '../../../contracts/writing-defaults-v1.cjs';
 import {randomUUID,createHash} from 'node:crypto';
 import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
@@ -104,6 +106,11 @@ export async function beginNotebookPrompt(store,id,p){return withFileLock(join(s
  const t=await store.get(id);if(!t.notebook||t.completedAt||t.runtime?.busy||t.runtime?.queued)throw Error('请先等待当前操作完成');
  if(t.revision!==p.expectedRevision)throw Error('CONFLICT: 文章板已有新版，请重新读取');
  const turn=p.turnContext?await prepareNotebookTurn(store,t,p):null;
+ const writingNote=turn?.candidate||t.notebook;
+ if(!t.notebookExport&&!t.notebook.baseSha&&await managedWritingWorkspace(store.root)){
+  t.writingDefaults=await workspaceWritingContext(store.root,writingNote.sectionId,{directory:join(store.dir(id),'writing-defaults',writingDefaults.hash(writingNote.sectionId))});
+  if(turn)turn.writingDefaults=t.writingDefaults;
+ }
  const scope=notebookPromptScope(turn?.candidate||t.notebook,p);if(turn)scope.turnId=turn.id;
  // Per-turn network choices remain authoritative; mounting context must not
  // resurrect a previous run's transient permission.
@@ -124,6 +131,7 @@ async function imageFile(store,t,path,draft){
 }
 export async function checkNotebook(store,t,{preparing=false}={}){
  const n=t.notebook,issues=preparing?notebookPreparation(n).filter(c=>!c.ok).map(c=>c.label):notebookIssues(n),markdown=normalizeRecordMarkdown(n.kind,notebookMarkdown(n));let fields=null,draft=null;
+ if(t.writingDefaults&&!preparing)issues.push(...writingDefaults.deliveryIssues(n,t.writingDefaults));
  try{validateSectionId(n.sectionId,siteForWorkspace(store.root));}catch(e){issues.push(e.message);}
  try{draft=await readDraft(t.articleId,store.root);}catch(e){if(t.workIds.includes(t.articleId))issues.push('已有稿件无法读取：'+e.message);}
  if(draft&&n.baseSectionId!==undefined&&n.baseSectionId!==(draft.sectionId||null))issues.push('作品库栏目已变化，请重新载入，避免覆盖其他编辑');

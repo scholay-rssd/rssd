@@ -36,6 +36,8 @@ export function notebookEdition(result,{source,signature,sectionId,locale,origin
  }
  const bodyMarkdown=notebookMarkdown(n,{site:null,locale});
  const metadata={...source?.payload?.metadata,...result.metadata,notebook:n,notebookBodyHash:createHash('sha256').update(bodyMarkdown).digest('hex')};
+ if(signature?.writingDefaults)metadata.writingDefaults=structuredClone(signature.writingDefaults);
+ else delete metadata.writingDefaults;
  delete metadata.modelSignatures;
  return {title:n.title,bodyMarkdown,summary:typeof result.summary==='string'?result.summary:'',sources:n.sources.map(s=>({title:s.title,url:s.url})),media:editionMedia(bodyMarkdown,n,source,origin),metadata};
 }

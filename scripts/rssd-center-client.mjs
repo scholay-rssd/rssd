@@ -5,6 +5,7 @@ import protocol from '../contracts/rssd-v1.cjs';
 import {withFileLock,lockOwnerAlive} from './editorial-lock.mjs';
 import {uploadPacketMedia} from './rssd-device-media.mjs';
 import {switchConnectionContext,recoverConnectionSwitch} from './rssd-connection-context.mjs';
+import {createWritingDefaultsReader} from './rssd-writing-defaults.mjs';
 
 export class CenterError extends Error {
   constructor(message,{status=0,code='network_error'}={}){super(message);this.status=status;this.code=code;}
@@ -31,7 +32,9 @@ export function createCenterClient({origin,token,fetcher=fetch,timeoutMs=30000})
     return value;
   };
   const query=options=>new URLSearchParams(Object.entries(options||{}).filter(([,v])=>v!==undefined)).toString();
+  const writing=createWritingDefaultsReader({origin,fetcher,timeoutMs});
   return {origin,request,identity:()=>request('/identity'),registry:()=>request('/registry'),
+    writingDefaultCatalog:writing.writingDefaultCatalog,writingDefaults:writing.writingDefaults,
     demands:options=>request('/demands?'+query(options)),works:options=>request('/works?'+query(options)),
     work:id=>request('/works/'+encodeURIComponent(protocol.id(id))),
     createDemand:body=>request('/demands',{method:'POST',body}),

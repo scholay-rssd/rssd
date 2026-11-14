@@ -7,6 +7,8 @@ import {profiles} from '../../../scripts/site-config.mjs';
 import {sectionsForSite} from '../../../contracts/site-sections.mjs';
 import {writeCenterJson} from '../../../scripts/rssd-center-client.mjs';
 import protocol from '../../../contracts/rssd-v1.cjs';
+import defaults from '../../../contracts/writing-defaults-v1.cjs';
+import {authoringWritingDefaults,managedWritingWorkspace,createWritingDefaultsReader} from '../../../scripts/rssd-writing-defaults.mjs';
 
 const sha=text=>createHash('sha256').update(text).digest('hex');
 const own=(base,path)=>path.startsWith(base+sep);
@@ -100,6 +102,14 @@ async function readReference(root,path){
  return {path,contentHash:sha(content),content};
 }
 export function validateCenterSkillSnapshot(snapshot,{claim,scope,writingPolicy}){
+ if(snapshot?.version===3){
+  const {snapshotHash,...body}=snapshot;
+  if(snapshotHash!==protocol.hash(body)||snapshot.demandId!==claim.id||snapshot.generation!==claim.generation||protocol.canonical(snapshot.scope)!==protocol.canonical(scope)||snapshot.policyVersion!==writingPolicy.version||snapshot.policyHash!==sha(writingPolicy.instructions))throw Error('原任务的线上写作技能快照不匹配');
+  const baseline=defaults.snapshot(snapshot.defaults?.baseline,{workspaceId:scope.workspaceId,sectionId:scope.sectionId,siteId:scope.siteId}),effective=defaults.compose(baseline,snapshot.defaults.adjustment);
+  if(snapshot.defaults.hash!==effective.hash||snapshot.defaults.instructions!==effective.instructions||protocol.canonical(snapshot.skills)!==protocol.canonical(baseline.skills)||protocol.canonical(snapshot.references)!==protocol.canonical(baseline.references))throw Error('原任务的线上写作规则或本地调整已变化');
+  if(claim.payload?.writingDefaults&&claim.payload.writingDefaults.hash!==baseline.hash)throw Error('线上写作规则与原认领不匹配');
+  return snapshot;
+ }
  if(!snapshot||![1,2].includes(snapshot.version)||snapshot.demandId!==claim.id||snapshot.generation!==claim.generation||!protocol.canonical(snapshot.scope)||protocol.canonical(snapshot.scope)!==protocol.canonical(scope)||snapshot.policyVersion!==writingPolicy.version||snapshot.policyHash!==sha(writingPolicy.instructions)||!Array.isArray(snapshot.skills)||snapshot.skills.length!==centerSkillIds(scope).length)throw Error('原任务的写作技能快照不匹配');
  const ids=centerSkillIds(scope);for(let i=0;i<ids.length;i++){const s=snapshot.skills[i];if(s?.id!==ids[i]||s.name!==s.id||typeof s.version!=='string'||!s.version||typeof s.content!=='string'||Buffer.byteLength(s.content)>60000||s.contentHash!==sha(s.content))throw Error('原任务的写作技能快照损坏');}
  const expected=selectedReferences(snapshot.skills,scope);
@@ -107,14 +117,29 @@ export function validateCenterSkillSnapshot(snapshot,{claim,scope,writingPolicy}
  if(snapshot.version===2){if(!Array.isArray(snapshot.references)||snapshot.references.length!==expected.length)throw Error('原任务的写作技能参考资料快照不匹配');for(let i=0;i<expected.length;i++){const r=snapshot.references[i];if(r?.path!==expected[i].path||typeof r.content!=='string'||!r.content||Buffer.byteLength(r.content)>60000||r.contentHash!==sha(r.content))throw Error('原任务的写作技能参考资料快照损坏');}}
  const {snapshotHash,...value}=snapshot;if(snapshotHash!==protocol.hash(value))throw Error('原任务的写作技能校验失败');return snapshot;
 }
-export async function centerSkillSnapshot({claim,directory,writingPolicy,writingSkillScope,env=process.env}){
+export async function centerSkillSnapshot({claim,directory,writingPolicy,writingSkillScope,origin,env=process.env}){
  const scope=centerWritingScope(claim,writingSkillScope),file=join(directory,'writing-skills.json');
  let old;try{old=await readJson(file);}catch(error){if(error.code!=='ENOENT')throw Error('原任务的写作技能快照无法读取');}
  if(old)return validateCenterSkillSnapshot(old,{claim,scope,writingPolicy});
  // A pre-migration result/packet cannot be retroactively represented as having
  // used a skill. Preserve it for a separate explicit editorial recovery.
  for(const locale of ['zh-CN','en'])for(const suffix of ['result.json','packet.json'])try{await access(join(directory,locale+'.'+suffix));throw Error('原任务已有旧版输出，不能补造技能快照');}catch(error){if(error.code!=='ENOENT')throw error;}
- const home=dirname(dirname(directory)),root=await workspaceFor({home,scope,env}),skills=[];
+ let root;
+ if(claim.payload?.writingDefaults){
+  const client=createWritingDefaultsReader({origin});
+  const context=await authoringWritingDefaults({client,workspaceId:scope.workspaceId,sectionId:scope.sectionId,siteId:scope.siteId,directory,binding:{kind:'center-claim',demandId:claim.id,generation:claim.generation},providedBaseline:claim.payload.writingDefaults});
+  const value={version:3,demandId:claim.id,generation:claim.generation,scope,policyVersion:writingPolicy.version,policyHash:sha(writingPolicy.instructions),defaults:context,skills:context.baseline.skills,references:context.baseline.references};
+  const snapshot={...value,snapshotHash:protocol.hash(value)};await writeCenterJson(file,snapshot);return validateCenterSkillSnapshot(snapshot,{claim,scope,writingPolicy});
+ }
+ const home=dirname(dirname(directory));root=await workspaceFor({home,scope,env});
+ const managed=await managedWritingWorkspace(root);
+ if(managed&&claim.kind==='write'&&claim.generation===1){
+  const {workspaceWritingContext}=await import('../../../scripts/rssd-writing-defaults.mjs');
+  const context=await workspaceWritingContext(root,scope.sectionId,{directory});
+  const value={version:3,demandId:claim.id,generation:claim.generation,scope,policyVersion:writingPolicy.version,policyHash:sha(writingPolicy.instructions),defaults:context,skills:context.baseline.skills,references:context.baseline.references};
+  const snapshot={...value,snapshotHash:protocol.hash(value)};await writeCenterJson(file,snapshot);return validateCenterSkillSnapshot(snapshot,{claim,scope,writingPolicy});
+ }
+ const skills=[];
  for(const id of centerSkillIds(scope))skills.push(await readSkill(root,id));
  const references=[];for(const ref of selectedReferences(skills,scope))references.push(await readReference(root,ref.path));
  const value={version:2,demandId:claim.id,generation:claim.generation,scope,policyVersion:writingPolicy.version,policyHash:sha(writingPolicy.instructions),skills,references};const snapshot={...value,snapshotHash:protocol.hash(value)};

@@ -2,24 +2,27 @@
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {dirname,join} from 'node:path';
-import {updateRuntime,updateCommand,runtimeLease,installationRoot} from './update.mjs';
 import {ARTICLE_WRITING_POLICY,ARTICLE_WRITING_INSTRUCTIONS} from '../../../../contracts/article-writing-policy.mjs';
 import {createHash} from 'node:crypto';
 const here=dirname(fileURLToPath(import.meta.url));
 const [cmd,...rest]=process.argv.slice(2);
-if(cmd==='writing-policy'){
+if(cmd==='writing-defaults'){
+ try{const {writingDefaultsCommand}=await import('../../../../scripts/writing-defaults-cli.mjs');if((await writingDefaultsCommand(rest))?.ok===false)process.exitCode=1;}catch(error){console.error(error.message);process.exitCode=1;}
+}else if(cmd==='writing-policy'){
  // Read-only onboarding: no automatic update, runtime lease, auth or workspace writes.
  if(rest.length){console.error('Usage: npm run headless -- writing-policy');process.exitCode=1;}
  else console.log(JSON.stringify({version:ARTICLE_WRITING_POLICY,source:'contracts/article-writing-policy.mjs',sha256:createHash('sha256').update(ARTICLE_WRITING_INSTRUCTIONS).digest('hex'),instructions:ARTICLE_WRITING_INSTRUCTIONS}));
 }else if(cmd==='center'){
  // Center production is pinned to this installed runtime, not a private Git pull.
- const release=await runtimeLease();
+ const {runtimeLease}=await import('./update.mjs'),release=await runtimeLease();
  try{const {centerCommand}=await import('./center.mjs');await centerCommand(rest);}
  catch(error){console.error('中心任务：'+error.message);process.exitCode=1;}
  finally{await release();}
 }else if(cmd==='update'){
+ const {updateCommand}=await import('./update.mjs');
  try{console.log(JSON.stringify(await updateCommand(rest)));}catch(error){console.error('更新失败：'+error.message);process.exitCode=1;}
 }else{
+const {updateRuntime,runtimeLease,installationRoot}=await import('./update.mjs');
 const scripts={
  agents:join(here,'agents.mjs'),
  produce:join(here,'produce.mjs'),

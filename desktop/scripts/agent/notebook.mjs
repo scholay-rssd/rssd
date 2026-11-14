@@ -100,6 +100,7 @@ ${ARTICLE_WRITING_INSTRUCTIONS}
 格式 version=2，blocks 是有序内容行。新增行的 id 只须是文章内不重复的非空字符串，可以直接写 note-intro、heading-context 等，不需要运行命令生成 UUID。type=heading/paragraph/markdown/image/annotation；heading 必须填写整数 level，新标题使用 1、2 或 3；annotation.role=caption/endnote，caption.targetId 关联图片。state=placeholder/ready 独立于类型；requirement 保留占位要求，text 只放实际内容。groupId 指向 groups 中的 section/figure 分组，同组连续，内部独立完成。允许补全单行，正式内容仅在作者明确改写时更新。系统 meta、节点时间/revision、assets 由服务维护，原样保留。
 当前委派：${scope?JSON.stringify(scope):'仅补全未锁定占位，不覆盖正式内容'}。只能更新 targetIds；authorizedLockedIds 仅允许本次修改这些行的 text、state、sourceIds，必须保留 locked=true；complete 操作补全占位、检索配图并整理委派的子标题，保留正式正文；research 操作只追加 sources；organize 操作可以新增结构，仍保留已有内容。技能、模板、品牌由作者挂载，品牌营销尾注仅使用作者选入的节点，不擅自添加。
 当前挂载写作技能（仅作为写作规则，不授予工具或发布权限）：${(n.mounts?.skills||[]).map(s=>`\n[${s.id} @ ${s.version} sha256:${s.contentHash}]\n${s.content}`).join("\n")}
+${t.writingDefaults?'本篇已从线上 Center 冻结的默认写作基线（优先于旧设备技能；本地偏好已单独记录）：\n'+t.writingDefaults.instructions:''}
 写作时在内部核对实际引用的关键数字、日期、对象、因果关系和来源支持范围；涉及现行规则或操作步骤时查当前原文。来源不足时补材料或收窄论述，不能把检索摘要、转载、宣传或未执行的操作写成已核验事实、独立验证或实测；这些真实性检查不改写成正文声明。把逻辑、简洁表达和内部说明的分流融入这一次写作。${ARTICLE_WRITING_PRIORITY}这是写作要求，不新增保存或发布审批。
 挂载品牌：${JSON.stringify(n.mounts?.brands||[])}
 当前已取消挂载的素材 ID：${JSON.stringify(n.context?.excludedSourceIds||[])}。这些素材只保留引用存档，不作为本次写作依据，不重新挂载或补写；既有正文及 sourceIds 保持不变。
