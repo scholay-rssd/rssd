@@ -322,7 +322,8 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
           if(claim.payload.writingDefaults){
             const baseline=writingDefaults.snapshot(claim.payload.writingDefaults,{workspaceId:claim.workspaceId,sectionId:claim.sectionId});
             if(output.metadata?.writingDefaults?.baselineHash!==baseline.hash)throw Object.assign(Error('稿件缺少原认领的线上写作基线'),{code:'writing_defaults_conflict'});
-            const issues=writingDefaults.deliveryIssues(output.metadata?.notebook,baseline);if(issues.length)throw Object.assign(Error(issues.join('；')),{code:'writing_delivery_incomplete'});
+            const ref=output.metadata.writingDefaults,effective=writingDefaults.compose(baseline,{origin:ref.adjustmentOrigin||'local',...(ref.imageAdjustment?{images:ref.imageAdjustment}:{}),...(ref.bodyLengthAdjustment?{bodyLength:ref.bodyLengthAdjustment}:{})});
+            const issues=writingDefaults.deliveryIssues(output.metadata?.notebook,effective);if(issues.length)throw Object.assign(Error(issues.join('；')),{code:'writing_delivery_incomplete'});
           }
           // New packets only: a saved packet keeps its exact bytes and request hash.
           output=withEditionByline(output,{source,site:siteByline(profiles,claim.workspaceId,claim.sectionId)});

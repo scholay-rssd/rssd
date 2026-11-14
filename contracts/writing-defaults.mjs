@@ -7,7 +7,7 @@ import {COLUMN_RULES} from './editorial-column-policy.mjs';
 import {writableSectionsForSite} from './site-sections.mjs';
 import contract from './writing-defaults-v1.cjs';
 
-export const WRITING_DEFAULTS_VERSION='2026-11-14.1';
+export const WRITING_DEFAULTS_VERSION='2026-11-15.1';
 export const WRITING_DOMAIN_IDS=['academic','metho','pets','enter','study','xsiching','legis','design','xsime','personal'];
 const elements={
  'academic/calendar':['一项年度惯例事项及依据','惯例与当年日期的区别','适用人群和官方行动入口'],
@@ -63,7 +63,7 @@ export function buildWritingDefaultsCatalog({source}){
   const key=site.spaceId+'/'+s.id,rule=COLUMN_RULES[site.id]?.[s.id],familyId=families[key];
   if(!rule||!elements[key]||!familyId||!WRITING_DOMAIN_IDS.includes(site.spaceId))throw Error('Missing canonical writing defaults: '+key);
   const actualObject=['animal','visual'].includes(familyId)||['design/works','personal/works'].includes(key);
-  return {id:s.id,name:s.name,mode:s.defaultMode,scope:rule,familyId,requiredElements:elements[key],skillIds:['rssd-writing-base','rssd-writing-'+familyId,'rssd-domain-'+site.spaceId],referencePaths:[path],images:{minimum:1,sourceMode:actualObject?'actual-object':'source-or-illustration',dataFigures:'computed-only',altMin:20,altMax:60}};
+  return {id:s.id,name:s.name,mode:s.defaultMode,scope:rule,familyId,requiredElements:elements[key],skillIds:['rssd-writing-base','rssd-writing-'+familyId,'rssd-domain-'+site.spaceId],referencePaths:[path],images:{minimum:1,sourceMode:actualObject?'actual-object':'source-or-illustration',dataFigures:'computed-only',altMin:20,altMax:60},delivery:{version:1,format:'notebook-v2-flat',altLength:true}};
  })}));
  const body={schemaVersion:1,version:WRITING_DEFAULTS_VERSION,source,writingPolicy:{version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS,sha256:createHash('sha256').update(ARTICLE_WRITING_INSTRUCTIONS).digest('hex')},skills,references,workspaces};
  return contract.catalog({...body,hash:contract.hash(body)});

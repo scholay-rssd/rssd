@@ -46,6 +46,29 @@ Explicit instructions for the current task retain their normal priority and are
 recorded with `origin:task`. Source/provenance and publication authority remain
 unchanged.
 
+For a task with an explicit body target, record a structured budget in the
+overrides, for example
+`{"bodyLength":{"unit":"han","minimum":720,"target":800,"maximum":880}}`.
+Units are `han` (Unicode Han characters) or `words`. This is an explicit task
+range, not an inferred tolerance or a new default for all columns. Count only
+ready paragraph/markdown body text; headings, captions, reference paragraphs,
+summary and private notes do not count. Mark references `purpose:reference` or
+place them under a reference heading. The prompt reserves a separate notes
+budget; that suggestion imposes no minimum length on private notes.
+
+Build a complete file-authoring request from the frozen context and your brief:
+
+```sh
+npm --silent run headless -- writing-defaults --request context.json --brief brief.txt --output request.txt
+```
+
+Read that request before writing. It asks for one flat Notebook v2 JSON object,
+with `summary` in the same root. The adapter wraps valid flat JSON for the existing
+Center envelope; it also accepts valid legacy envelopes. It never repairs broken
+JSON, trims alt text or rewrites prose. New catalog versions check alt length at
+20–60 Unicode code points, with a suggested writing target of 28–45. Historical
+frozen baselines retain their original checks.
+
 Install the managed entry point in an existing workspace explicitly:
 
 ```sh
@@ -70,7 +93,8 @@ the manifest), and `kind` (`owned`, `licensed-source`, `generated` or `computed`
 Licensed images include `sourceUrl`, `creator`, `license` and `licenseEvidence`;
 computed figures include `computationRecord`. Every ready image needs alt text and
 a caption annotation with its `targetId`. The command checks actual image bytes,
-rule identity and concrete fields; it does not conduct an AI prose review or
+rule identity, Notebook structure, alt bounds and any explicit body budget. It
+reports body and private-note counts separately; it does not conduct an AI prose review or
 grant publication permission. A failed check returns a nonzero CLI status.
 
 Baseline text, local adjustments, source hashes and task snapshots remain private
