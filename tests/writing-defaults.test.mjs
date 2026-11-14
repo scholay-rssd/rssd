@@ -31,7 +31,7 @@ test('a local scale is applied after and separately from the unchanged online ba
 test('delivery checks distinguish missing images, captions, and a complete image-bearing draft',()=>{
  const d=resolveWritingDefaults(fixtureCatalog(),'design','icons');
  assert.equal(contract.deliveryIssues({blocks:[]},d).length,1);
- const image={id:'icon',type:'image',state:'ready',text:'https://example.org/icon.png',alt:'实际图标的轮廓与转角'};
+ const image={id:'icon',type:'image',state:'ready',text:'https://example.org/icon.png',alt:'白底并列展示空心圆与实心圆内的对勾图标轮廓'};
  assert.equal(contract.deliveryIssues({blocks:[image]},d).length,1);
  assert.deepEqual(contract.deliveryIssues({blocks:[image,{type:'annotation',role:'caption',targetId:'icon',state:'ready',text:'图标实际样本及来源'}]},d),[]);
 });

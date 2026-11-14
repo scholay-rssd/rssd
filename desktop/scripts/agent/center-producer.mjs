@@ -14,6 +14,7 @@ import protocol from '../../../contracts/rssd-v1.cjs';
 import {CENTER_IMAGE_PLAN_OUTPUT,freezeImagePlan,bindImagePlan} from '../../../scripts/rssd-image-plan.mjs';
 import {writeCenterJson} from '../../../scripts/rssd-center-client.mjs';
 import defaults from '../../../contracts/writing-defaults-v1.cjs';
+import {NOTEBOOK_V2_FLAT_OUTPUT,normalizeNotebookResult} from '../../../contracts/notebook-output.mjs';
 
 export function redactAcpText(text){
   return String(text||'')
@@ -47,7 +48,7 @@ export function parseCenterResult(text){
     if(fenced){if(!/```\s*$/.test(clean))throw Error('Unclosed fence');clean=clean.replace(/\s*```\s*$/,'');}
     result=JSON.parse(clean);
   }catch{throw Error('智能体没有返回完整的文章 JSON；输出已保留，可修正后提交');}
-  return result;
+  return normalizeNotebookResult(result);
 }
 export function parseCenterEdition(text,context){return notebookEdition(parseCenterResult(text),context);}
 export function centerWritingPrompt({claim,locale,source,writingPolicy,writingSkills,imagePlan=false,verifiedSourcePrompt,imageTranslationInstructions,verifiedBibliographyInstructions}){
@@ -68,7 +69,7 @@ export function centerWritingPrompt({claim,locale,source,writingPolicy,writingSk
   source?'以下是待翻译或更新的原稿资料，保留事实、结构、来源及图片链接：\n'+JSON.stringify(source.payload):'这是原创写作任务，请核实所用来源；无法完成时说明原因，不编造。',
   ...(imageTranslationInstructions?[imageTranslationInstructions]:[]),
   ...(verifiedBibliographyInstructions?[verifiedBibliographyInstructions]:[]),
-  imagePlan?CENTER_IMAGE_PLAN_OUTPUT:CENTER_NOTEBOOK_OUTPUT,
+  imagePlan?CENTER_IMAGE_PLAN_OUTPUT:writingSkills.defaults?.baseline.delivery?.format==='notebook-v2-flat'?NOTEBOOK_V2_FLAT_OUTPUT:CENTER_NOTEBOOK_OUTPUT,
  ].join('\n\n');
 }
 export async function produceCenterEdition({claim,locale,workId,source,directory,agentId,origin,expectedModel,signal,onEvent=()=>{},writingSkillScope,imagePlanRequired=false,verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash,imageTranslationInstructions,verifiedBibliographyInstructions,handshakeOnly=false,writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}},{registry=new AgentRegistry(),timeoutMs=30*60000,pilotEnvironment=pilotCodexEnvironment,skillSnapshot=centerSkillSnapshot,imageStage}={}){
@@ -164,7 +165,7 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
     const result=await request('session/prompt',{sessionId,prompt:[{type:'text',text:prompt}]});
     phase='complete';
     if(result.stopReason==='cancelled')throw Error('智能体已停止');
-    const signature={runId,agentId,agentName:launch.agent?.name||agentId,startedAt,completedAt:new Date().toISOString(),action:claim.kind||'write',status:'completed',modelId,modelName,writingSkillSnapshotHash:writingSkills.snapshotHash,writingSkills:writingSkills.skills.map(({id,version,contentHash})=>({id,version,contentHash})),...(writingSkills.defaults?{writingDefaults:{version:writingSkills.defaults.baseline.version,baselineHash:writingSkills.defaults.baselineHash,catalogHash:writingSkills.defaults.baseline.catalogHash,sourceCommit:writingSkills.defaults.baseline.source.commit,adjustmentHash:defaults.hash(writingSkills.defaults.adjustment),adjustmentOrigin:writingSkills.defaults.adjustment.origin,...(writingSkills.defaults.adjustment.images?{imageAdjustment:writingSkills.defaults.adjustment.images}:{})}}:{})};
+    const signature={runId,agentId,agentName:launch.agent?.name||agentId,startedAt,completedAt:new Date().toISOString(),action:claim.kind||'write',status:'completed',modelId,modelName,writingSkillSnapshotHash:writingSkills.snapshotHash,writingSkills:writingSkills.skills.map(({id,version,contentHash})=>({id,version,contentHash})),...(writingSkills.defaults?{writingDefaults:{version:writingSkills.defaults.baseline.version,baselineHash:writingSkills.defaults.baselineHash,catalogHash:writingSkills.defaults.baseline.catalogHash,sourceCommit:writingSkills.defaults.baseline.source.commit,adjustmentHash:defaults.hash(writingSkills.defaults.adjustment),adjustmentOrigin:writingSkills.defaults.adjustment.origin,...(writingSkills.defaults.adjustment.images?{imageAdjustment:writingSkills.defaults.adjustment.images}:{}),...(writingSkills.defaults.adjustment.bodyLength?{bodyLengthAdjustment:writingSkills.defaults.adjustment.bodyLength}:{})}}:{})};
     await writeFile(join(directory,locale+'.agent-output.txt'),output,{mode:0o600});
     if(!imagePlan){
       if(writingSkills.defaults){const issues=defaults.deliveryIssues(parseCenterResult(output),writingSkills.defaults);if(issues.length)throw Object.assign(Error(issues.join('；')),{code:'writing_delivery_incomplete'});}
