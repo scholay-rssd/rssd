@@ -11,7 +11,7 @@ export async function writingDefaultsCommand(argv,{emit=value=>console.log(JSON.
  const options={};
  for(let i=0;i<argv.length;i++){
   const key=argv[i];if(key==='--list'){options.list=true;continue;}if(key==='--file-draft'){options.fileDraft=true;continue;}
-  if(!['--workspace','--section','--session','--overrides','--center-home','--origin','--output','--install','--check','--context','--assets','--request','--brief','--feedback'].includes(key)||!argv[i+1]||argv[i+1].startsWith('--')||options[key]!==undefined)throw Error('Usage: writing-defaults --workspace <id> --section <id> [--session <id>] [--overrides <file.json>] [--output <context.json>] [--origin <https://center>] | --list | --install <workspace> --workspace <id> | --request <context.json> --brief <brief.txt> --output <request.txt> | --check <draft.json> --context <context.json> --assets <assets.json> | --feedback <raw-output.txt> --file-draft --context <context.json> --brief <brief.txt> --assets <assets.json> --output <feedback.txt>');
+  if(!['--workspace','--section','--session','--overrides','--center-home','--origin','--output','--install','--check','--context','--assets','--request','--brief','--feedback','--topic-check','--topic-key'].includes(key)||!argv[i+1]||argv[i+1].startsWith('--')||options[key]!==undefined)throw Error('Usage: writing-defaults --workspace <id> --section <id> [--session <id>] [--overrides <file.json>] [--output <context.json>] [--origin <https://center>] | --list | --install <workspace> --workspace <id> | --request <context.json> --brief <brief.txt> --output <request.txt> | --check <draft.json> --context <context.json> --assets <assets.json> | --feedback <raw-output.txt> --file-draft --context <context.json> --brief <brief.txt> --assets <assets.json> --output <feedback.txt> | --topic-check <title> --workspace <id> --section <id> [--topic-key <key>]');
   options[key]=argv[++i];
  }
  if(options['--feedback']){
@@ -25,6 +25,15 @@ export async function writingDefaultsCommand(argv,{emit=value=>console.log(JSON.
   const context=JSON.parse(await readFile(input,'utf8')),prompt=writingDraftRequest({context,brief:await readFile(briefFile,'utf8')});
   await mkdir(dirname(output),{recursive:true});await writeFile(output,prompt,{mode:0o600});
   const result={state:'ready',file:output,baselineHash:context.baselineHash,requestHash:contract.textHash(prompt)};emit(result);return result;
+ }
+ if(options['--topic-check']){
+  // Read-only. Listing works needs a Center device credential (RSSD_CENTER_TOKEN or the saved connection).
+  if(!options['--workspace']||!options['--section']||options['--check']||options['--request']||options.list||options['--install']||options['--session']||options['--overrides'])throw Error('--topic-check "<title>" requires --workspace and --section and is a separate read');
+  const {loadCenterConnection}=await import('./rssd-center-client.mjs'),{topicRepeatCheck}=await import('./rssd-topic-repeat.mjs');
+  const home=options['--center-home']?resolve(options['--center-home']):await writingConnectionHome();
+  const {client}=await loadCenterConnection(home);
+  const result=await topicRepeatCheck({client,workspaceId:options['--workspace'],sectionId:options['--section'],title:options['--topic-check'],topicKey:options['--topic-key']});
+  emit(result);return {...result,ok:result.state==='new'};
  }
  if(options['--check']){if(!options['--context'])throw Error('Provide --context');const {checkWritingDraft}=await import('./check-writing-draft.mjs');const result=await checkWritingDraft({draftFile:resolve(options['--check']),contextFile:resolve(options['--context']),assetsFile:options['--assets']?resolve(options['--assets']):undefined});emit(result);return result;}
  const home=options['--center-home']?resolve(options['--center-home']):await writingConnectionHome();

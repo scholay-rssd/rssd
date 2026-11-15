@@ -81,6 +81,30 @@ guidance and manuscripts. Managed desktop new-article tasks fetch/freeze the sam
 baseline automatically; Center freezes it for new write claims. Legacy in-flight
 claims and existing saved manuscripts keep their original evidence.
 
+## Check a topic before writing
+
+Every device checks a proposed topic against its column with the same rules,
+`contracts/topic-repeat.mjs`:
+
+```sh
+npm --silent run headless -- writing-defaults --topic-check "缅因猫的来历与性格" --workspace pets --section daily-cat
+```
+
+The command lists the column's works in Center (read-only; it needs a Center
+device credential from `RSSD_CENTER_TOKEN` or the saved connection) and prints
+`state: "new"` or `state: "repeat"` with the matching work. A repeat returns a
+nonzero status. Add `--topic-key <key>` to record the key you chose.
+
+A proposal repeats a work when it has the same title, or the same subject: the
+text before the title's first separator, or before 的 when there is none. The
+column's own name ("每日一猫") is not a subject. Two subjects match when they are
+equal or the longer continues the shorter with 的 or 是 ("英国短毛猫是什么样").
+Different subjects are different topics however alike the rest of the title
+reads, so "缅甸猫：起源、特征与饲养要点" does not repeat
+"英国短毛猫：起源、特征与饲养要点". Only titles are compared; summaries and
+sources are not. Automatic topic producers drop a repeat (Grok's daily research
+allows one alternative first); a topic you choose yourself is yours to keep.
+
 ## Check a completed draft
 
 ```sh
