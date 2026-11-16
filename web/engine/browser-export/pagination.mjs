@@ -71,10 +71,12 @@ function fragment(node,body){
  return best.split;
 }
 // `pause` yields between pages so the host stays responsive; a host whose window may be hidden (where
-// animation frames stop) passes one that cannot stall.
-export async function paginate(frame,model,{signal,onProgress=()=>{},loadImage,pause=tick}={}){
+// animation frames stop) passes one that cannot stall. `extraStyle` is a stylesheet the host has already
+// checked; it follows the template's own, so the pages are measured and drawn with it, and the same
+// integrity check applies.
+export async function paginate(frame,model,{signal,onProgress=()=>{},loadImage,pause=tick,extraStyle=''}={}){
  const doc=frame.contentDocument,t=model.templates.pages;doc.open();doc.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');doc.close();
- const style=doc.createElement('style');style.textContent=templateStyles(t);doc.head.append(style);
+ const style=doc.createElement('style');style.textContent=templateStyles(t)+(extraStyle?'\n'+extraStyle:'');doc.head.append(style);
  const original=fullArticle(doc,model);original.style.height='auto';original.style.width='624px';doc.body.append(original);
  await embedImages(original,{signal,...(loadImage?{load:loadImage}:{})});await doc.fonts.ready;
  for(const node of [...original.childNodes])if(node.nodeType===3&&!node.textContent.trim())node.remove();
