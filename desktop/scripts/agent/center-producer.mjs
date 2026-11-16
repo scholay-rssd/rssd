@@ -15,6 +15,7 @@ import {CENTER_IMAGE_PLAN_OUTPUT,freezeImagePlan,bindImagePlan} from '../../../s
 import {writeCenterJson} from '../../../scripts/rssd-center-client.mjs';
 import defaults from '../../../contracts/writing-defaults-v1.cjs';
 import {NOTEBOOK_V2_FLAT_OUTPUT,normalizeNotebookResult} from '../../../contracts/notebook-output.mjs';
+import {centerRecordContext,outputForRecordKind} from './center-record.mjs';
 
 export function redactAcpText(text){
   return String(text||'')
@@ -69,13 +70,14 @@ export function centerWritingPrompt({claim,locale,source,writingPolicy,writingSk
   source?'以下是待翻译或更新的原稿资料，保留事实、结构、来源及图片链接：\n'+JSON.stringify(source.payload):'这是原创写作任务，请核实所用来源；无法完成时说明原因，不编造。',
   ...(imageTranslationInstructions?[imageTranslationInstructions]:[]),
   ...(verifiedBibliographyInstructions?[verifiedBibliographyInstructions]:[]),
-  imagePlan?CENTER_IMAGE_PLAN_OUTPUT:writingSkills.defaults?.baseline.delivery?.format==='notebook-v2-flat'?NOTEBOOK_V2_FLAT_OUTPUT:CENTER_NOTEBOOK_OUTPUT,
+  outputForRecordKind(imagePlan?CENTER_IMAGE_PLAN_OUTPUT:writingSkills.defaults?.baseline.delivery?.format==='notebook-v2-flat'?NOTEBOOK_V2_FLAT_OUTPUT:CENTER_NOTEBOOK_OUTPUT,centerRecordContext({claim,source,writingSkills}).recordKind,{workspaceId:claim.workspaceId}),
  ].join('\n\n');
 }
 export async function produceCenterEdition({claim,locale,workId,source,directory,agentId,origin,expectedModel,signal,onEvent=()=>{},writingSkillScope,imagePlanRequired=false,verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash,imageTranslationInstructions,verifiedBibliographyInstructions,handshakeOnly=false,writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}},{registry=new AgentRegistry(),timeoutMs=30*60000,pilotEnvironment=pilotCodexEnvironment,skillSnapshot=centerSkillSnapshot,imageStage}={}){
   if(expectedModel&&(expectedModel!=='gpt-6.1-terra'||agentId!=='codex'))throw Error('自动试点需要 Codex 和 gpt-6.1-terra');
   if([verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash].some(x=>x!==undefined)&&(typeof verifiedSourcePrompt!=='string'||!verifiedSourcePrompt||![verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash].every(x=>/^[a-f0-9]{64}$/.test(x||''))))throw Error('来源快照或正文材料无效');
   const writingSkills=await skillSnapshot({claim,directory,writingPolicy,writingSkillScope,origin});
+  const recordContext=centerRecordContext({claim,source,writingSkills});
   const imagePlan=imagePlanRequired===true;
   if(imagePlan&&(!imageStage||typeof imageStage.prepare!=='function'||typeof imageStage.origin!=='string'))throw Object.assign(Error('所需配图服务尚未配置，原任务保持待处理'),{code:'image_pending'});
   async function completeImagePlan(plan){
@@ -89,7 +91,7 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
     signal?.throwIfAborted();
     if(protocol.hash(checked)!==before)throw Error('原图片计划发生变化');
     const bound=bindImagePlan({plan:checked,images,origin:imageStage.origin});
-    const edition=notebookEdition(bound,{source,locale,sectionId:claim.sectionId,signature:binding.signature,origin:origin||imageStage.origin,workspaceId:claim.workspaceId});
+    const edition=notebookEdition(bound,{source,locale,sectionId:claim.sectionId,signature:binding.signature,origin:origin||imageStage.origin,workspaceId:claim.workspaceId,...recordContext});
     const receipt={version:1,planHash:before,origin:imageStage.origin,workspaceId:claim.workspaceId,images:images.map(({reused,...image})=>image)};
     const file=join(directory,locale+'.image-receipt.json');let prior;
     try{prior=JSON.parse(await readFile(file,'utf8'));}catch(error){if(error.code!=='ENOENT')throw Error('原图片回执无法读取');}
@@ -173,7 +175,7 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
         const {persistGenerationEvidence}=await import('../../../scripts/rssd-center-generation-evidence.mjs');
         await persistGenerationEvidence({directory,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature,source,agentId,demandId:claim.id,generation:claim.generation,workerId:claim.workerId||claim.payload?.storeOnlyWorkerId});
       }
-      return parseCenterEdition(output,{source,locale,sectionId:claim.sectionId,signature,origin,workspaceId:claim.workspaceId,strictRegisteredImages:claim.kind==='translate'});
+      return parseCenterEdition(output,{source,locale,sectionId:claim.sectionId,signature,origin,workspaceId:claim.workspaceId,...recordContext,strictRegisteredImages:claim.kind==='translate'});
     }
     // Preserve the original model output before any image/provider operation.
     const draft=parseCenterResult(output),binding={signature,sectionId:claim.sectionId,sourceHash:protocol.hash(source||null),writingSkillSnapshotHash:writingSkills.snapshotHash,...(verifiedSourceSnapshotHash?{verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash}:{})};

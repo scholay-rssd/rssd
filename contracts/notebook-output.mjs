@@ -12,7 +12,7 @@ sources.url 须为实际已读、不含凭证的HTTP(S)原文链接；本地计�
 不填写 modelSignatures、meta 或运行记录。发布/模型身份仍由程序维护。`;
 
 export function normalizeNotebookResult(value){
- if(value&&typeof value==='object'&&!Array.isArray(value)&&value.version===2&&value.kind==='article'&&Array.isArray(value.blocks)&&Array.isArray(value.sources)&&!Object.hasOwn(value,'notebook')){
+ if(value&&typeof value==='object'&&!Array.isArray(value)&&value.version===2&&['article','year','history'].includes(value.kind)&&Array.isArray(value.blocks)&&Array.isArray(value.sources)&&!Object.hasOwn(value,'notebook')){
   const {summary,metadata,...notebook}=value;
   return {notebook,...(summary===undefined?{}:{summary}),...(metadata===undefined?{}:{metadata})};
  }

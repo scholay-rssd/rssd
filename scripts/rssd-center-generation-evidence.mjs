@@ -92,7 +92,9 @@ export async function recoverPersistedCenterEdition({directory,locale,source,ori
   if(protocol.canonical(evidence.sourceBind)!==protocol.canonical(expectedBind))fail('生成证明的原稿绑定与当前 source 不一致，不能恢复');
   if(sourceHash&&evidence.sourceBind.hash!==sourceHash)fail('生成证明的原稿 hash 与当前 demand 绑定不一致，不能恢复');
   const {parseCenterEdition,parseCenterResult}=await import('../desktop/scripts/agent/center-producer.mjs');
-  const context={source,locale,sectionId:sectionId||evidence.sectionId,signature:evidence.signature,origin:evidence.origin,workspaceId:evidence.workspaceId,strictRegisteredImages};
+  const {centerRecordContext}=await import('../desktop/scripts/agent/center-record.mjs');
+  const recordContext=centerRecordContext({claim:{id:demandId,workspaceId:evidence.workspaceId,sectionId:sectionId||evidence.sectionId},source});
+  const context={source,locale,sectionId:sectionId||evidence.sectionId,signature:evidence.signature,origin:evidence.origin,workspaceId:evidence.workspaceId,strictRegisteredImages,...recordContext};
   let edition,repair;
   try{
     try{edition=parseCenterEdition(raw,context);}
