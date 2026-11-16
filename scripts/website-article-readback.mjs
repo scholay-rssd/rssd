@@ -1,4 +1,4 @@
-import {renderArticle,renderArticleParts} from './article-format.mjs';
+import {renderArticle,renderArticleParts,markdownImageDetails} from './article-format.mjs';
 import {renderArticle as renderPublicArticle,renderArticleParts as renderPublicParts} from '../web/engine/article-math.mjs';
 
 // Journal toc/contents add heading id attributes for in-page anchors. Those
@@ -13,11 +13,24 @@ function withoutPresentation(html){
   return withoutHeadingIds(html).replace(/\s(?:width|height|loading|decoding|fetchpriority)="[^"]*"/gi,'');
 }
 
+// The display-image build pass keeps the registered original intact and uses
+// <original hash>.w1600q82.webp only for <img src>. Match that known display
+// copy back to an original actually referenced by this article. Other sources,
+// alt text, links, and unsupported derivative names still compare exactly.
+function withOriginalImageSources(html,markdown){
+  const originals=new Map();
+  for(const {src} of markdownImageDetails(markdown)){
+    const match=/^((?:https?:\/\/[^/"]+)?\/article-media\/)([a-f0-9]{64})\.(png|jpg|webp)$/.exec(src);
+    if(match)originals.set(match[1]+match[2]+'.w1600q82.webp',src);
+  }
+  return String(html).replace(/<img\b[^>]*>/gi,tag=>tag.replace(/(\ssrc=")([^"]+)(")/i,(_,head,src,tail)=>head+(originals.get(src)||src)+tail));
+}
+
 // Pure public-body verification, shared by local publishing and the cloud
 // worker. Importing this helper must not initialize an editorial workspace.
 // Journal themes render the final brand list in a separate endnotes block.
 export function articleBodyOnPage(html,markdown,site){
-  const text=String(markdown).replace(/^# [^\n]+\n+/,''),page=withoutPresentation(html);
+  const text=String(markdown).replace(/^# [^\n]+\n+/,''),page=withoutPresentation(withOriginalImageSources(html,text));
   for(const [render,renderParts] of [[renderPublicArticle,renderPublicParts],[renderArticle,renderArticleParts]]){
     if(page.includes('<div class="article-body">'+withoutPresentation(render(text))+'</div>')||page.includes('<div class="article-body">'+withoutPresentation(render(text,{site}))+'</div>'))return true;
     const parts=renderParts(text,{site});
