@@ -38,3 +38,17 @@ test('flow completion requires both public editions and the exact original commu
  links['/news/abc/']='https://example.org/t/-/12345';assert.equal((await verify({slot:expectedSlot,work})).reason,'community_link_invalid');
  links['/news/abc/']='https://enterscholar.com/t/-/12345';const result=await verify({slot:expectedSlot,work});assert.equal(result.state,'verified');assert.equal(result.communityUrl,links['/news/abc/']);assert.equal(result.urls.length,2);assert.equal(writes,0);
 });
+
+
+test('registered display copies converge without accepting source, alt or body changes',async()=>{
+ const f=fixture(),stem='d'.repeat(64),original='/article-media/'+stem+'.png',display='/article-media/'+stem+'.w1600q82.webp';
+ const body='Exact article body.\n\n![Original chart]('+original+')';
+ f.data.content.bodyMarkdown=body;f.row.receipt.packetHash=protocol.hash(f.data);
+ const html='<link rel="canonical" href="'+f.url+'"><div class="article-body">'+renderArticle(body).replace(original,display)+'</div>';
+ let page=html;
+ const verify=createPublicationReadbackAdapter({...f,fetchPage:async input=>({reachable:true,finalUrl:input,text:input===f.row.receipt.publicUrl?JSON.stringify(f.data):page})});
+ assert.equal((await verify({slot,work:f.work})).state,'verified');
+ for(const changed of [html.replace(stem,'e'.repeat(64)),html.replace('Original chart','Other chart'),html.replace('Exact article body.','Other article body.'),html.replace('.w1600q82.webp','.w999q50.webp'),html.replace('/article-media/'+stem,'https://other.example/article-media/'+stem),html.replace(display,'/article-media/'+stem+'.jpg')]){
+  page=changed;assert.equal((await verify({slot,work:f.work})).reason,'public_page_not_converged');
+ }
+});
