@@ -19,7 +19,10 @@ test('approved-message replica strips private fields, keeps the last good copy d
 test('enabled guestbooks have static pages and public form definitions, with no administration files',async t=>{
  const directory=await mkdtemp(join(tmpdir(),'rssd-wall-page-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  const site={...profiles.find(s=>s.id==='xsime'),services:{guestbook:{enabled:true}}},manifest={hashes:{}};
- await attachGuestbook({target:directory,site,manifest});assert.match(await readFile(join(directory,'guestbook/index.html'),'utf8'),/留言板/);
+ await attachGuestbook({target:directory,site,manifest});const page=await readFile(join(directory,'guestbook/index.html'),'utf8');assert.match(page,/留言板/);
+ // Shared, script-filled template: unique title and description per site, never indexed.
+ assert.equal((page.match(/<title>/g)||[]).length,1);assert(page.includes('<title>留言板 · '+site.name.replace(/&/g,'&amp;')+'</title>'));
+ assert.match(page,/<meta name="robots" content="noindex,follow">/);assert.match(page,/<meta name="description" content="公开留言/);
  const config=JSON.parse(await readFile(join(directory,'guestbook/config.json'),'utf8'));assert.equal(config.siteId,'xsime');assert.equal(config.dailyLimit,2);assert.equal(Object.keys(manifest.hashes).length,4);
  await assert.rejects(access(join(directory,'guestbook/moderate.html')));
  const disabled={hashes:{}};await attachGuestbook({target:directory,site:{...site,services:{guestbook:{enabled:false}}},manifest:disabled});assert.deepEqual(disabled.hashes,{});

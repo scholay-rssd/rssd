@@ -6,11 +6,18 @@ import {renderNavigation} from './site-navigation.mjs';
 import {addSocialMetadata} from './social-metadata.mjs';
 import {addLanguageNavigation} from './language-navigation.mjs';
 
+const esc=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
 export async function attachGuestbook({target,site,manifest}){
  if(!site.services?.guestbook?.enabled)return manifest;
  const config=guestbookConfig(site),directory=join(target,'guestbook');await mkdir(directory,{recursive:true});
  let html=await readFile(new URL('../guestbook/index.html',import.meta.url),'utf8');
- html=addSocialMetadata(html,{site,route:'/guestbook/',title:'留言板 · '+site.name,description:'公开留言、问题反馈与合作线索。'+site.description});
+ const title='留言板 · '+site.name,description='公开留言、问题反馈与合作线索。'+(site.description||'');
+ html=addSocialMetadata(html,{site,route:'/guestbook/',title,description});
+ // Every site serves this same template and its messages load by script, so
+ // search engines saw ten near-identical pages with no canonical. Keep it out
+ // of the index (links still followed) and give each copy its own title.
+ html=html.replace(/<title>[^<]*<\/title>/,()=>`<title>${esc(title)}</title><meta name="description" content="${esc(description)}"><meta name="robots" content="noindex,follow">`);
  html=addLanguageNavigation(html,{site,route:'/guestbook/',englishHome:Object.hasOwn(manifest.hashes,'en/index.html')});
  html=html.replace('<header>','<header class="guestbook-header">');
  let style=await readFile(new URL('../guestbook/style.css',import.meta.url),'utf8');
