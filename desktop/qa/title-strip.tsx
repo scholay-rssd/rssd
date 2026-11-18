@@ -8,13 +8,14 @@ import ArticleListControls from "../src/components/ArticleListControls";
 import en from "../src/locales/en.json";
 import zh from "../src/locales/zh.json";
 import ja from "../src/locales/ja.json";
+import es from "../src/locales/es.json";
 import "@fontsource-variable/inter-tight";
 import "../src/styles.css";
 import "../src/hot/hot.css";
 import "../src/workspace.css";
 
 const i18n = createInstance();
-await i18n.use(initReactI18next).init({ lng: "en", resources: { en: { translation: en }, zh: { translation: zh }, ja: { translation: ja } } });
+await i18n.use(initReactI18next).init({ lng: "en", resources: { en: { translation: en }, zh: { translation: zh }, ja: { translation: ja }, es: { translation: es } } });
 document.documentElement.dataset.platform = "mac";
 document.documentElement.dataset.palette = "paper";
 const root = createRoot(document.getElementById("fixture")!);
@@ -43,7 +44,7 @@ function render(sidebar: number, list: number, hot: boolean, busy = false) {
 }
 render(200, 322, false);
 await document.fonts.ready;
-for (const mode of ["light", "dark"]) for (const language of ["en", "zh", "ja"]) {
+for (const mode of ["light", "dark"]) for (const language of ["en", "zh", "ja", "es"]) {
   document.documentElement.dataset.mode = mode;
   await i18n.changeLanguage(language);
   for (const sidebar of [200, 420]) for (const list of [300, 388, 560]) for (const hot of [false, true]) {
