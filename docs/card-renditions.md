@@ -4,7 +4,7 @@ Card exports can be packaged for any Center workspace. The server contract is do
 
 ## Prepare
 
-Resolve the export's article to its canonical Center work, then read `/api/rssd/v1/works/<workId>/editions/<locale>/<revision>`. Save a local `source.json` containing `workId`, `revision` and the returned `hash`. The export manifest's source version must match this revision. Keep private manifests and generated assets under an ignored output directory.
+Resolve the export's article to its canonical Center work, then read `/api/rssd/v1/editorial/<workspaceId>/renditions/source?workId=<workId>&locale=<locale>&revision=<revision>`. Save this JSON response as `source.json`. It contains the workspace, site, article and edition identities. Each must match the export. The export manifest's source version must match this revision. Keep private manifests and generated assets under an ignored output directory.
 
 ```sh
 node scripts/prepare-card-rendition.mjs manifest.json workspace-id .local/cards source.json
@@ -12,7 +12,7 @@ node scripts/prepare-card-rendition.mjs manifest.json workspace-id .local/cards 
 
 The preparer verifies exported page checksums, preserves page dimensions, encodes WebP at quality 80 and creates a maximum 360 × 480 cover at quality 70. These quality settings are initial storage defaults. Review small text and formulas at the intended reading size when choosing production quality.
 
-The output contains `article-media/<sha256>.<extension>` and `renditions/<manifest-sha256>.json`. Identical images share a file. `outputBytes` counts unique assets referenced by this set, including its cover. Storage totals across several sets should count unique files in the output directory.
+The output contains `article-media/<sha256>.<extension>` and `renditions/<manifest-sha256>.json`. A per-package `rendition-assets/<manifest-sha256>.json` lists its image filenames so uploads can locate missing images without scanning the shared directory. Keep it with the manifest. Identical images share a file. `outputBytes` counts unique assets referenced by this set, including its cover. Storage totals across several sets should count unique files in the output directory.
 
 ## Reproducible layouts
 
@@ -32,6 +32,6 @@ Set `RSSD_CENTER_ORIGIN` and `RSSD_CENTER_TOKEN` through the existing secret env
 node scripts/upload-card-rendition.mjs .local/cards/renditions/<manifest-sha256>.json
 ```
 
-The uploader queries each media ID before transferring missing bytes, then saves the manifest. Run the same command again after an interrupted response. It first looks for the immutable rendition ID, so a completed request is recovered without another upload.
+New uploads require the source identity returned by Center. Previously saved renditions can still be recovered by their original ID. Reprepare older unsaved packages from the export. The uploader verifies the manifest filename against its exact bytes before contacting Center. It queries each media ID before transferring missing bytes, then saves the manifest. Run the same command again after an interrupted response. It first looks for the immutable rendition ID, so a completed request is recovered without another upload.
 
 The Center PR must be deployed before this command can upload. Local packaging can be reviewed independently. Existing local Card View samples require their canonical Center source identities and normalized layout exports when imported.

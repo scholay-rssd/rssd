@@ -1,13 +1,41 @@
-import {readFile, readdir, realpath} from 'node:fs/promises';
-import {dirname, join, resolve, relative, isAbsolute} from 'node:path';
+import {createHash} from 'node:crypto';
+import {readFile, realpath, stat} from 'node:fs/promises';
+import {basename, dirname, join, resolve, relative, isAbsolute, sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import p from '../contracts/rssd-v1.cjs';
 import media from '../contracts/rssd-media.cjs';
 import {createCenterClient} from './rssd-center-client.mjs';
 
+async function inside(root, ...parts) {
+  const path = await realpath(join(root, ...parts));
+  const rel = relative(root, path);
+  if (!rel || rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) throw Error('Path outside package');
+  return path;
+}
+
+async function assetNames(directory, filename, workspaceId, ids) {
+  const root = await realpath(directory);
+  const path = await inside(root, 'rendition-assets', filename);
+  // At most 500 layout assets plus one cover, or 500 raster pages plus one cover.
+  if ((await stat(path)).size > 48 * 1024) throw Error('Invalid packaged asset index');
+  const names = JSON.parse(await readFile(path, 'utf8'));
+  if (!Array.isArray(names) || names.length !== ids.size) throw Error('Invalid packaged asset index');
+  const files = new Map();
+  for (const name of names) {
+    if (typeof name !== 'string' || !/^[a-f0-9]{64}\.(png|jpg|webp)$/.test(name)) throw Error('Invalid packaged image name');
+    const id = media.mediaId(workspaceId, name.split('.')[0]);
+    if (!ids.has(id) || files.has(id)) throw Error('Packaged asset index mismatch');
+    files.set(id, name);
+  }
+  return {base: await inside(root, 'article-media'), files};
+}
+
 /** Upload content-addressed assets first, then commit the immutable rendition. Safe to retry. */
 export async function uploadCardRendition({file, directory, client}) {
-  const value = JSON.parse(await readFile(file, 'utf8'));
+  if ((await stat(file)).size > 2 * 1024 * 1024) throw Error('Rendition exceeds 2 MiB');
+  const bytes = await readFile(file);
+  if (bytes.length > 2 * 1024 * 1024 || basename(file) !== createHash('sha256').update(bytes).digest('hex') + '.json') throw Error('Invalid rendition manifest size or checksum');
+  const value = JSON.parse(bytes.toString('utf8'));
   if (value.schemaVersion !== 1 || value.format !== 'cards' || !Array.isArray(value.pages)) throw Error('Invalid rendition package');
   const workspaceId = p.id(value.workspaceId);
   const endpoint = '/editorial/' + encodeURIComponent(workspaceId) + '/renditions';
@@ -19,26 +47,23 @@ export async function uploadCardRendition({file, directory, client}) {
     if (existing.id !== id || existing.workspaceId !== workspaceId) throw Error('Rendition receipt mismatch');
     return {id, workspaceId, recovered: true};
   } catch (error) { if (error.status !== 404) throw error; }
-  const workPath = '/works/' + encodeURIComponent(p.id(value.workId));
-  const work = await client.request(workPath);
-  if (work.workspaceId !== workspaceId) throw Error('Source belongs to a different workspace');
-  const edition = await client.request(workPath + '/editions/' + p.locale(value.locale) + '/' + p.integer(value.source?.revision, 'revision', 1));
-  if (edition.hash !== value.source.editionHash) throw Error('Source edition hash mismatch');
+  if (!value.source?.articleId || !value.source.siteId) throw Error('Prepare this export again with its Center source identity');
+  const query = new URLSearchParams({workId: p.id(value.workId), locale: p.locale(value.locale), revision: String(p.integer(value.source.revision, 'revision', 1))});
+  const edition = await client.request(endpoint + '/source?' + query);
+  if (edition.workspaceId !== workspaceId || edition.articleId !== value.source.articleId || edition.siteId !== value.source.siteId ||
+      edition.workId !== value.workId || edition.locale !== value.locale || edition.revision !== value.source.revision ||
+      edition.hash !== value.source.editionHash) throw Error('Source edition identity or hash mismatch');
   const ids = new Set([value.coverMediaId, ...(value.mediaIds || []), ...value.pages.map(page => page.mediaId)].filter(Boolean));
-  const base = await realpath(join(directory, 'article-media'));
-  const files = await readdir(base);
-  const names = new Map(files.filter(name => /^[a-f0-9]{64}\.(png|jpg|webp)$/.test(name))
-    .map(name => [media.mediaId(workspaceId, name.split('.')[0]), name]));
+  let index;
   for (const mediaId of ids) {
     p.id(mediaId);
     let remote;
     try { remote = await client.request('/media/' + mediaId); }
     catch (error) {
       if (error.status !== 404) throw error;
-      const name = names.get(mediaId);
-      if (!name) throw Error('Missing packaged image ' + mediaId);
-      const path = await realpath(join(base, name)), rel = relative(base, path);
-      if (!rel || rel.startsWith('..') || isAbsolute(rel)) throw Error('Image outside package');
+      index ??= await assetNames(directory, basename(file), workspaceId, ids);
+      const name = index.files.get(mediaId);
+      const path = await inside(index.base, name);
       const bytes = await readFile(path), manifest = media.imageManifest(bytes);
       if (media.mediaId(workspaceId, manifest.sha256) !== mediaId || manifest.path !== '/article-media/' + name) throw Error('Packaged image checksum mismatch');
       remote = await client.request('/media', {method: 'POST', body: {workspaceId, ...manifest, data: bytes.toString('base64')}});

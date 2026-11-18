@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp, readFile, readdir, rm} from 'node:fs/promises';
-import {join} from 'node:path';
+import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
+import {basename, join} from 'node:path';
 import {tmpdir} from 'node:os';
 import {createHash} from 'node:crypto';
 import sharp from 'sharp';
@@ -22,7 +22,7 @@ async function fixture(t) {
     engine: {name: 'synthetic', version: '1'}, createdAt: '2026-01-01T00:00:00Z',
     fields: {title: 'Synthetic article'},
     files: ['one.png', 'two.png'].map(path => ({path, role: 'page', type: 'image/png', bytes: bytes.length, sha256}))});
-  return {directory, manifest, workspaceId: 'research', source: {workId: 'synthetic-work', revision: 1, hash: p.hash('edition')}, readPage: async () => bytes};
+  return {directory, manifest, workspaceId: 'research', source: {workspaceId: 'research', siteId: 'research', articleId: 'synthetic-article', locale: 'en', workId: 'synthetic-work', revision: 1, hash: p.hash('edition')}, readPage: async () => bytes};
 }
 
 test('card packaging deduplicates pixels, creates a small cover and retains source identity', async t => {
@@ -35,6 +35,7 @@ test('card packaging deduplicates pixels, creates a small cover and retains sour
   assert.equal(value.source.editionHash, options.source.hash);
   const files = await readdir(join(options.directory, 'article-media'));
   assert.equal(files.length, 2);
+  assert.deepEqual(JSON.parse(await readFile(join(options.directory, 'rendition-assets', basename(result.file)))), files.sort());
   const dimensions = await Promise.all(files.map(async name => sharp(await readFile(join(options.directory, 'article-media', name))).metadata()));
   assert(dimensions.some(item => item.width === 360 && item.height === 480));
   assert(dimensions.some(item => item.width === 1080 && item.height === 1440));
@@ -62,8 +63,7 @@ test('uncertain cloud submission is recovered by immutable ID with no duplicate 
   const client = {request: async (path, {method = 'GET', body} = {}) => {
     if (method === 'GET') {
       if (path.endsWith('/site')) return {capabilities: ['card-renditions-v1']};
-      if (path === '/works/synthetic-work') return {workspaceId: options.workspaceId};
-      if (path === '/works/synthetic-work/editions/en/1') return {hash: options.source.hash};
+      if (path === '/editorial/research/renditions/source?workId=synthetic-work&locale=en&revision=1') return options.source;
       const value = images.get(path) || renditions.get(path);
       if (!value) throw Object.assign(Error('Missing'), {status: 404});
       return value;
@@ -81,8 +81,56 @@ test('uncertain cloud submission is recovered by immutable ID with no duplicate 
     throw Error('Connection lost after commit');
   }};
   const input = {file: prepared.file, directory: options.directory, client};
+  const indexFile = join(options.directory, 'rendition-assets', basename(prepared.file));
+  const correctIndex = await readFile(indexFile);
+  await writeFile(indexFile, '[]');
+  await assert.rejects(uploadCardRendition(input), /Invalid packaged asset index/);
+  assert.equal(uploads, 0);
+  await writeFile(indexFile, correctIndex);
+  await assert.rejects(uploadCardRendition(input), /Connection lost/);
+  await rm(indexFile);
+  await rm(join(options.directory, 'article-media'), {recursive: true});
+  renditions.clear(); // Media already exists, but the rendition still needs committing.
   await assert.rejects(uploadCardRendition(input), /Connection lost/);
   const receipt = await uploadCardRendition(input);
   assert.equal(receipt.recovered, true);
-  assert.equal(uploads, 2); assert.equal(submissions, 1);
+  assert.equal(uploads, 2); assert.equal(submissions, 2);
+});
+
+test('preparation rejects ambiguous source identities before reading pixels', async t => {
+  const options = await fixture(t);
+  const readPage = () => assert.fail('Unexpected pixel read');
+  for (const change of [{articleId: 'other'}, {workspaceId: 'other'}, {siteId: 'other'}, {locale: 'zh-CN'}]) {
+    await assert.rejects(prepareCardRendition({...options, readPage, source: {...options.source, ...change}}), /mismatch/);
+  }
+  options.manifest.source.version = null;
+  await assert.rejects(prepareCardRendition({...options, readPage}), /revision mismatch/);
+});
+
+test('layout verifies every raster checksum and validates asset paths before reading', async t => {
+  const options = await fixture(t);
+  const layout = {pages: [{html: 'one'}, {html: 'two'}], css: '', assets: []};
+  const readPage = name => name === 'two.png' ? Buffer.from('changed') : options.readPage(name);
+  await assert.rejects(prepareCardRendition({...options, layout, readPage}), /checksum mismatch: two.png/);
+  await assert.rejects(prepareCardRendition({...options, layout: {...layout, assets: ['unknown.png']},
+    readPage: () => assert.fail('Unexpected read')}), /Invalid layout asset path/);
+});
+
+test('upload detects changed manifest bytes before any Center request', async t => {
+  const options = await fixture(t), {file} = await prepareCardRendition(options);
+  await writeFile(file, Buffer.concat([await readFile(file), Buffer.from(' ')]));
+  const client = {request: () => assert.fail('Unexpected Center request')};
+  await assert.rejects(uploadCardRendition({file, directory: options.directory, client}), /checksum/);
+});
+
+test('layout resolves its declared media in both HTML and CSS', async t => {
+  const options = await fixture(t), bytes = await options.readPage('one.png');
+  const asset = media.imageManifest(bytes), id = media.mediaId(options.workspaceId, asset.sha256);
+  const layout = {css: `p{background:url(${asset.path})}`, pages: [{html: `<img src="${asset.path}">`}, {html: 'Text'}], assets: [asset.path.slice(1)]};
+  const {file} = await prepareCardRendition({...options, layout});
+  const value = JSON.parse(await readFile(file));
+  assert.deepEqual(value.mediaIds, [id]);
+  assert.equal(value.pages[0].html, `<img src="/api/rssd/v1/media/${id}/raw">`);
+  assert.equal(value.css, `p{background:url(/api/rssd/v1/media/${id}/raw)}`);
+  await assert.rejects(prepareCardRendition({...options, layout: {...layout, pages: [{html: '<img src="/api/rssd/v1/media/unknown/raw">'}, {html: 'Text'}]}}), /unregistered media/);
 });
