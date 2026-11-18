@@ -24,4 +24,4 @@
 - 学术情报日期与原子稿：.agents/skills/scholay-academic-calendar/SKILL.md
 - 昔日学术史料与原子稿：.agents/skills/scholay-academic-history/SKILL.md
 
-手绘犀牛配图使用 `.agents/skills/scholay-rhino-illustration/SKILL.md`；从原文获取图片使用 `.agents/skills/scholay-source-images/SKILL.md`，核对许可并保留图注出处。
+手绘犀牛配图使用 `.agents/skills/scholay-rhino-illustration/SKILL.md`；从原文获取图片使用 `.agents/skills/scholay-source-images/SKILL.md`，核对许可；图注只写简短图题、作者与带链接的来源，许可与改动说明留在来源记录。

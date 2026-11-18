@@ -142,7 +142,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
           if(!originalPlan||!originalReceipt||originalPlan.claimId!==original.id||originalPlan.generation!==original.generation||originalReceipt.planHash!==protocol.hash(originalPlan)||originalReceipt.origin!==client.origin||originalReceipt.workspaceId!==original.workspaceId||!Array.isArray(originalReceipt.images))throw Error('英文稿缺少原中文稿图片验收凭据');
           const originalBound=bindImagePlan({plan:originalPlan,images:originalReceipt.images,origin:originalReceipt.origin});
           if(protocol.canonical(notebookImages({metadata:{notebook:originalBound.notebook}}))!==protocol.canonical(notebookImages(chinese.editions[0])))throw Error('英文稿的原图片与中文稿不一致');
-          validateReusedImageCredits({edition,images:orderedOriginalImages({edition:chinese.editions[0],images:originalReceipt.images})});
+          validateReusedImageCredits({edition,images:orderedOriginalImages({edition:chinese.editions[0],images:originalReceipt.images}),captionVersion:originalPlan.version});
           for(const image of originalReceipt.images){
             await verifyStoredVisualReview({directory,jobId:original.id,image});
             const remote=await client.request('/media/'+encodeURIComponent(image.id));
@@ -308,7 +308,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
             const bibliography=scoped?await prepareVerifiedBibliography({snapshot:evidence.snapshot,directory,signal}):null;
             if(recovered?.edition){output=recovered.edition;if(recovered.repair)onEvent({type:'notebook_repaired',demandId:claim.id,locale,repair:recovered.repair});}
             else{
-            let imageInstructions;if(scoped?.imagePlanRequired&&locale==='en'){if(!chinesePacket)throw Error('英文稿缺少原中文稿图片凭据');await attest(chinesePacket,claim);const originalReceipt=await read(join(directory,'zh-CN.image-receipt.json'));imageInstructions=imageTranslationInstructions({edition:chinesePacket.editions[0],images:originalReceipt.images});}
+            let imageInstructions;if(scoped?.imagePlanRequired&&locale==='en'){if(!chinesePacket)throw Error('英文稿缺少原中文稿图片凭据');await attest(chinesePacket,claim);const originalReceipt=await read(join(directory,'zh-CN.image-receipt.json')),originalPlan=await read(join(directory,'zh-CN.image-plan.json'));imageInstructions=imageTranslationInstructions({edition:chinesePacket.editions[0],images:originalReceipt.images,captionVersion:originalPlan?.version});}
             output=await producer({claim,locale,workId,source,directory,agentId,origin:client.origin,...(scoped?{expectedModel:scoped.modelId,verifiedSourcePrompt:evidence.prompt,verifiedSourceSnapshotHash:evidence.snapshot.snapshotHash,verifiedSourceSelectionHash:evidence.selectionHash,verifiedSourceBindingHash:evidence.bindingHash}:{}),...(scoped?.imagePlanRequired&&locale==='zh-CN'?{imagePlanRequired:true}:{}),...(imageInstructions?{imageTranslationInstructions:imageInstructions}:{}),...(bibliography?{verifiedBibliographyInstructions:VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS}:{}),signal,onEvent,writingPolicy:context.writingPolicy});
             }
             if(requiredModel||scoped)requirePilotEdition(output);

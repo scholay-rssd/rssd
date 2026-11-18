@@ -16,8 +16,10 @@ export function generatedCaption(caption,provenance,locale){
  const text=disclosure(provenance,locale);
  return caption===text||caption.endsWith(' · '+text)?caption:caption+' · '+text;
 }
-export function hasGeneratedDisclosure(caption,provenance,locale){
+// `short` is the form used from image plan version 4: the mark follows the caption as its next sentence.
+export function hasGeneratedDisclosure(caption,provenance,locale,{short=false}={}){
  if(typeof caption!=='string'||negative.test(caption))return false;
  const text=disclosure(provenance,locale);
+ if(short)return caption===text||caption.endsWith((locale==='en'?' ':'。')+text);
  return caption===text||caption.endsWith(' · '+text);
 }

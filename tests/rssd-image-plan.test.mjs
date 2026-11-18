@@ -35,7 +35,14 @@ test('public captions distinguish AI images and independently evidenced original
  const image=(slot,provenance)=>({blockId:slot.blockId,id:'media-'+slot.blockId,url:'https://center.example/api/rssd/v1/media/media-'+slot.blockId+'/raw',alt:slot.alt,caption:slot.caption,uploaded:true,manifest:{sha256:'a'.repeat(64)},registration:{taskId:'task-1'},provenance});
  const generated=image(plan.slots[0],{kind:'generated'}),source=image(plan.slots[1],{kind:'licensed-source',creator:'Example Author',sourceUrl:'https://rights.example/original',license:'CC BY 4.0',licenseUrl:'https://creativecommons.org/licenses/by/4.0/',changes:'unchanged',licenseEvidence:{url:'https://rights.example/original',sha256:'c'.repeat(64),quote:'Synthetic verified declaration',reviewedBy:'fixture reviewer',reviewedAt:'2026-11-03T00:00:00Z'}});
  const bound=bindImagePlan({plan,images:[generated,source],origin:'https://center.example'}),body=notebookEdition(bound,{sectionId:'methods',locale:'zh-CN'}).bodyMarkdown;
- assert.match(body,/AI 生成示意图/);assert.match(body,/Example Author/);assert.match(body,/https:\/\/rights\.example\/original/);assert.match(body,/CC BY 4\.0/);assert.match(body,/原图未修改/);
+ assert.match(body,/AI 生成示意图/);assert(body.includes('说明画面内容。Example Author，[rights.example](https://rights.example/original)'));
+ // Readers see the maker and the source; the licence and what was changed stay in the private note.
+ assert.doesNotMatch(body,/CC BY 4\.0|原图未修改|许可/);
+ assert.match(bound.notebook.blockNotes[plan.slots[1].blockId].notes.images,/图库登记任务：task-1。许可：CC BY 4\.0（https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/）；改动：原图未修改。$/);
+ assert.doesNotMatch(bound.notebook.blockNotes[plan.slots[0].blockId].notes.images,/许可/);
+ // A plan frozen at version 3 still produces the long caption it was checked with.
+ const older=notebookEdition(bindImagePlan({plan:{...plan,version:3},images:[generated,source],origin:'https://center.example'}),{sectionId:'methods',locale:'zh-CN'}).bodyMarkdown;
+ assert.match(older,/来源：Example Author/);assert.match(older,/许可：\[CC BY 4\.0\]/);assert.match(older,/原图未修改/);
  assert.equal(plan.slots[0].caption,'说明画面内容');assert.equal(plan.draft.notebook.blocks[2].text,'');
  assert.throws(()=>bindImagePlan({plan,images:[generated,{...source,provenance:{...source.provenance,licenseEvidence:null}}],origin:'https://center.example'}),{code:'image_pending'});
 });
@@ -48,13 +55,14 @@ test('legacy frozen plan preserves original caption and exact recovery identity'
  const images=legacy.slots.map(slot=>({blockId:slot.blockId,id:'media-'+slot.blockId,url:'https://center.example/api/rssd/v1/media/media-'+slot.blockId+'/raw',alt:slot.alt,caption:slot.caption,uploaded:true,manifest:{sha256:'a'.repeat(64)},registration:{taskId:'task-1'},provenance:{kind:'generated'}}));
  const bound=bindImagePlan({plan:legacy,images,origin:'https://center.example'});assert.equal(bound.notebook.blocks[2].text,'原来的图注');
 });
-test('new Chinese caption spacing keeps punctuation; v2 reproduces its original bytes',async t=>{
+test('the AI mark follows a short caption as its next sentence; v3 and v2 reproduce their original bytes',async t=>{
  const directory=await mkdtemp(join(tmpdir(),'rssd-image-caption-version-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  const result=draft();result.imagePlan[0].caption='解释画面。';result.imagePlan[1].caption='研究步骤。';
- const plan=await freezeImagePlan({directory,claimId:'caption-claim',generation:0,workId:'caption-work',locale:'zh-CN',result});assert.equal(plan.version,3);
+ const plan=await freezeImagePlan({directory,claimId:'caption-claim',generation:0,workId:'caption-work',locale:'zh-CN',result});assert.equal(plan.version,4);
  const images=plan.slots.map(slot=>({blockId:slot.blockId,id:'media-'+slot.blockId,url:'https://center.example/api/rssd/v1/media/media-'+slot.blockId+'/raw',alt:slot.alt,caption:slot.caption,uploaded:true,manifest:{sha256:'a'.repeat(64)},registration:{taskId:'task-1'},provenance:{kind:'generated'}}));
  const fresh=bindImagePlan({plan,images,origin:'https://center.example'}),legacy=bindImagePlan({plan:{...plan,version:2},images,origin:'https://center.example'});
- assert.equal(fresh.notebook.blocks[2].text,'解释画面。 AI 生成示意图');assert.equal(legacy.notebook.blocks[2].text,'解释画面。 · AI 生成示意图');
+ const spaced=bindImagePlan({plan:{...plan,version:3},images,origin:'https://center.example'});
+ assert.equal(fresh.notebook.blocks[2].text,'解释画面。AI 生成示意图');assert.equal(spaced.notebook.blocks[2].text,'解释画面。 AI 生成示意图');assert.equal(legacy.notebook.blocks[2].text,'解释画面。 · AI 生成示意图');
 });
 
 
