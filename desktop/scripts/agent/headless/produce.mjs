@@ -120,10 +120,10 @@ export async function produce(argv=process.argv.slice(2)){
   result.taskId=t.id;result.articleId=t.articleId;
   if(!t.completedAt){
    const open=t.notebook.blocks.filter(x=>x.type==='image'&&x.state==='placeholder');L('unfilled images',open.length);
-   for(const im of open){t=await call('task_get',{taskId:t.id});t=await agent(t.id,'image-gen',{text:(im.requirement||'按占位要求生成示意图')+'。生成方式及配图与正文的关系写入对应行的内部 images 备注，公开图注只保留帮助读者识图的说明与必要署名，并填写 alt。',action:'image',targetIds:[im.id],imageMethod:'generate',expectedRevision:t.revision});}
+   for(const im of open){t=await call('task_get',{taskId:t.id});t=await agent(t.id,'image-gen',{text:(im.requirement||'按占位要求生成示意图')+'。生成方式及配图与正文的关系写入对应行的内部 images 备注，公开图注只写以“图：”开头的简短图题和“AI 生成示意图”，并填写 alt。',action:'image',targetIds:[im.id],imageMethod:'generate',expectedRevision:t.revision});}
    t=await call('task_get',{taskId:t.id});
    const left=t.notebook.blocks.filter(x=>x.state==='placeholder');
-   if(left.length&&!t.completedAt){L('retry placeholders',left.map(x=>x.type+':'+(x.role||'')));t=await agent(t.id,'complete-retry',{text:'补全剩余占位：'+left.map(x=>x.id+'('+x.type+(x.role?'/'+x.role:'')+')').join('、')+'。图注写明图片来源与许可（AI 生成的写“AI 生成示意图”），不改已有正文。结构化记录不要新增二级标题。',action:'complete',sources:'combined',expectedRevision:t.revision});}
+   if(left.length&&!t.completedAt){L('retry placeholders',left.map(x=>x.type+':'+(x.role||'')));t=await agent(t.id,'complete-retry',{text:'补全剩余占位：'+left.map(x=>x.id+'('+x.type+(x.role?'/'+x.role:'')+')').join('、')+'。图注以“图：”开头，只写简短图题、作者与带链接的来源，许可写入内部 images 备注（AI 生成的写图题和“AI 生成示意图”），不改已有正文。结构化记录不要新增二级标题。',action:'complete',sources:'combined',expectedRevision:t.revision});}
   }
   t=await call('task_get',{taskId:t.id});
   if(!t.notebook.blocks.some(x=>x.type==='image')){
@@ -132,7 +132,7 @@ export async function produce(argv=process.argv.slice(2)){
    t=await agent(t.id,'add-image-slots',{text:'文章板缺少配图。请只新增图片位置：在标题后加 1 个题图位置、在正文中合适位置加 1 个配图位置（type=image，state=placeholder，requirement 写清画面内容），各配一个 caption 占位；不改已有正文，不要新增二级标题。',sources:'combined',action:'organize',expectedRevision:t.revision});
    t=await agent(t.id,'complete-images',{text:COMPLETION_PROMPT+' 每张图片填写 alt。',action:'complete',sources:'combined',expectedRevision:t.revision});
    const open2=t.notebook.blocks.filter(x=>x.type==='image'&&x.state==='placeholder');
-   for(const im of open2){t=await call('task_get',{taskId:t.id});t=await agent(t.id,'image-gen',{text:(im.requirement||'按占位要求生成示意图')+'。生成方式及配图与正文的关系写入对应行的内部 images 备注，公开图注只保留帮助读者识图的说明与必要署名，并填写 alt。',action:'image',targetIds:[im.id],imageMethod:'generate',expectedRevision:t.revision});}
+   for(const im of open2){t=await call('task_get',{taskId:t.id});t=await agent(t.id,'image-gen',{text:(im.requirement||'按占位要求生成示意图')+'。生成方式及配图与正文的关系写入对应行的内部 images 备注，公开图注只写以“图：”开头的简短图题和“AI 生成示意图”，并填写 alt。',action:'image',targetIds:[im.id],imageMethod:'generate',expectedRevision:t.revision});}
    t=await call('task_get',{taskId:t.id});
   }
   t=await call('task_get',{taskId:t.id});if(t.completedAt)t=await call('notebook_reopen',{taskId:t.id,expectedRevision:t.revision});

@@ -6,7 +6,7 @@ import {sectionsForSite} from '../../../contracts/site-sections.mjs';
 import {siteBrandMounts} from './brand-library.mjs';
 import {brandEndnoteText} from '../../../contracts/brand-endnotes.mjs';
 
-export const IMAGE_PRIORITY='配图优先级：① 有许可的网络原图（CC0/公有领域/CC BY/CC BY-SA，或机构新闻稿明示可用），图注写明作者/机构、来源与许可；② 确实找不到合规原图时再用 Generate Image 生成示意图，生成方式与配图取舍写入对应行内部 images 备注，公开图注准确说明示意内容，保留必要署名；③ 需要结构说明时用代码绘制。每个图片位置在 requirement 写清画面内容。每张图片都必须填写 alt：用 20–60 字具体描述画面内容，不写“图片”“配图”这类空话。';
+export const IMAGE_PRIORITY='配图优先级：① 有许可的网络原图（CC0/公有领域/CC BY/CC BY-SA，或机构新闻稿明示可用），图注以“图：”开头，只写简短图题、作者/机构和带链接的来源，许可与改动说明写入对应行内部 images 备注；② 确实找不到合规原图时再用 Generate Image 生成示意图，生成方式与配图取舍写入对应行内部 images 备注，公开图注只写简短图题和“AI 生成示意图”；③ 需要结构说明时用代码绘制。每个图片位置在 requirement 写清画面内容。每张图片都必须填写 alt：用 20–60 字具体描述画面内容，不写“图片”“配图”这类空话。';
 
 export function clipPlain(value,max){
  let s=String(value||'').replace(/!\[[^\]]*\]\([^)]*\)/g,'').replace(/\[([^\]]*)\]\([^)]*\)/g,'$1').replace(/[*_`#>]/g,'').replace(/\s+/g,' ').trim();

@@ -21,15 +21,17 @@ description: 利用本机浏览器读取并下载文章原图，核对作者、�
 
 推荐图注：
 
-> 图 1｜用自己的话说明图的用途。来源：作者/机构，《原文标题》，原图 Fig. 1，[原文链接](https://真实原文)。许可：[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)。改动：未改动内容，仅压缩尺寸。
+> 图：简短图题。作者/机构，[来源名称](https://该图自己的出处页)
 
-来源、作者、许可与改动一项也不能靠猜测。原创手绘图单独标“Scholay 原创手绘示意（AI 辅助生成）”，不标成原论文图片。不对下载的他人原图加“Scholay 原创”标识；用于公开交稿前核查发布管线的自动水印行为。
+公开图注只有这三项。图的用途、原文标题与图号、许可名称与链接、改动说明写入该图的来源证据记录和内部 images 备注，不写进图注。
+
+来源、作者、许可与改动一项也不能靠猜测。原创手绘图在图题后单独标“Scholay 原创手绘示意（AI 辅助生成）”，不标成原论文图片。不对下载的他人原图加“Scholay 原创”标识；用于公开交稿前核查发布管线的自动水印行为。
 
 ## 选入与验收
 
 1. 保存本轮来源证据 JSON：articleId、articleUrl、figureLabel、author、title、imageUrl、license、licenseUrl、licenseEvidence、thirdPartyExcluded、retrievedAt、changes、downloaded file、当前 SHA 与 slotPath。运行态路径放 `.local/`。
-2. 使用文章编辑器导入本地文件，保存带来源的图注，保留当前正文 SHA 以处理并发冲突。完整开发仓库另有同名 skill 的导入脚本；独立工作区不要运行缺少仓库依赖的脚本。
-3. 原始字节保存在文章 assets/source，正文引用小型 WebP 于 assets/rendered，图后紧邻带来源的图注，来源记录归 `_ops/inventory/image-rights/<articleId>/`。保存携带 expectedSha256，冲突重新读稿；不覆盖并发编辑。
+2. 使用文章编辑器导入本地文件，保存只含图题、作者与来源链接的图注，保留当前正文 SHA 以处理并发冲突。完整开发仓库另有同名 skill 的导入脚本；独立工作区不要运行缺少仓库依赖的脚本。
+3. 原始字节保存在文章 assets/source，正文引用小型 WebP 于 assets/rendered，图后紧邻含作者与来源链接的图注，来源记录归 `_ops/inventory/image-rights/<articleId>/`。保存携带 expectedSha256，冲突重新读稿；不覆盖并发编辑。
 4. 解码并现场看图，检查图文相符、署名齐全、许可证例外、小屏可读及公众号渲染，回读正文 SHA。图库来源记 imported，不能记 generated。缺许可、缺真实文件、图注遗漏、SHA 冲突均不能报告成功。
 
 推荐验收覆盖：明确 CC BY 原图可导入；第三方例外或无许可被拦；并发编辑被拦；动态懒加载图使用实际 currentSrc；正文和公众号预览保留图注。测试不授权发布、订阅、发送消息或云端改动。

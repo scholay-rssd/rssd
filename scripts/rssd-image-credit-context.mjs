@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import protocol from '../contracts/rssd-v1.cjs';
 import {bindImagePlan} from './rssd-image-plan.mjs';
 import {hasGeneratedDisclosure} from './rssd-image-disclosure.mjs';
-import {orderedOriginalImages} from './rssd-image-translation-prompt.mjs';
+import {orderedOriginalImages,englishCreditSuffix} from './rssd-image-translation-prompt.mjs';
 
 const fail=()=>Object.assign(Error('Original image credit evidence is unavailable or changed'),{code:'image_pending'});
 async function json(file){try{const s=await lstat(file);if(!s.isFile()||s.isSymbolicLink()||(s.mode&0o077))throw fail();return JSON.parse(await readFile(file,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw fail();}}
@@ -15,7 +15,7 @@ const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const label=value=>String(value).replace(/[\\`*_{}\[\]<>]/g,'\\$&').replace(/[\r\n]/g,' ').trim();
 // English text is model-authored, so require the exact attribution generated
 // from the saved provenance. A translated caption cannot silently drop it.
-export function validateReusedImageCredits({edition,images}){
+export function validateReusedImageCredits({edition,images,captionVersion=3}){
  const blocks=edition?.metadata?.notebook?.blocks;if(!Array.isArray(blocks)||!Array.isArray(images))throw fail();
  const imageBlocks=blocks.filter(b=>b.type==='image'&&b.state==='ready');
  if(imageBlocks.length!==images.length)throw fail();
@@ -25,9 +25,9 @@ export function validateReusedImageCredits({edition,images}){
   if(!block||captions.length!==1||typeof captions[0].text!=='string')throw fail();
   const caption=captions[0].text,p=image.provenance;
   if(!p||!['generated','licensed-source','code'].includes(p.kind))throw fail();
-  if(p?.kind==='generated'&&!hasGeneratedDisclosure(caption,p,'en'))throw fail();
+  if(p?.kind==='generated'&&!hasGeneratedDisclosure(caption,p,'en',{short:captionVersion>=4}))throw fail();
   if(p?.kind==='licensed-source'){
-   const suffix=' · Source: '+label(p.creator)+' ([source]('+p.sourceUrl+')); license: ['+label(p.license)+']('+p.licenseUrl+'); unchanged original image';
+   const suffix=englishCreditSuffix(p,captionVersion);
    if(!caption.endsWith(suffix)||/\b(?:cropped|adapted|edited|modified|altered)\b/i.test(caption.slice(0,-suffix.length)))throw fail();
   }
  }
@@ -41,7 +41,7 @@ export async function imageCreditContext({directory,claim,client,edition}){
  const bound=bindImagePlan({plan,images:receipt.images,origin:client.origin}),blocks=edition?.metadata?.notebook?.blocks;
  if(!Array.isArray(blocks))throw fail();
  const ordered=orderedOriginalImages({edition:{metadata:{notebook:bound.notebook}},images:receipt.images});
- if(edition.locale==='en')validateReusedImageCredits({edition,images:ordered});
+ if(edition.locale==='en')validateReusedImageCredits({edition,images:ordered,captionVersion:plan.version});
  const imageBlocks=blocks.filter(b=>b.type==='image'&&b.state==='ready');
  if(imageBlocks.length!==ordered.length||ordered.some((image,index)=>imageBlocks[index]?.text!==image.url))throw fail();
  const contexts=[];
@@ -62,7 +62,8 @@ export async function imageCreditContext({directory,claim,client,edition}){
    if(imageBlock.id!==image.blockId||!expected||caption.id!==expected.id||caption.text!==expected.text)throw fail();
   }
   const evidenceHash=protocol.hash({requestId:image.requestId,scopeHash:state.scopeHash,manifest:state.manifest,registration:state.registration,evidence:e,reviewedBy:state.reviewedBy,reviewedAt:state.reviewedAt});
-  for(const url of [p.sourceUrl,p.licenseUrl])contexts.push({url,purpose:'image-credit',evidenceHash,blockId:caption.id});
+  // Only links the public caption carries are authorised: from plan version 4 that is the source alone.
+  for(const url of plan.version>=4?[p.sourceUrl]:[p.sourceUrl,p.licenseUrl])contexts.push({url,purpose:'image-credit',evidenceHash,blockId:caption.id});
  }
  const allowed=new Set(contexts.map(x=>protocol.hash(x)));
  return {authorizedContextLinks:contexts,verifyContextLink:item=>allowed.has(protocol.hash(item))};
