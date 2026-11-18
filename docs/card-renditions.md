@@ -14,6 +14,10 @@ The preparer verifies exported page checksums, preserves page dimensions, encode
 
 The output contains `article-media/<sha256>.<extension>` and `renditions/<manifest-sha256>.json`. A per-package `rendition-assets/<manifest-sha256>.json` lists its image filenames so uploads can locate missing images without scanning the shared directory. Keep it with the manifest. Identical images share a file. `outputBytes` counts unique assets referenced by this set, including its cover. Storage totals across several sets should count unique files in the output directory.
 
+## Measured size
+
+A local pilot of 332 PNG pages totalling 511.2 MiB encoded to 52.4 MiB of WebP at quality 80 and unchanged resolution, before covers. The pilot used the same encoder settings as this preparer. It is one measurement, not a universal compression ratio.
+
 ## Reproducible layouts
 
 Algorithmic and intelligent layouts can provide an additional JSON file with shared `css`, ordered `pages` containing `html`, and `assets` containing package-relative content-addressed image paths. The page count must match the export manifest. The first exported pixel page supplies the small cover.
