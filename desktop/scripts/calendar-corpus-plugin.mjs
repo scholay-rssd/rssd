@@ -21,7 +21,7 @@ export function calendarCorpusPlugin(options) {
     async resolveId(source, importer, resolveOptions) {
       if (!overlay || !importer || !source.endsWith('.json')) return null;
       const resolved = await this.resolve(source, importer, {...resolveOptions, skipSelf: true});
-      if (!resolved || dirname(resolved.id) !== publicDir) return null;
+      if (!resolved || dirname(resolve(resolved.id)) !== publicDir) return null;
       return join(directory, basename(resolved.id));
     },
   };
