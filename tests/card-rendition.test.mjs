@@ -68,6 +68,8 @@ test('uncertain cloud submission is recovered by immutable ID with no duplicate 
       if (!value) throw Object.assign(Error('Missing'), {status: 404});
       return value;
     }
+    // This Center predates the combined status request, so each image is asked for.
+    if (path === '/media/missing') throw Object.assign(Error('Cannot POST'), {status: 404});
     if (path === '/media') {
       uploads++;
       const {manifest} = media.decodeImage(body), id = media.mediaId(body.workspaceId, manifest.sha256);
@@ -133,4 +135,58 @@ test('layout resolves its declared media in both HTML and CSS', async t => {
   assert.equal(value.pages[0].html, `<img src="/api/rssd/v1/media/${id}/raw">`);
   assert.equal(value.css, `p{background:url(/api/rssd/v1/media/${id}/raw)}`);
   await assert.rejects(prepareCardRendition({...options, layout: {...layout, pages: [{html: '<img src="/api/rssd/v1/media/unknown/raw">'}, {html: 'Text'}]}}), /unregistered media/);
+});
+
+test('a large set asks for media status once and uploads only missing images a few at a time', async t => {
+  const options = await fixture(t), pages = new Map();
+  for (let index = 0; index < 12; index++) {
+    const bytes = await sharp({create: {width: 108, height: 144, channels: 3, background: {r: index * 20, g: 90, b: 120}}}).png().toBuffer();
+    pages.set('page-' + index + '.png', bytes);
+  }
+  const manifest = outputManifest({format: 'cards', destination: null,
+    source: {id: 'synthetic-article', locale: 'en', sectionId: 'methods', version: 1},
+    site: {id: 'research', name: 'Research'}, style: 'model', sourceHash: p.hash('source'),
+    engine: {name: 'synthetic', version: '1'}, createdAt: '2026-01-01T00:00:00Z', fields: {title: 'Synthetic article'},
+    files: [...pages].map(([path, bytes]) => ({path, role: 'page', type: 'image/png', bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex')}))});
+  const prepared = await prepareCardRendition({...options, manifest, readPage: async path => pages.get(path)});
+  const value = JSON.parse(await readFile(prepared.file));
+  const held = new Set([value.pages[0].mediaId, value.pages[1].mediaId]), uploaded = [];
+  let statusRequests = 0, lookups = 0, active = 0, peak = 0, reply;
+  const client = {request: async (path, {method = 'GET', body} = {}) => {
+    if (path.endsWith('/site')) return {capabilities: ['card-renditions-v1']};
+    if (path.includes('/renditions/source?')) return options.source;
+    if (method === 'GET' && path.includes('/renditions/')) throw Object.assign(Error('Missing'), {status: 404});
+    if (method === 'GET') { lookups++; throw Object.assign(Error('Missing'), {status: 404}); }
+    if (path === '/media/missing') {
+      statusRequests++;
+      return reply || {workspaceId: body.workspaceId, missing: body.ids.filter(id => !held.has(id))};
+    }
+    if (path === '/media') {
+      peak = Math.max(peak, ++active);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      active--;
+      const {manifest} = media.decodeImage(body), id = media.mediaId(body.workspaceId, manifest.sha256);
+      if (id === reply?.fail) throw Error('Upload refused');
+      uploaded.push(id); held.add(id);
+      return {id, workspaceId: body.workspaceId, manifest};
+    }
+    return {id: 'rendition-' + p.hash(body), workspaceId: body.workspaceId};
+  }};
+  const input = {file: prepared.file, directory: options.directory, client};
+  const receipt = await uploadCardRendition(input);
+  assert.equal(receipt.id, 'rendition-' + p.hash(value));
+  assert.equal(statusRequests, 1); assert.equal(lookups, 0);
+  assert.equal(uploaded.length, 11); // Ten remaining pages and the cover.
+  assert.equal(new Set(uploaded).size, 11);
+  assert(peak > 1 && peak <= 4, 'uploads ran ' + peak + ' at a time');
+  await uploadCardRendition(input);
+  assert.equal(uploaded.length, 11);
+  reply = {workspaceId: 'research', missing: ['media-from-another-set']};
+  await assert.rejects(uploadCardRendition(input), /Media status mismatch/);
+  reply = {workspaceId: 'other', missing: []};
+  await assert.rejects(uploadCardRendition(input), /Media status mismatch/);
+  const before = uploaded.length;
+  reply = {workspaceId: 'research', missing: value.pages.map(page => page.mediaId), fail: value.pages[0].mediaId};
+  await assert.rejects(uploadCardRendition(input), /Upload refused/);
+  assert(uploaded.length - before < 11, 'a failed upload stops the remaining ones');
 });
