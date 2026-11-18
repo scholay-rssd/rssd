@@ -30,6 +30,20 @@ async function assetNames(directory, filename, workspaceId, ids) {
   return {base: await inside(root, 'article-media'), files};
 }
 
+// A few requests at a time keeps a large set quick without crowding the Center. The first failure stops new work.
+async function concurrently(items, task, limit = 4) {
+  const results = new Array(items.length);
+  let next = 0, failed = false;
+  await Promise.all(Array.from({length: Math.min(limit, items.length)}, async () => {
+    while (!failed && next < items.length) {
+      const position = next++;
+      try { results[position] = await task(items[position]); }
+      catch (error) { failed = true; throw error; }
+    }
+  }));
+  return results;
+}
+
 /** Upload content-addressed assets first, then commit the immutable rendition. Safe to retry. */
 export async function uploadCardRendition({file, directory, client}) {
   if ((await stat(file)).size > 2 * 1024 * 1024) throw Error('Rendition exceeds 2 MiB');
@@ -54,22 +68,34 @@ export async function uploadCardRendition({file, directory, client}) {
       edition.workId !== value.workId || edition.locale !== value.locale || edition.revision !== value.source.revision ||
       edition.hash !== value.source.editionHash) throw Error('Source edition identity or hash mismatch');
   const ids = new Set([value.coverMediaId, ...(value.mediaIds || []), ...value.pages.map(page => page.mediaId)].filter(Boolean));
-  let index;
-  for (const mediaId of ids) {
-    p.id(mediaId);
-    let remote;
-    try { remote = await client.request('/media/' + mediaId); }
-    catch (error) {
-      if (error.status !== 404) throw error;
-      index ??= await assetNames(directory, basename(file), workspaceId, ids);
+  for (const mediaId of ids) p.id(mediaId);
+  const identified = (remote, mediaId) => {
+    if (remote?.id !== mediaId || remote.workspaceId !== workspaceId || media.mediaId(workspaceId, remote.manifest?.sha256) !== mediaId) throw Error('Uploaded image identity mismatch');
+  };
+  // One status request covers the whole set. A Center without it answers 404 and each image is asked for instead.
+  let missing;
+  try {
+    const status = await client.request('/media/missing', {method: 'POST', body: {workspaceId, ids: [...ids]}});
+    if (status?.workspaceId !== workspaceId || !Array.isArray(status.missing) || status.missing.some(id => !ids.has(id))) throw Error('Media status mismatch');
+    missing = [...new Set(status.missing)];
+  } catch (error) {
+    if (error.status !== 404 && error.status !== 405) throw error;
+    missing = (await concurrently([...ids], async mediaId => {
+      try { identified(await client.request('/media/' + mediaId), mediaId); }
+      catch (error) { if (error.status !== 404) throw error; return mediaId; }
+    })).filter(Boolean);
+  }
+  if (missing.length) {
+    const index = await assetNames(directory, basename(file), workspaceId, ids);
+    await concurrently(missing, async mediaId => {
       const name = index.files.get(mediaId);
       const path = await inside(index.base, name);
       const bytes = await readFile(path), manifest = media.imageManifest(bytes);
       if (media.mediaId(workspaceId, manifest.sha256) !== mediaId || manifest.path !== '/article-media/' + name) throw Error('Packaged image checksum mismatch');
-      remote = await client.request('/media', {method: 'POST', body: {workspaceId, ...manifest, data: bytes.toString('base64')}});
+      const remote = await client.request('/media', {method: 'POST', body: {workspaceId, ...manifest, data: bytes.toString('base64')}});
       if (p.hash(remote.manifest) !== p.hash(manifest)) throw Error('Uploaded image checksum mismatch');
-    }
-    if (remote.id !== mediaId || remote.workspaceId !== workspaceId || media.mediaId(workspaceId, remote.manifest.sha256) !== mediaId) throw Error('Uploaded image identity mismatch');
+      identified(remote, mediaId);
+    });
   }
   const receipt = await client.request(endpoint, {method: 'POST', body: value});
   if (receipt.id !== id || receipt.workspaceId !== workspaceId) throw Error('Rendition receipt mismatch');
