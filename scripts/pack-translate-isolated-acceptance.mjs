@@ -3,6 +3,7 @@ import {cp,mkdir,readFile,readdir,rm,stat,writeFile} from 'node:fs/promises';
 import {dirname,join,relative} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFileSync} from 'node:child_process';
+import {ARTICLE_WRITING_POLICY} from '../contracts/article-writing-policy.mjs';
 
 const root=join(dirname(fileURLToPath(import.meta.url)),'..');
 const staging=join('/tmp','rssd-t575-isolated-stage');
@@ -79,7 +80,7 @@ async function main(){
   const manifest={
     authorization:'t575',head,packedAt:new Date().toISOString(),
     producer:'desktop/scripts/agent/center-producer.mjs',producerExport:'produceCenterEdition',
-    adapter:adapterSpec,writingPolicy:'private-notes-first-pass-v2',
+    adapter:adapterSpec,writingPolicy:ARTICLE_WRITING_POLICY,
     workId:'work-t575-isolated-acceptance',liveCenter:false,credentialsPacked:false,
     files:inventory,codexPathRequired:true,bundledOpenaiCodex:false,
   };
