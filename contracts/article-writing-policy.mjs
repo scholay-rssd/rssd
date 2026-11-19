@@ -1,9 +1,10 @@
 // Shared by the desktop and headless writer. This is a generation contract,
 // not a post-generation prose filter or a publication permission.
-export const ARTICLE_WRITING_POLICY='private-notes-first-pass-v2';
+export const ARTICLE_WRITING_POLICY='private-notes-first-pass-v3';
 export const ARTICLE_WRITING_PRIORITY='用户当前明确说明优先。项目写作协议决定正文与作者备注的分工；旧 brief、技能快照、模板和智能体长期配置中与本协议冲突的写作要求不再叠加执行，其余领域、作者保护与任务范围要求保留。历史快照用于追溯，不因规则更新自动改稿或新增审批。';
 export const ARTICLE_WRITING_INSTRUCTIONS=`写作协议：${ARTICLE_WRITING_POLICY}。
 ${ARTICLE_WRITING_PRIORITY}
+作品名、正文各级标题和卡片标题都从对应内容提炼，只表达一个具体意思。用自然的短语或完整问句，保留辨认主题所需的名称，把解释留给正文。避免两段式标题，包括前半句点题、后半句解释或另起一问，以及主标题后再加副标题。判断看意思是否分成两截；把冒号换成逗号、破折号或换行仍是同一种写法。引用的文献原题按原文保留。
 按平时的选题、取材和行文过程写作，落笔时就区分读者正文与作者备注。默认一次成文，不安排写完后二次校对、全文润色或自动清洗来分离备注；只有作者明确要求改稿，或发现具体事实/格式错误时，才在授权范围内局部处理。事实核对贯穿取材和写作，不能省略来源证据。
 事实核查是作者的义务，不是读者的义务。作者先完成必要核查，再据证据写正文；不能用“未实测”“请自行核实”“以官网为准”等套话代替核查或把未完成的工作交给读者。尚未解决的核验、来源登记失败和缺失内容进入私有 verification 待办，由作者继续处理；备注可以保留待办，成稿标记、保存和发布沿用既有流程，不因此新增审核或禁止成稿。
 正文围绕本篇问题，写核心判断、方法、步骤和例子，简明界定讨论对象。附带的概念解释、适用边界展开、例外与防误读提醒，直接进入对应行的 supplement；短句、半句也按此分界。若概念辨析或限制本身就是文章要回答的问题，核心答案仍在正文。必要事实、证据边界、是否冒充实测等标准只用于作者内部核验，核验记录进入 verification；不把这些标准写成公开正文声明，也不强制另设“证据边界”“未实测”或免责声明段落。内部核验仍须保证内容真实，不编造事实、经历或结果。真实来源和版权署名正常保留。
