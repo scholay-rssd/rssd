@@ -95,8 +95,9 @@ test('English pages take the site, section and author names from the site langua
  const home=await readFile(join(dir,'en/index.html'),'utf8');
  assert.match(home,/<title>Piggytuck Pets<\/title>/);assert.match(home,/<h1>Piggytuck Pets<\/h1><p>Welcome to my pet planet\.<\/p>/);
  assert.match(await readFile(join(dir,'en/content-feed.xml'),'utf8'),/<category>Dog of the Day<\/category>/);
- const model=JSON.parse(await readFile(join(dir,en.match(/\/(export\/[a-f0-9]+\/)article\.css/)[1],'content.json'),'utf8'));
- assert.deepEqual([model.site.name,model.sectionName,model.author,model.locale],['Piggytuck Pets','Dog of the Day','Piggytuck Pets','en']);
+ // The English page's heading names the site, section and default author in English.
+ assert.match(en,/<p class="rssd-kicker">Piggytuck Pets \/ Dog of the Day<\/p>/);assert.match(en,/<p class="rssd-byline">Piggytuck Pets · /);
+ assert.match(en,/<aside class="rssd-share"[^>]* data-locale="en">/);
 });
 
 test('a build without a language pack keeps the earlier names, and every site has a valid pack',async t=>{
