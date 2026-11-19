@@ -35,7 +35,7 @@ rssd 是总仓库，另有五个子模块，各自是独立的公开仓库：
 | 中心收发 | 子模块 `center`；`receiver/`、`admin/`；`scripts/rssd-center-*`、`scripts/rssd-production-worker.mjs`、`scripts/rssd-multisite-*`、`scripts/publishing-*`、`scripts/publication-*`、`scripts/website-*` | rssd-center、rssd |
 | Obsidian 插件 | 子模块 `obsidian` | rssd-obsidian |
 | 桌面与无头 | `desktop/`（工作区模板除外）、`HEADLESS.md` | rssd |
-| 架构优化 | 不固定。产出方案文档放 `docs/`；要动代码时拆成小 PR，交给对应主题线，或在其他线空闲时做 | rssd |
+| 架构优化 | 不固定。产出方案文档放 `docs/`；要动代码时拆成小 PR，交给对应主题线，或在其他线空闲时做。当前待办见 `docs/architecture-backlog.md` | rssd |
 | 集成维护 | 子模块指针、`.github/workflows/`、根目录 `package.json` 的依赖；合并、部署、发版 | rssd |
 
 ## 协同规则
