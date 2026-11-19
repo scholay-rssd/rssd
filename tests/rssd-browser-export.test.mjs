@@ -134,7 +134,7 @@ test('the share panel offers readers the page address and a poster, and the site
  await page.locator('.rssd-share-toggle').click();
  assert.equal(await page.locator('.rssd-share-panel').isVisible(),true);
  for(const gone of ['copy-article','download-article','download-pages','cancel'])assert.equal(await page.locator(`[data-action=${gone}]`).count(),0);
- assert.deepEqual(await page.locator('.rssd-share-social a').evaluateAll(links=>links.map(a=>new URL(a.href).searchParams.get('url'))),Array(3).fill(origin+route));
+ assert.deepEqual(await page.locator('.rssd-share-social a').evaluateAll(links=>links.map(a=>new URL(a.href).searchParams.get('url'))),[origin+route]);
  await page.locator('[data-action=copy-link]').click();await page.waitForFunction(()=>document.querySelector('.rssd-share-status').textContent.includes('已复制'));
  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),origin+route);
  // The poster loads its script only when asked, then shows a PNG the reader can save.
