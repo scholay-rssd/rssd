@@ -101,7 +101,7 @@ through `rssd update`.
 
 `npm run headless -- <command>` runs the same entry, `standalone.mjs`, from a
 checkout of this repository, for example `writing-defaults` or `center`. It
-runs the checkout's code as it is; `install` and `version` need an extracted
-runtime. This is the only headless entry: the older per-site commands
+runs the checkout's code as it is and takes no runtime lease; `install` and
+`version` need an extracted runtime. This is the only headless entry: the older per-site commands
 (`produce`, `queue`, `recover`, `jobs`, `flow <site>`, `agents`, `spaces`,
 `verify`, `briefs`) and their Git self-update have been removed.
