@@ -1,4 +1,7 @@
+import {sectionWorkPolicy} from './work-types.mjs';
 // Stable public sections, shared by local writing and publication. Legacy drafts may omit sectionId.
+// A section may also say which work types it takes and whether its long articles get a card page
+// (`workTypes`, `articleCards`; see work-types.mjs). Without them it takes long articles only.
 export const SITE_SECTIONS={
   "scholay-today": [
     {
@@ -261,7 +264,10 @@ export function validateSectionCatalog(value){
  const sections=value.sections.map((s,i)=>{
   if(!s||typeof s.id!=='string'||!/^[a-z][a-z0-9-]{0,63}$/.test(s.id)||ids.has(s.id)||typeof s.name!=='string'||!s.name.trim()||s.name.length>80||/[\x00-\x1f]/.test(s.name)||s.enabled!==undefined&&typeof s.enabled!=='boolean'||s.writable!==undefined&&typeof s.writable!=='boolean'||s.order!==undefined&&(!Number.isSafeInteger(s.order)||s.order<0))throw Error('线上栏目目录包含无效或重复栏目');
   ids.add(s.id);
-  return {id:s.id,name:s.name.trim(),order:s.order??i,enabled:s.enabled!==false,writable:s.writable!==false,...(['essay','documentation','design','encyclopedia','xiwen','observation','opensource','calendar','history'].includes(s.defaultMode)?{defaultMode:s.defaultMode}:{}),...(Array.isArray(s.aliases)?{aliases:s.aliases.filter(n=>typeof n==='string'&&n.length<=80)}:{})};
+  // Work settings pass through only when declared, so a catalog without them keeps its revision. A type this
+  // client does not know is dropped rather than refusing the whole catalog.
+  const works=s.workTypes!==undefined||s.articleCards!==undefined?sectionWorkPolicy(s):null;
+  return {id:s.id,name:s.name.trim(),order:s.order??i,enabled:s.enabled!==false,writable:s.writable!==false,...(['essay','documentation','design','encyclopedia','xiwen','observation','opensource','calendar','history'].includes(s.defaultMode)?{defaultMode:s.defaultMode}:{}),...(Array.isArray(s.aliases)?{aliases:s.aliases.filter(n=>typeof n==='string'&&n.length<=80)}:{}),...(works?{workTypes:[...works.workTypes],articleCards:works.articleCards}:{})};
  });
  return {version:1,revision:value.revision,sections};
 }
