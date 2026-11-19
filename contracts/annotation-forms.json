@@ -1,8 +1,8 @@
 {
  "schemaVersion": 1,
- "version": "draft-3",
+ "version": "2",
  "locale": "zh-CN",
- "note": "A draft for review. This form is not our own: it is a Chinese rendering of the slop taxonomy of Shaib, Chakrabarty, Garcia-Olano and Wallace, Measuring AI \"Slop\" in Text (arXiv:2509.19163), Table 11, with its three themes and eleven codes, preceded by that study's initial binary judgement. The confidence item follows the 1 to 5 scale of Russell, Karpinska and Iyyer (arXiv:2501.15654). Each code is one yes or no item whose text lists the paper's own criteria; where the answer is yes, the annotator pastes one passage that shows it, which stands in for the paper's span labelling. `traces` is ours, not the paper's: where in the writing process to look when a theme scores badly.",
+ "note": "Version 2. This form is not our own: it is a Chinese rendering of the slop taxonomy of Shaib, Chakrabarty, Garcia-Olano and Wallace, Measuring AI \"Slop\" in Text (arXiv:2509.19163), Table 11, with its three themes and eleven codes, preceded by that study's initial binary judgement. The confidence item follows the 1 to 5 scale of Russell, Karpinska and Iyyer (arXiv:2501.15654). Each code is one yes or no item whose text lists the paper's own criteria; where the answer is yes, the annotator pastes one passage that shows it, which stands in for the paper's span labelling. `traces` is ours, not the paper's: where in the writing process to look when a theme scores badly.",
  "sources": [
   {
    "id": "shaib2025",

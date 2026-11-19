@@ -6,7 +6,7 @@ const answer=item=>({value:item.type==='scale'?4:item.type==='check'?true:item.o
 const sheet=items=>Object.fromEntries(items.map(item=>[item.id,answer(item)]));
 
 test('the form is the published slop taxonomy: an initial judgement, then three themes with eleven yes or no codes',()=>{
- assert.equal(ANNOTATION_FORM.schemaVersion,1);assert.match(ANNOTATION_FORM.version,/^(draft-)?\d+$/);
+ assert.equal(ANNOTATION_FORM.schemaVersion,1);assert.equal(ANNOTATION_FORM.version,'2');
  assert.deepEqual(ANNOTATION_FORM.sections.map(section=>section.id),['overall','information-utility','information-quality','style-quality']);
  for(const section of ANNOTATION_FORM.sections){
   assert.deepEqual(section.appliesTo,{workTypes:['article','note']},section.id+' applies to every work');
