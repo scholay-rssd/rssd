@@ -35,3 +35,29 @@ test('delivery checks distinguish missing images, captions, and a complete image
  assert.equal(contract.deliveryIssues({blocks:[image]},d).length,1);
  assert.deepEqual(contract.deliveryIssues({blocks:[image,{type:'annotation',role:'caption',targetId:'icon',state:'ready',text:'图标实际样本及来源'}]},d),[]);
 });
+test('a section that takes notes carries the note form, and compose picks it only for a note',()=>{
+ const c=fixtureCatalog(),d=resolveWritingDefaults(c,'pets','daily-cat');
+ assert.deepEqual(d.note.skills.map(x=>x.id),['rssd-writing-base','rssd-writing-note','rssd-writing-animal','rssd-domain-pets']);
+ assert.match(d.note.requiredElements[0],/^本栏对象的一个具体看点（本栏长文的要素：一个未重复的猫品种；/);
+ assert.match(d.note.instructions,/作品类型：笔记/);assert.doesNotMatch(d.instructions,/rssd-writing-note/);
+ const article=contract.compose(d),explicit=contract.compose(d,{workType:'article'}),note=contract.compose(d,{workType:'note',origin:'task'});
+ assert.equal(explicit.hash,article.hash);assert.equal(article.adjustment.workType,undefined);
+ assert.equal(note.workType,'note');assert.equal(note.adjustment.workType,'note');assert.notEqual(note.hash,article.hash);
+ assert.match(note.instructions,/\[rssd-writing-note @/);assert.doesNotMatch(article.instructions,/\[rssd-writing-note @/);
+ assert.deepEqual(note.images,article.images);
+ assert.equal(contract.context({...note,retrieval:{}}).hash,note.hash);
+ assert.throws(()=>contract.compose(d,{workType:'event'}),/作品类型无效/);
+ // Sections that take articles only keep their earlier shape and refuse a note.
+ const only=resolveWritingDefaults(c,'academic','calendar');assert.equal(only.note,undefined);
+ assert.throws(()=>contract.compose(only,{workType:'note'}),/本栏不收笔记/);
+ // A changed note form no longer matches the snapshot's hash.
+ const changed=structuredClone(d);changed.note.instructions+=' changed';assert.throws(()=>contract.snapshot(changed));
+});
+test('every section that takes notes has the note form, and no other section does',async()=>{
+ const {sectionWorkPolicy}=await import('../contracts/work-types.mjs'),{writableSectionsForSite}=await import('../contracts/site-sections.mjs'),{readFileSync}=await import('node:fs');
+ const profiles=JSON.parse(readFileSync(new URL('../sites/profiles.json',import.meta.url))),c=fixtureCatalog();
+ for(const site of profiles)for(const s of writableSectionsForSite(site)){
+  const entry=c.workspaces.find(w=>w.siteId===site.id).sections.find(x=>x.id===s.id);
+  assert.equal(Boolean(entry.note),sectionWorkPolicy(s).workTypes.includes('note'),site.spaceId+'/'+s.id);
+ }
+});
