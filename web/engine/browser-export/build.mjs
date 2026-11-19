@@ -52,9 +52,7 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   const sourcePanel=(sources.length?`<h2>${en?'Sources':'资料来源'}</h2><ul>${sources.map(s=>`<li><a href="${esc(s.url)}">${esc(s.label||s.url)}</a></li>`).join('')}</ul>`:'');
   const endnotes=rendered.endnotes?`<div class="article-body article-endnotes">${rendered.endnotes}</div>`:'';
   const course=record.course?`<p class="rssd-byline">${courseLabels(record.course)}</p>`:'';
-  const html=course+facts+rendered.body+sourcePanel+endnotes;
-  // Live page only: the #tags row sits inside the article, under the body. `html` above, which copies and
-  // downloads use, leaves it out.
+  // The #tags row sits inside the article, under the body.
   // An edition in another language is the same work, so it takes its type from the source.
   const source=locale==='zh-CN'?record:content.records.find(r=>r.id==='news:'+record.sourceArticleId);
   const type=record.type||source?.type||'article';
@@ -86,11 +84,12 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   }
   const linkRow=workLinks(links),usesNote=Boolean(pictures||links.length);
   // A page in another language names the site, its section and its default author in that language.
-  const model={version:1,site:{id:site.id,name:names?.name||site.name,origin:site.origin},sectionName:localeSection(names,sectionId,sectionName),title:record.title,locale,url:site.origin+route,
-   date:record.publication?.date||record.date||'',author:localeAuthor(names,record.publication?.author||site.author||'',site),html,templates:selected};
-  const path='export/'+key(route)+'/';await write(path+'content.json',JSON.stringify(model));
-  // Keep existing export bookmarks usable, but reading and sharing live on the
-  // canonical article. No separate public preview or eager pagination.
+  // The heading and the share panel's view of the page.
+  const model={site:{id:site.id,name:names?.name||site.name,origin:site.origin},sectionName:localeSection(names,sectionId,sectionName),title:record.title,locale,url:site.origin+route,
+   date:record.publication?.date||record.date||'',author:localeAuthor(names,record.publication?.author||site.author||'',site)};
+  // Keep existing export bookmarks usable: they open the canonical article's sharing panel. Copies, downloads
+  // and page images for distribution come from the desktop app and the Obsidian plug-in, not from the site.
+  const path='export/'+key(route)+'/';
   await write(path+'index.html',`<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="robots" content="noindex,follow"><meta http-equiv="refresh" content="0;url=${esc(route)}#share"><title>${esc(record.title)}</title></head><body><a href="${esc(route)}#share">${en?'Read article':'阅读文章'}</a></body></html>`);
   await write(path+'article.css',articleStyles(selected.wechat,'body article.rssd-article.rssd-article',{live:true}));
   const priorBack=article.match(/<nav class="rssd-reading-nav"[^>]*>[\s\S]*?<\/nav>/)?.[0].match(/<a class="back"[^>]*>[\s\S]*?<\/a>/)?.[0];
@@ -110,7 +109,7 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
    const nav=`<nav class="rssd-reading-nav" aria-label="${en?'Article navigation':'文章导航'}">${oldBack||`<a class="back" href="${en?'/en/':'/archive/'}">← ${en?'All articles':'全部文章'}</a>`}</nav>`;
    return nav+(pictures?`<article class="rssd-article rssd-note-article"${attributes}>${gallery}<div class="rssd-note-text">${text}</div></article>`:`<article class="rssd-article"${attributes}>${text}</article>`);
   }).replace(/<aside class="reading-aside">[\s\S]*?<\/aside>/g,'').replace('</head>',`<link rel="stylesheet" href="/${path}article.css"><link rel="stylesheet" href="${base}share.css">${usesNote?`<link rel="stylesheet" href="${base}note.css">`:''}</head>`)
-    .replace('</body>',shareShell(model,'/'+path+'content.json')+`<script type="module" src="${base}share.mjs"></script>${pictures?.length>1?`<script type="module" src="${base}note.mjs"></script>`:''}</body>`);
+    .replace('</body>',shareShell(model)+`<script type="module" src="${base}share.mjs"></script>${pictures?.length>1?`<script type="module" src="${base}note.mjs"></script>`:''}</body>`);
   await write(articlePath,article);count++;
   if(pictures)notePages++;else if(links.length)workLinkPages++;
   if(cardsPath){
@@ -128,7 +127,7 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   }
  }
  const noteFiles=notePages||cardPages||workLinkPages?['note.mjs','note.css']:[];
- if(count)for(const file of [...noteFiles,'share.mjs','share.css','article-style.mjs','portable.mjs','wechat-clipboard.mjs','pagination.mjs','raster.mjs','zip.mjs','styles.mjs'])await write(base.slice(1)+file,await readFile(new URL(file,import.meta.url)));
+ if(count)for(const file of [...noteFiles,'share.mjs','share.css'])await write(base.slice(1)+file,await readFile(new URL(file,import.meta.url)));
  manifest.browserExports={version:2,articles:count,templates:[...templates].sort(),...(notePages?{notes:notePages}:{}),...(cardPages?{cardPages}:{})};
  await writeFile(join(target,'release.json'),JSON.stringify(manifest));return manifest;
 }

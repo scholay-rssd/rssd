@@ -46,7 +46,7 @@ test('calendar disable preserves article bodies, frozen URLs, exports and old ca
   assert.match(await readFile(join(target,'sitemap-content.xml'),'utf8'),/gallery\//);
  }
  for(const file of ['published-content.json','site-content.json','content-feed.xml'])assert.equal(await readFile(join(outputs.true,file),'utf8'),await readFile(join(outputs.false,file),'utf8'));
- const body=html=>html.match(/<div class="article-body">([\s\S]*?)<\/div><\/div>/)[1];
+ const body=html=>html.match(/<article\b[\s\S]*?<\/article>/)[0];
  assert.equal(body(await readFile(join(outputs.true,'news/frozen-link/index.html'),'utf8')),body(await readFile(join(outputs.false,'news/frozen-link/index.html'),'utf8')));
  assert.equal(JSON.stringify(snapshot),before);
 });
