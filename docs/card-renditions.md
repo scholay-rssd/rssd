@@ -39,3 +39,15 @@ node scripts/upload-card-rendition.mjs .local/cards/renditions/<manifest-sha256>
 New uploads require the source identity returned by Center. Previously saved renditions can still be recovered by their original ID. Reprepare older unsaved packages from the export. The uploader verifies the manifest filename against its exact bytes before contacting Center. It asks Center once which of the set's images are missing, transfers only those, four at a time, then saves the manifest. A Center without the combined status request is asked about each image instead. Run the same command again after an interrupted response. It first looks for the immutable rendition ID, so a completed request is recovered without another upload.
 
 The Center PR must be deployed before this command can upload. Local packaging can be reviewed independently. Existing local Card View samples require their canonical Center source identities and normalized layout exports when imported.
+
+## Layouts as raster fallbacks
+
+A website shows raster card sets only. Per edition revision the Center chooses an `ai-image` set first, then `ai-code` (智能排版), then `algorithm` (算法排版), then any other variant; the newest set of that variant. A layout set reaches a website only after it is drawn as a raster set of the same variant:
+
+```sh
+node scripts/rasterize-card-layout.mjs --workspace <workspaceId> [--locale zh-CN] [--id <layout rendition id>]... [--out .local/card-rasters] [--upload]
+```
+
+The script lists current layout sets that have no raster set of the same variant for the same revision, renders each page in headless Chrome or Edge at the set's declared pixel size, encodes WebP at quality 80 with a 360 × 480 cover, and writes the same package as the preparer. It loads only the page and the layout's declared Center media; any other request is refused. Pages whose content overflows its sheet are reported and are not uploaded. Without `--upload` nothing is sent; review the pages first. It uses the device connection, or `RSSD_CENTER_ORIGIN` and `RSSD_CENTER_TOKEN`.
+
+Fonts come from the machine that renders. A layout that names fonts the machine lacks is drawn with fallbacks, so wrapping can differ from the producer's preview.
