@@ -71,6 +71,24 @@ one the section takes.
 topic; it is not a fact or a source. Copy a lead into a topic's `lead` field
 to record what prompted it.
 
+### Persona byline
+
+The owner may set, per section in the Center, the persona that signs its new
+works: an ID and the name printed as the byline. A claim freezes it with the
+other section rules, and the writer signs a new work with that name. A
+translation or update keeps the byline of the edition it came from. Update
+every writing device before binding a section: the Center refuses a new work
+of a signed section that carries another byline.
+
+```
+rssd center personas --pack /private/persona-pack.json
+rssd center personas --pack /private/persona-pack.json --check
+```
+
+The pack is kept outside this repository. Only each persona's ID and name are
+read. `--check` lists the sections that name a persona and whether the ID and
+name match the pack.
+
 Runtime releases are immutable. `rssd update /path/to/new/extracted-artifact
 --manifest-sha256 <hash>` verifies the candidate and refuses activation while
 any production command holds a lease. After work stops, rerun the update.
