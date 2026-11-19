@@ -9,12 +9,15 @@ import {BindingStore} from './trusted-store.mjs';
 import {ReceiverMedia} from './media.mjs';
 import {GuestbookMirror} from './guestbook.mjs';
 import {CommunityMirror} from './community.mjs';
-import {buildAndActivate} from './build.mjs';
+import {buildAndActivate,receiptFor} from './build.mjs';
 import {withFileLock} from '../scripts/editorial-lock.mjs';
 import {validateSite} from '../scripts/site-config.mjs';
 import {sectionsForSite} from '../contracts/site-sections.mjs';
 import p from '../contracts/rssd-v1.cjs';
 import {WORK_TYPES_CAPABILITY,CARD_UPDATES_CAPABILITY} from '../contracts/rssd-publication.cjs';
+
+// The most requests one site build takes. If such a build fails, each of them is built again on its own.
+export const BUILD_BATCH_LIMIT=20;
 
 async function loadBindingKeys(file,publicRoot){
   if(file===undefined)return Object.create(null);
@@ -64,6 +67,17 @@ export async function createReceiver({config,build=buildAndActivate}) {
   app.post('/api/rssd-receiver/v1/sites/:siteId/translation-bindings',async req=>{if(!req.rssdSite.bindings)p.fail('Bindings unavailable',404);try{return req.rssdSite.bindings.accept(req.body);}catch(e){p.fail('Binding authentication or identity rejected',e.message==='unauthenticated'?401:409,'binding_rejected');}});
   app.post('/api/rssd-receiver/v1/sites/:siteId/translation-bindings/:id/retry',async req=>{const entry=req.rssdSite;if(!entry.bindings)p.fail('Bindings unavailable',404);try{if(req.body?.binding?.receiverRequestId!==req.params.id)p.fail('Binding identity mismatch',409);const age=entry.bindings.now()-req.body.issuedAt;if(!Number.isSafeInteger(req.body.issuedAt)||age< -30||age>300)p.fail('Retry authorization expired',409);if(!entry.store.db.prepare('SELECT 1 FROM bindings WHERE request_id=?').get(req.params.id))p.fail('Binding not previously accepted',409);const result=entry.bindings.accept(req.body);if(!result.replayed)p.fail('Binding not previously accepted',409);entry.store.db.prepare("UPDATE binding_refreshes SET state='queued',error=NULL WHERE request_id=? AND state='failed'").run(req.params.id);return {state:result.state,refresh:entry.store.db.prepare('SELECT state,release,error FROM binding_refreshes WHERE request_id=?').get(req.params.id)};}catch(e){p.fail('Binding authentication or identity rejected',e.message==='unauthenticated'?401:409,'binding_rejected');}});
   app.get('/api/rssd-receiver/v1/sites/:siteId/translation-bindings/:id',async req=>{const entry=req.rssdSite;if(!entry.bindings)p.fail('Bindings unavailable',404);const r=entry.store.db.prepare('SELECT payload FROM requests WHERE id=?').get(req.params.id);if(!r)p.fail('Request not found',404);const binding=entry.bindings.lookup(JSON.parse(r.payload)),refresh=entry.store.db.prepare('SELECT state,release,error FROM binding_refreshes WHERE request_id=?').get(req.params.id);return {...binding,refresh:refresh||null};});
+  // Every build renders the whole site, so the requests that queued up during the last one share the next one.
+  async function buildRequests(entry,job){
+    const run=job=>build({job,site:entry.site,base:entry.base,source,baseline:entry.baseline,media:entry.media,bindingStore:entry.bindings});
+    try{const {release}=await run(job);entry.store.finishAll(job.batch.map(item=>receiptFor(item,release,entry.site)));return;}
+    catch(error){
+      if(job.batch.length===1){entry.store.fail(job.id,error.message);return;}
+      console.error('Receiver: build of '+job.batch.length+' requests failed for '+entry.site.id+'; building them one at a time:',error.message);
+    }
+    // A failed batch is built again one request at a time, so only the request at fault fails.
+    for(const item of job.batch){try{entry.store.finish(item.id,await run(entry.store.buildingJob(item.id)));}catch(error){entry.store.fail(item.id,error.message);}}
+  }
   let running=false;
   async function tick(){
     if(running)return;running=true;
@@ -78,7 +92,7 @@ export async function createReceiver({config,build=buildAndActivate}) {
         const row=entry.bindings&&entry.accepting?entry.store.db.prepare("SELECT b.request_id,b.binding_hash,b.state,r.payload,r.work_key,r.operation_sequence,r.state AS request_state FROM binding_refreshes b JOIN requests r ON r.id=b.request_id WHERE b.state IN ('queued','building') AND r.state='success' ORDER BY r.created LIMIT 1").get():null;
         const preferred=entry.store.db.prepare("SELECT value FROM state WHERE key='bindingRefreshTurn'").get()?.value==='1';
         const unfinished=Boolean(entry.store.db.prepare("SELECT 1 FROM requests WHERE state='building' LIMIT 1").get());
-        if(unfinished||!row||!preferred){const job=entry.store.claim();if(job){try{entry.store.finish(job.id,await build({job,site:entry.site,base:entry.base,source,baseline:entry.baseline,media:entry.media,bindingStore:entry.bindings}));}catch(error){entry.store.fail(job.id,error.message);}turn('1');continue;}}
+        if(unfinished||!row||!preferred){const job=entry.store.claim({limit:BUILD_BATCH_LIMIT});if(job){await buildRequests(entry,job);turn('1');continue;}}
         if(!row)continue;
         const current=entry.store.db.prepare('SELECT payload FROM published WHERE work_key=?').get(row.work_key);
         if(!current||p.hash(JSON.parse(current.payload))!==p.hash(JSON.parse(row.payload))){entry.store.db.prepare("UPDATE binding_refreshes SET state='superseded' WHERE request_id=?").run(row.request_id);turn('0');continue;}

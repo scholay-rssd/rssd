@@ -118,6 +118,32 @@ test('same-millisecond queued actions follow their sequence even when request ID
  assert.equal(f.store.status().publications,1);assert.equal(f.store.head(packet.workId,packet.locale).operation,'restore');
 });
 
+test('one claim takes the oldest queued requests, one per work, and their receipts are recorded together',async t=>{
+ const f=await fixture(t),other=n=>({...packet,requestId:'request-'+n,workId:'work-'+n,route:'/en/news/example-'+n+'/'});
+ f.store.accept(packet);f.store.accept(other(2));f.store.accept({...packet,requestId:'request-1-later',revision:2});f.store.accept(other(3));
+ let job=f.store.claim({limit:20});
+ assert.deepEqual(job.batch.map(item=>item.id),['request-1','request-2','request-3']);
+ assert.equal(job.id,'request-1');assert.equal(job.packets.length,3);assert.equal(job.resume,false);
+ const results=f.store.finishAll(job.batch.map(item=>receipt(item)));
+ assert.deepEqual(results.map(r=>r.state),['success','success','success']);
+ // The later revision of work 1 waited for the next build, which carries it in place of the first.
+ job=f.store.claim({limit:20});assert.deepEqual(job.batch.map(item=>item.id),['request-1-later']);
+ assert.deepEqual(job.packets.filter(x=>x.workId==='work-1').map(x=>x.revision),[2]);assert.equal(job.packets.length,3);
+ f.store.finish(job.id,receipt(job));
+ // The default claim still takes a single request.
+ f.store.accept(other(4));f.store.accept(other(5));assert.deepEqual(f.store.claim().batch.map(item=>item.id),['request-4']);
+});
+
+test('requests left building by an interrupted build come back together and without newer queued ones',async t=>{
+ const f=await fixture(t),other=n=>({...packet,requestId:'request-'+n,workId:'work-'+n,route:'/en/news/example-'+n+'/'});
+ f.store.accept(packet);f.store.accept(other(2));f.store.claim({limit:20});f.store.accept(other(3));
+ f.restart();const job=f.store.claim({limit:20});
+ assert.equal(job.resume,true);assert.deepEqual(job.batch.map(item=>item.id),['request-1','request-2']);
+ // A request of a failed batch can be built again on its own.
+ const single=f.store.buildingJob('request-2');assert.deepEqual(single.batch.map(item=>item.id),['request-2']);assert.equal(single.resume,false);
+ assert.throws(()=>f.store.buildingJob('request-3'),/not building/);
+});
+
 test('a received request with a legacy-looking name cannot be reset by baseline seeding',async t=>{
  const f=await fixture(t),baseline={rssdIdentity:{[contentKey(packet)]:{documentId:'original',route:packet.route,revision:0}}};
  f.store.seedLegacyHeads(baseline);f.store.accept({...packet,requestId:'legacy:client-request'});
