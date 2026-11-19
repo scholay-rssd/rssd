@@ -8,10 +8,12 @@ import {randomUUID} from 'node:crypto';
 import {readDraft,contained,sha,withWorkspaceLock} from './editorial-workspace.mjs';
 import {markdownImages} from './article-format.mjs';
 import {draftCategory} from './archive-taxonomy.mjs';
+import {workFieldsOf} from './work-fields.mjs';
 
 export const optionalJson=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(e){if(e.code==='ENOENT')return null;throw e;}};
 export async function atomicJson(path,value){await mkdir(dirname(path),{recursive:true,mode:0o700});const tmp=path+'.'+randomUUID()+'.tmp';try{await writeFile(tmp,JSON.stringify(value,null,2)+'\n',{mode:0o600,flag:'wx'});await replaceFile(tmp,path);}finally{await rm(tmp,{force:true});}}
-export const publicationMetadata=data=>({date:data.date||'',summary:data.summary||'',author:data.author||'Scholay 编辑部',category:data.category||'学界犀闻',...(data.sectionId?{sectionId:data.sectionId}:{})});
+// A work's type, note source and own tags travel with its metadata, so a pull, an edit and a push keep them.
+export const publicationMetadata=data=>({date:data.date||'',summary:data.summary||'',author:data.author||'Scholay 编辑部',category:data.category||'学界犀闻',...(data.sectionId?{sectionId:data.sectionId}:{}),...workFieldsOf(data)});
 export async function localMetadata(root,id,draft){
   const local=await optionalJson(join(publicationDirectory(root),id,'metadata.json'));
   const registry=await optionalJson(join(root,'_ops/inventory/today-articles.json'));

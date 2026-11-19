@@ -12,6 +12,8 @@ import {assertHeadlessTarget} from './target.mjs';
 import {headlessEntry} from './update.mjs';
 import {columnWritingInstructions} from '../../../../contracts/editorial-column-policy.mjs';
 import {parseProduceMounts,loadMountList,parseBriefMounts} from '../resources/mount-spec.mjs';
+import {CHOSEN_WORK_TYPES} from '../../../../contracts/work-types.mjs';
+import {normalizeTags,checkWorkFields} from '../../../../scripts/work-fields.mjs';
 
 export function parseArgs(argv){
  const parsed=parseProduceMounts(argv),rest=parsed.argv;
@@ -20,11 +22,18 @@ export function parseArgs(argv){
  if(rest.includes('--agent')&&(!agentId||!/^[a-z][a-z0-9-]{1,60}$/.test(agentId)))throw Error('--agent requires an agent ID');
  const resume=rest.includes('--resume')?rest[rest.indexOf('--resume')+1]:null;
  if(rest.includes('--resume')&&(!resume||resume.startsWith('--')))throw Error('--resume requires a task ID');
- if(rest.some(x=>x.startsWith('--')&&!['--resume','--no-publish','--agent'].includes(x)))throw Error('unknown option');
- const positional=rest.filter((x,i)=>x!=='--no-publish'&&x!=='--resume'&&x!=='--agent'&&rest[i-1]!=='--resume'&&rest[i-1]!=='--agent');
+ // The produced work's type and own tags; whether its section takes the type is checked once the site is known.
+ const workType=rest.includes('--type')?rest[rest.indexOf('--type')+1]:undefined;
+ if(rest.includes('--type')&&!CHOSEN_WORK_TYPES.includes(workType))throw Error('--type requires '+CHOSEN_WORK_TYPES.join(' or '));
+ const tagText=rest.includes('--tags')?rest[rest.indexOf('--tags')+1]:undefined;
+ if(rest.includes('--tags')&&(tagText===undefined||tagText.startsWith('--')))throw Error('--tags requires a comma-separated list');
+ const tags=tagText===undefined?undefined:normalizeTags(tagText);
+ const valued=['--resume','--agent','--type','--tags'];
+ if(rest.some(x=>x.startsWith('--')&&!['--no-publish',...valued].includes(x)))throw Error('unknown option');
+ const positional=rest.filter((x,i)=>x!=='--no-publish'&&!valued.includes(x)&&!valued.includes(rest[i-1]));
  const [siteKey,sectionId,mode,briefFile]=positional;
- if(!siteKey||!sectionId||!mode||positional.length>4||(!resume&&!briefFile))throw Error('Usage: produce <site> <sectionId> <mode> <briefFile> [--no-publish] [--resume <taskId>] [--agent <agentId>] [--allow-network] [--mount spec] [--mounts file.json]');
- return {siteKey,sectionId,mode,briefFile,noPublish,resume,...(agentId?{agentId}:{}),mounts:parsed.mounts,allowNetwork:parsed.allowNetwork};
+ if(!siteKey||!sectionId||!mode||positional.length>4||(!resume&&!briefFile))throw Error('Usage: produce <site> <sectionId> <mode> <briefFile> [--no-publish] [--resume <taskId>] [--agent <agentId>] [--type article|note] [--tags a,b] [--allow-network] [--mount spec] [--mounts file.json]');
+ return {siteKey,sectionId,mode,briefFile,noPublish,resume,...(agentId?{agentId}:{}),...(workType?{workType}:{}),...(tags?{tags}:{}),mounts:parsed.mounts,allowNetwork:parsed.allowNetwork};
 }
 
 export async function produce(argv=process.argv.slice(2)){
@@ -35,6 +44,8 @@ export async function produce(argv=process.argv.slice(2)){
  const {brandSeeds,brandLibrary}=await import('../brand-library.mjs');
  const {validateSectionId}=await import('../../../../contracts/site-sections.mjs');
  validateSectionId(args.sectionId,ctx.site);
+ const workFields={...(args.workType?{workType:args.workType}:{}),...(args.tags?{tags:args.tags}:{})};
+ checkWorkFields(workFields,{site:ctx.site,sectionId:args.sectionId});
  const columnRules=columnWritingInstructions(ctx.site,args.sectionId);
  const {COMPLETION_PROMPT}=await import('../notebook-completion.mjs');
  const {createWebsitePublisher}=await import('../../../../scripts/website-publication.mjs');
@@ -146,16 +157,18 @@ export async function produce(argv=process.argv.slice(2)){
   const id=t.articleId;let cur=await client.inspect(id);
   const generated=publicationMetadataFromNotebook(t.notebook,ctx.site,cur);
   if(cur.metadata?.sectionId!==args.sectionId)throw Error('exported section does not match headless target');
-  const meta={...cur.metadata,summary:cur.metadata.summary||generated.summary,date:cur.metadata.date||generated.date,author:cur.metadata.author||generated.author,category:cur.metadata.category||generated.category};
-  if(meta.summary!==cur.metadata.summary||meta.date!==cur.metadata.date){
+  const meta={...cur.metadata,summary:cur.metadata.summary||generated.summary,date:cur.metadata.date||generated.date,author:cur.metadata.author||generated.author,category:cur.metadata.category||generated.category,...workFields};
+  if(meta.summary!==cur.metadata.summary||meta.date!==cur.metadata.date||Object.keys(workFields).some(key=>JSON.stringify(workFields[key])!==JSON.stringify(cur.metadata[key]))){
    await client.localAction(id,{action:'metadata',metadata:meta,expectedSourceSha256:cur.sourceSha256,expectedMetadataSha256:cur.metadataSha256});
   }
-  result.title=t.notebook.title;result.summary=meta.summary;result.date=meta.date;
+  result.title=t.notebook.title;result.summary=meta.summary;result.date=meta.date;if(Object.keys(workFields).length)result.workFields=workFields;
   const ck=await checkArticle(ctx.root,id);L('check-article',ck.issues);result.checkIssues=ck.issues;if(ck.issues.length)throw Error('check-article: '+ck.issues.join('; '));
   if(!args.noPublish){
    const prep=await client.prepare(id);result.url=prep.prepared?.url;L('prepared',prep.prepared?.url);
    await client.inspect(id);
    const packet=JSON.parse(readFileSync(join(publicationDirectory(ctx.root),id,'prepared.json'),'utf8'));
+   // Only a Center that lists work-types-v1 receives the type and tags; the local metadata keeps them either way.
+   if(Object.keys(workFields).length){result.workFieldsSent=packet.workFields===true;if(!result.workFieldsSent)L('work fields kept locally; this destination does not take work-types-v1');}
    const rc=(await client.publish(id,{packetSha256:sha(JSON.stringify(packet))})).receipt;L('published',rc?.status,rc?.url);
    const st=await confirmPublication(client,id,{onReceipt:recordReceipt});
    L('status',{status:st?.status,readback:st?.publicReadback,url:result.url,job:st?.job?.status});

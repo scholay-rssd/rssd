@@ -1,0 +1,12 @@
+import type {AdaptedFrom,ChosenWorkType,SectionWorkPolicy} from '../contracts/work-types.mjs';
+export type WorkFields={workType?:ChosenWorkType;adaptedFrom?:AdaptedFrom;tags?:string[]};
+type SiteLike={id?:string;sections?:readonly object[];sectionCatalog?:{sections?:readonly object[]}|null};
+export const WORK_TYPES_CAPABILITY:'work-types-v1';
+export const WORK_FIELD_KEYS:readonly ['workType','adaptedFrom','tags'];
+export function normalizeTags(value:unknown):string[];
+export function workFieldsOf(data:unknown):WorkFields;
+export function declaredWorkSection(site:SiteLike|null|undefined,sectionId?:string|null):{workTypes?:unknown;articleCards?:unknown}|undefined;
+export function sectionPolicyFor(site:SiteLike|null|undefined,sectionId?:string|null):SectionWorkPolicy;
+export function applyWorkFields(before:unknown,change:{workType?:ChosenWorkType|null;adaptedFrom?:AdaptedFrom|null;tags?:unknown}):WorkFields;
+export function checkWorkFields<T extends WorkFields>(fields:T,context?:{site?:SiteLike|null;sectionId?:string|null;articleId?:string;record?:boolean}):T;
+export function workFieldsForCenter(meta:unknown,options?:{record?:boolean}):WorkFields;

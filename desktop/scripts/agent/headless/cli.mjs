@@ -41,7 +41,7 @@ if(!cmd||cmd==='-h'||cmd==='--help'||!scripts[cmd]){
  console.log('  jobs <site> list|status <articleId>|resume <articleId>|enqueue <articleId> --confirmed — durable asynchronous publication');
  console.log('  flow <site> configure <policy.json>|enqueue <articleId>|tick|drain|status — opt-in language/link handoff');
  console.log('  update [check|apply|on|off|status] — idle-only private repository updates');
- console.log('  produce <site> <sectionId> <mode> <briefFile> [--no-publish] [--resume <taskId>] [--agent <agentId>] [--allow-network] [--mount spec] [--mounts file.json]');
+ console.log('  produce <site> <sectionId> <mode> <briefFile> [--no-publish] [--resume <taskId>] [--agent <agentId>] [--type article|note] [--tags a,b] [--allow-network] [--mount spec] [--mounts file.json]');
  console.log('  agents <siteId> [list|check|default|login] [agentId]');
  console.log('  spaces <siteId> [siteId...]');
  console.log('  verify <siteId>');

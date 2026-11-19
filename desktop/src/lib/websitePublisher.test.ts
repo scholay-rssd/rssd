@@ -337,3 +337,30 @@ it('push gives immediate feedback, saves once, skips redundant inspection and ig
  expect(invoke.mock.calls.some(([,a])=>a.method==='inspect')).toBe(false);
  expect(invoke.mock.calls.find(([,a])=>a.method==='prepare')?.[1].params.expectedSourceSha256).toBe('saved');
 });
+it('offers only the section\'s work types, drops a note\'s source when it becomes an article and commits normalized tags',async()=>{
+  detail={...detail,workFields:true,metadata:{...metadata,sectionId:'briefings',category:'学界犀闻',workType:'note',adaptedFrom:{articleId:'source-article',revision:2},tags:['AI']}};
+  await render();
+  const select=host.querySelector<HTMLSelectElement>('[aria-label="作品类型"]')!;
+  expect([...select.options].map(o=>o.textContent)).toEqual(['长文','笔记']);expect(select.value).toBe('note');expect(select.disabled).toBe(false);
+  expect(host.querySelector<HTMLInputElement>('[aria-label="改写自长文"]')!.value).toBe('source-article · v2');
+  await act(()=>{Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value')!.set!.call(select,'article');select.dispatchEvent(new Event('change',{bubbles:true}));});
+  expect(host.querySelector('[aria-label="改写自长文"]')).toBeNull();
+  const tags=host.querySelector<HTMLInputElement>('[aria-label="作品标签"]')!;expect(tags.value).toBe('AI');
+  await act(()=>{tags.value=' #AI，教育, AI';tags.dispatchEvent(new FocusEvent('focusout',{bubbles:true}));});
+  expect(host.querySelector<HTMLInputElement>('[aria-label="作品标签"]')!.value).toBe('AI, 教育');
+  await click('生成官网预览');
+  const sent=invoke.mock.calls.find(([,a])=>a.method==='prepare')![1].params.metadata;
+  expect(sent.workType).toBe('article');expect(sent.tags).toEqual(['AI','教育']);expect(Object.hasOwn(sent,'adaptedFrom')).toBe(false);
+});
+it('keeps the work type and tags fixed when the Center cannot store them or the section takes one type',async()=>{
+  detail={...detail,workFields:false,metadata:{...metadata,sectionId:'briefings',category:'学界犀闻'}};
+  await render();
+  expect(host.querySelector<HTMLSelectElement>('[aria-label="作品类型"]')!.disabled).toBe(true);
+  expect(host.querySelector<HTMLInputElement>('[aria-label="作品标签"]')!.disabled).toBe(true);
+  act(()=>root.unmount());root=createRoot(host);
+  detail={...detail,workFields:true,metadata:{...metadata,sectionId:'calendar',category:'今日学术'}};
+  await render();
+  const select=host.querySelector<HTMLSelectElement>('[aria-label="作品类型"]')!;
+  expect(select.disabled).toBe(true);expect([...select.options].map(o=>o.textContent)).toEqual(['长文']);
+  expect(host.querySelector<HTMLInputElement>('[aria-label="作品标签"]')!.disabled).toBe(false);
+});

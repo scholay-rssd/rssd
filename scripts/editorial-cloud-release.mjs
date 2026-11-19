@@ -10,7 +10,17 @@ import {RECORD_STRUCTURE,recordFields} from './editorial-record.mjs';
 // Structured cloud records reconstruct their display envelope (date, author,
 // category and summary). Compare the authoritative fields and media instead,
 // while requiring both Markdown copies to agree with those same fields.
+// A Center keeps a work's type, note source and tags when a save leaves them out, and an empty tag list asks it
+// to remove the tags. Only the work fields the expected copy states are compared.
+const WORK_FIELDS=['workType','adaptedFrom','tags'];
+function statedWorkFields(expected,actual){
+  if(!expected||!actual||typeof expected!=='object'||typeof actual!=='object')return [expected,actual];
+  const projected={...actual};for(const key of WORK_FIELDS)if(!Object.hasOwn(expected,key))delete projected[key];
+  if(Array.isArray(expected.tags)&&!expected.tags.length){expected={...expected};delete expected.tags;}
+  return [expected,projected];
+}
 export function samePublishedContent(expected,actual,{allowRetainedAssets=false}={}){
+  [expected,actual]=statedWorkFields(expected,actual);
   if(allowRetainedAssets&&Array.isArray(expected?.assets)&&Array.isArray(actual?.assets)){
     const assets=new Map();
     for(const asset of actual.assets){if(!asset?.path||assets.has(asset.path))return false;assets.set(asset.path,asset);}

@@ -1,17 +1,22 @@
 import { trKey } from "../trKey";
+import {workTypeLabel,type AdaptedFrom,type ChosenWorkType} from '../../../contracts/work-types.mjs';
 export type WebsiteStage='draft_saved'|'local'|'prepared'|'unknown'|'queued'|'running'|'verify'|'published'|'cleanup'|'failed'|'rejected';
 export type SyncState='unknown'|'unpublished'|'unlinked'|'synced'|'local_changed'|'remote_changed'|'conflict'|'publishing'|'invalid';
 export const SYNC_LABELS:Record<SyncState,string>={unknown:trKey('待查询官网'),unpublished:trKey('未公开'),unlinked:trKey('需关联官网版本'),synced:trKey('已同步'),local_changed:trKey('待更新'),remote_changed:trKey('官网有新版'),conflict:trKey('需要合并'),publishing:trKey('发布中'),invalid:trKey('文件需检查')};
 export type DraftSync={state:SyncState;fingerprint?:string;baseRevision:number|null;remoteRevision:number|null;publishedRevision?:number|null;error?:string};
 export const WEBSITE_STAGES:Record<WebsiteStage,string>={draft_saved:trKey('已存云端 · 未公开'),local:trKey('本地稿件'),prepared:trKey('待确认推送'),unknown:trKey('提交结果待查询'),queued:trKey('服务器排队中'),running:trKey('服务器构建中'),verify:trKey('等待公开回读'),published:trKey('官网已公开'),cleanup:trKey('官网已公开 · 本地清理待处理'),failed:trKey('构建失败'),rejected:trKey('提交被拒绝')};
-export type WebsiteMetadata={date:string;summary:string;author:string;category:string;sectionId?:string};
+/** `workType`, `adaptedFrom` (a note's source article) and `tags` appear only when stated; an empty tag list removes the tags. */
+export type WebsiteMetadata={date:string;summary:string;author:string;category:string;sectionId?:string;workType?:ChosenWorkType;adaptedFrom?:AdaptedFrom;tags?:string[]};
 // What the publishing flow did after the Chinese page went live: English
 // edition, translation and community steps. Cloud and local owners share it.
 export type ContinuationState={status?:string;owner?:string;complete?:boolean;error?:string;english?:{status?:string;url?:string};translation?:{status?:string}};
 export type WebsiteReceipt={publishingFlow?:ContinuationState;asyncQueue?:{continuationOwner?:string;continuation?:ContinuationState};duplicateOf?:string;requestKey:string;sourceSha256?:string;submittedAt?:string;checkedAt?:string;url?:string;revision?:number;publicReadback?:boolean;error?:string;readbackError?:string;job?:{id:string;status:string;error?:string;release?:string}};
-export type WebsiteDraft={id:string;shortTitle:string;canonicalPath:string;batchDate:string|null;sectionId?:string;recordKind?:string|null;metadata?:Partial<WebsiteMetadata>;archiveCategory?:string;type?:string;writingSkills?:string[];stage:WebsiteStage;receipt:WebsiteReceipt|null;preparedAt:string|null;sync?:DraftSync;editCopy?:boolean};
-export type WebsitePublishingSnapshot={connection:{configured:boolean;requiresCheck?:boolean;origin:string;message?:string};checkedAt?:string|null;articles:WebsiteDraft[]};
-export type WebsiteDraftDetail={localReleased?:boolean;cleanupError?:string;id:string;title:string;canonicalPath:string;sourceSha256:string;metadata:WebsiteMetadata;metadataSha256:string;stage:WebsiteStage;stale:boolean;validation:string;receipt:WebsiteReceipt|null;html:string;warnings:string[];sync?:DraftSync;incoming?:{revision:number;html:string;markdown:string;metadata:WebsiteMetadata}|null;prepared:null|{requestKey:string;packetSha256:string;sourceSha256:string;preparedAt:string;intent?:'draft'|'publish';expectedVersion:number;title:string;metadata:WebsiteMetadata;assetCount:number}};
+/** A work type's name in the interface language (Japanese uses the English name). */
+export const workTypeName=(type:ChosenWorkType,locale:string)=>workTypeLabel(type,locale==='zh-CN'?'zh-CN':'en');
+export type WebsiteDraft={id:string;shortTitle:string;canonicalPath:string;batchDate:string|null;sectionId?:string;recordKind?:string|null;metadata?:Partial<WebsiteMetadata>;archiveCategory?:string;type?:string;writingSkills?:string[];stage:WebsiteStage;receipt:WebsiteReceipt|null;preparedAt:string|null;sync?:DraftSync;editCopy?:boolean;workFields?:boolean};
+// `workFields`: the connected Center takes a work's type, note source and tags, so they can be changed.
+export type WebsitePublishingSnapshot={connection:{configured:boolean;requiresCheck?:boolean;origin:string;message?:string;workFields?:boolean};checkedAt?:string|null;articles:WebsiteDraft[]};
+export type WebsiteDraftDetail={localReleased?:boolean;cleanupError?:string;id:string;title:string;canonicalPath:string;sourceSha256:string;metadata:WebsiteMetadata;metadataSha256:string;workFields?:boolean;stage:WebsiteStage;stale:boolean;validation:string;receipt:WebsiteReceipt|null;html:string;warnings:string[];sync?:DraftSync;incoming?:{revision:number;html:string;markdown:string;metadata:WebsiteMetadata}|null;prepared:null|{requestKey:string;packetSha256:string;sourceSha256:string;preparedAt:string;intent?:'draft'|'publish';expectedVersion:number;title:string;metadata:WebsiteMetadata;assetCount:number}};
 
 export type EnglishStatus={label:string;tone:'ok'|'busy'|'warn'|'off';url?:string};
 const failed=(value?:string)=>value==='failed'||value==='rejected';
