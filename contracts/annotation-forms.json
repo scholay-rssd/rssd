@@ -1,494 +1,165 @@
 {
  "schemaVersion": 1,
- "version": "draft-2",
+ "version": "draft-3",
  "locale": "zh-CN",
- "note": "A draft for review. One form for every article and note, about how machine-written a work reads and where that comes from. Every scale reads the same way: 5 is the human end. A check marked `tell` is a sign of machine writing when answered yes; one marked `good` is a sign of human writing when answered yes. `traces` says where in the writing process to look when a dimension scores badly; it is for whoever reads the results, not for the annotator.",
+ "note": "A draft for review. This form is not our own: it is a Chinese rendering of the slop taxonomy of Shaib, Chakrabarty, Garcia-Olano and Wallace, Measuring AI \"Slop\" in Text (arXiv:2509.19163), Table 11, with its three themes and eleven codes, preceded by that study's initial binary judgement. The confidence item follows the 1 to 5 scale of Russell, Karpinska and Iyyer (arXiv:2501.15654). Each code is one yes or no item whose text lists the paper's own criteria; where the answer is yes, the annotator pastes one passage that shows it, which stands in for the paper's span labelling. `traces` is ours, not the paper's: where in the writing process to look when a theme scores badly.",
+ "sources": [
+  {
+   "id": "shaib2025",
+   "title": "Measuring AI \"Slop\" in Text",
+   "url": "https://arxiv.org/abs/2509.19163",
+   "used": "Themes, codes and their criteria (Table 11); the initial binary judgement"
+  },
+  {
+   "id": "russell2025",
+   "title": "People who frequently use ChatGPT for writing tasks are accurate and robust detectors of AI-generated text",
+   "url": "https://arxiv.org/abs/2501.15654",
+   "used": "The 1 to 5 confidence rating"
+  }
+ ],
  "sections": [
   {
-   "id": "staging",
-   "title": "铺垫与姿态",
-   "appliesTo": {
-    "workTypes": [
-     "article",
-     "note"
-    ]
-   },
-   "traces": "文风规则和去套话技能里“先摆姿态再说事”的条目；提示词是否要求开头吸引人、结尾升华。",
-   "items": [
-    {
-     "id": "staging-direct",
-     "type": "scale",
-     "text": "文章直接说事，而不是先摆一个姿态再说。",
-     "anchors": {
-      "1": "处处在铺垫和造势",
-      "3": "有几处",
-      "5": "开门见山"
-     }
-    },
-    {
-     "id": "staging-runup",
-     "type": "check",
-     "polarity": "tell",
-     "text": "开头先讲背景、意义或“在当今……”，过了一两段才进入正题。"
-    },
-    {
-     "id": "staging-not-but",
-     "type": "check",
-     "polarity": "tell",
-     "text": "用“不是……而是……”“与其说……不如说……”来制造转折，而被否定的那一方其实没人主张。"
-    },
-    {
-     "id": "staging-closer",
-     "type": "check",
-     "polarity": "tell",
-     "text": "段落或全文用一句金句、感悟或号召收尾（如“这，才是真正的……”“让我们……”“未来可期”）。"
-    }
-   ]
-  },
-  {
-   "id": "rhythm",
-   "title": "节奏与句式",
-   "appliesTo": {
-    "workTypes": [
-     "article",
-     "note"
-    ]
-   },
-   "traces": "文风规则里关于排比、破折号、句式的条目；模型和采样设置；是否缺少作者范文作参照。",
-   "items": [
-    {
-     "id": "rhythm-natural",
-     "type": "scale",
-     "text": "句子和段落的长短、节奏像人写的，有松有紧。",
-     "anchors": {
-      "1": "机械、整齐划一",
-      "3": "时好时坏",
-      "5": "自然"
-     }
-    },
-    {
-     "id": "rhythm-triads",
-     "type": "check",
-     "polarity": "tell",
-     "text": "成串的三连排比或对仗（三个形容词、三个短句、三个并列小节）。"
-    },
-    {
-     "id": "rhythm-repeats",
-     "type": "check",
-     "polarity": "tell",
-     "text": "连续几句或几段用同一种句式或同样的开头。"
-    },
-    {
-     "id": "rhythm-uniform",
-     "type": "check",
-     "polarity": "tell",
-     "text": "各段差不多一样长，都是“总起一句、展开几句、小结一句”。"
-    }
-   ]
-  },
-  {
-   "id": "inflation",
-   "title": "夸大与借力",
-   "appliesTo": {
-    "workTypes": [
-     "article",
-     "note"
-    ]
-   },
-   "traces": "文风规则里的禁用词与夸大条目；取材是否给了可引用的具体来源；标题模板是否鼓励夸大。",
-   "items": [
-    {
-     "id": "inflation-plain",
-     "type": "scale",
-     "text": "用词平实，说多大的事就用多大的词。",
-     "anchors": {
-      "1": "满篇大词和形容词",
-      "3": "有一些",
-      "5": "平实准确"
-     }
-    },
-    {
-     "id": "inflation-words",
-     "type": "check",
-     "polarity": "tell",
-     "text": "出现了常见的 AI 高频词或万能句（如“至关重要”“赋能”“深刻”“值得注意的是”“发挥着重要作用”）。"
-    },
-    {
-     "id": "inflation-significance",
-     "type": "check",
-     "polarity": "tell",
-     "text": "把普通的事说得意义重大（“标志着”“开启了新篇章”“具有里程碑意义”）。"
-    },
-    {
-     "id": "inflation-authority",
-     "type": "check",
-     "polarity": "tell",
-     "text": "有“研究表明”“专家认为”“业内普遍认为”这类说法，却没有具体是谁、哪项研究。"
-    }
-   ]
-  },
-  {
-   "id": "structure",
-   "title": "结构与格式",
-   "appliesTo": {
-    "workTypes": [
-     "article",
-     "note"
-    ]
-   },
-   "traces": "正文模板和栏目必备要素的写法；提示词是否规定了固定结构或小标题数量；导出版式是否强加了格式。",
-   "items": [
-    {
-     "id": "structure-fits",
-     "type": "scale",
-     "text": "结构是跟着内容长出来的，而不是把内容填进一个固定的框。",
-     "anchors": {
-      "1": "明显套了模板",
-      "3": "部分是模板",
-      "5": "贴合内容"
-     }
-    },
-    {
-     "id": "structure-symmetric",
-     "type": "check",
-     "polarity": "tell",
-     "text": "小标题或要点列表工整对称，像提纲填空（每节同样的层次、同样的长度）。"
-    },
-    {
-     "id": "structure-listy",
-     "type": "check",
-     "polarity": "tell",
-     "text": "本该连贯讲述的内容被拆成了要点列表。"
-    },
-    {
-     "id": "structure-decoration",
-     "type": "check",
-     "polarity": "tell",
-     "text": "加粗、小标题或符号是装饰性的，去掉并不影响阅读。"
-    }
-   ]
-  },
-  {
-   "id": "residue",
-   "title": "残留与自述",
-   "appliesTo": {
-    "workTypes": [
-     "article",
-     "note"
-    ]
-   },
-   "traces": "提示词和对话内容是否漏进了正文；成稿前有没有清理环节；正文与作者备注的分工是否被遵守。",
-   "items": [
-    {
-     "id": "residue-clean",
-     "type": "scale",
-     "text": "正文只讲主题本身，没有写作过程留下的痕迹。",
-     "anchors": {
-      "1": "痕迹很多",
-      "3": "有一两处",
-      "5": "没有"
-     }
-    },
-    {
-     "id": "residue-meta",
-     "type": "check",
-     "polarity": "tell",
-     "text": "文章在讲自己要做什么（“本文将……”“下面我们来看”“综上所述”）。"
-    },
-    {
-     "id": "residue-chat",
-     "type": "check",
-     "polarity": "tell",
-     "text": "有对话腔或助手腔的残留（“希望对你有帮助”“以下是……”“当然可以”）。"
-    },
-    {
-     "id": "residue-hedge",
-     "type": "check",
-     "polarity": "tell",
-     "text": "有不必要的免责或提醒（“仅供参考”“请以官方为准”“建议咨询专业人士”）。"
-    }
-   ]
-  },
-  {
-   "id": "substance",
-   "title": "具体与信息",
-   "appliesTo": {
-    "workTypes": [
-     "article",
-     "note"
-    ]
-   },
-   "traces": "取材来源是否给了足够具体的材料；选题简述是否过于宽泛；证据类来源是否真的被读过。",
-   "items": [
-    {
-     "id": "substance-specific",
-     "type": "scale",
-     "text": "内容具体：有名称、数字、例子和细节，换一个题目就不成立。",
-     "anchors": {
-      "1": "放在哪个题目下都成立",
-      "3": "一半具体",
-      "5": "处处具体"
-     }
-    },
-    {
-     "id": "substance-filler",
-     "type": "check",
-     "polarity": "tell",
-     "text": "有整段“正确的废话”：删掉它，读者什么也不会少知道。"
-    },
-    {
-     "id": "substance-obvious",
-     "type": "check",
-     "polarity": "tell",
-     "text": "花篇幅解释这类读者本来就知道的东西。"
-    },
-    {
-     "id": "substance-earned",
-     "type": "check",
-     "polarity": "good",
-     "text": "至少有一处细节，是查过资料或亲自做过才写得出来的。",
-     "note": true
-    }
-   ]
-  },
-  {
-   "id": "stance",
-   "title": "观点与取舍",
-   "appliesTo": {
-    "workTypes": [
-     "article",
-     "note"
-    ]
-   },
-   "traces": "提示词是否要求给出判断；规则里是否有“全面”“客观”“面面俱到”的要求；人格是否有立场。",
-   "items": [
-    {
-     "id": "stance-commits",
-     "type": "scale",
-     "text": "作者有自己的判断，并且做了取舍。",
-     "anchors": {
-      "1": "面面俱到、不下结论",
-      "3": "偶有判断",
-      "5": "立场清楚、有取舍"
-     }
-    },
-    {
-     "id": "stance-both-sides",
-     "type": "check",
-     "polarity": "tell",
-     "text": "关键问题上两边都说、最后不表态（“各有优劣”“因人而异”“需要根据具体情况”）。"
-    },
-    {
-     "id": "stance-even",
-     "type": "check",
-     "polarity": "tell",
-     "text": "平均用力：每个方面都写一点，看不出哪里是重点。"
-    },
-    {
-     "id": "stance-opinion",
-     "type": "check",
-     "polarity": "good",
-     "text": "至少有一个不那么“安全”的判断：有人可能不同意。"
-    }
-   ]
-  },
-  {
-   "id": "voice",
-   "title": "声音与读者",
-   "appliesTo": {
-    "workTypes": [
-     "article",
-     "note"
-    ]
-   },
-   "traces": "人格和文风参考；读者设定是否具体；同一栏目是否长期只有一种语气。",
-   "items": [
-    {
-     "id": "voice-person",
-     "type": "scale",
-     "text": "读得出是一个具体的人，在对一类具体的读者说话。",
-     "anchors": {
-      "1": "像说明书或公告",
-      "3": "有时像",
-      "5": "像一个人在说话"
-     }
-    },
-    {
-     "id": "voice-flat",
-     "type": "check",
-     "polarity": "tell",
-     "text": "语气从头到尾一个调子：礼貌、平稳、没有起伏。"
-    },
-    {
-     "id": "voice-enthusiasm",
-     "type": "check",
-     "polarity": "tell",
-     "text": "有刻意的热情或感叹，与内容不相称（“令人惊叹”“太棒了”“不得不说”）。"
-    },
-    {
-     "id": "voice-fabricated",
-     "type": "check",
-     "polarity": "tell",
-     "text": "为了显得有人味而编了经历或感受（“我第一次……的时候”“笔者认为”却没有任何依据）。",
-     "note": true
-    }
-   ]
-  },
-  {
    "id": "overall",
-   "title": "整体与归因",
+   "title": "整体判断",
    "appliesTo": {
     "workTypes": [
      "article",
      "note"
     ]
    },
-   "traces": "综合判断。归因一题用来决定先优化哪一环，与上面各维度的得分对照着看。",
+   "traces": "先凭整体印象作答，再往下逐项看。论文里三位标注人在这一题上的一致性很低，它只用来和下面各项对照，不单独作结论。",
    "items": [
     {
-     "id": "overall-ai",
-     "type": "scale",
-     "text": "整体看，这篇的“AI 味”有多重？",
-     "anchors": {
-      "1": "一眼就是 AI 写的",
-      "3": "有些地方像",
-      "5": "看不出来"
-     }
-    },
-    {
-     "id": "overall-where",
-     "type": "choice",
-     "text": "读到哪里开始觉得像 AI 写的？",
-     "options": [
-      {
-       "id": "title",
-       "label": "标题"
-      },
-      {
-       "id": "opening",
-       "label": "开头一两段"
-      },
-      {
-       "id": "middle",
-       "label": "中段"
-      },
-      {
-       "id": "ending",
-       "label": "结尾"
-      },
-      {
-       "id": "nowhere",
-       "label": "没有这种感觉"
-      }
-     ]
-    },
-    {
-     "id": "overall-worst",
-     "type": "choice",
-     "text": "最拖后腿的是哪一维？",
-     "options": [
-      {
-       "id": "staging",
-       "label": "铺垫与姿态"
-      },
-      {
-       "id": "rhythm",
-       "label": "节奏与句式"
-      },
-      {
-       "id": "inflation",
-       "label": "夸大与借力"
-      },
-      {
-       "id": "structure",
-       "label": "结构与格式"
-      },
-      {
-       "id": "residue",
-       "label": "残留与自述"
-      },
-      {
-       "id": "substance",
-       "label": "具体与信息"
-      },
-      {
-       "id": "stance",
-       "label": "观点与取舍"
-      },
-      {
-       "id": "voice",
-       "label": "声音与读者"
-      },
-      {
-       "id": "none",
-       "label": "没有明显短板"
-      }
-     ]
-    },
-    {
-     "id": "overall-cause",
-     "type": "choice",
-     "text": "如果只能改一处，最该动的是：",
-     "options": [
-      {
-       "id": "material",
-       "label": "取材：给它的材料不够具体"
-      },
-      {
-       "id": "brief",
-       "label": "选题或简述：题目本身太泛"
-      },
-      {
-       "id": "rules",
-       "label": "写作要求：规则或模板导致了套路"
-      },
-      {
-       "id": "voice",
-       "label": "文风与人格：缺一个像人的声音"
-      },
-      {
-       "id": "revision",
-       "label": "成稿环节：缺一道修改或清理"
-      },
-      {
-       "id": "model",
-       "label": "模型本身"
-      },
-      {
-       "id": "unclear",
-       "label": "说不清"
-      }
-     ]
-    },
-    {
-     "id": "overall-quote",
+     "id": "overall-slop",
      "type": "check",
      "polarity": "tell",
-     "text": "有一句话特别像 AI 写的（是的话，请把原句贴在说明里）。",
-     "note": true
+     "text": "先读完全文。整体看，这是不是一篇“AI 味”明显的稿子：泛泛而谈、啰嗦、不准确、跑题，或者没有带来什么实际价值？"
     },
     {
-     "id": "overall-disposition",
-     "type": "choice",
-     "text": "如果由你决定，这篇：",
-     "options": [
-      {
-       "id": "publish",
-       "label": "可以直接发布"
-      },
-      {
-       "id": "minor",
-       "label": "小改后发布"
-      },
-      {
-       "id": "rewrite",
-       "label": "需要重写"
-      },
-      {
-       "id": "drop",
-       "label": "这个题不该写"
-      }
-     ]
+     "id": "overall-confidence",
+     "type": "scale",
+     "text": "你对上面这个判断有多大把握？",
+     "anchors": {
+      "1": "没有把握",
+      "3": "一般",
+      "5": "很有把握"
+     }
+    }
+   ]
+  },
+  {
+   "id": "information-utility",
+   "title": "信息效用",
+   "appliesTo": {
+    "workTypes": [
+     "article",
+     "note"
+    ]
+   },
+   "traces": "取材是否给了足够具体的材料；选题简述是否太泛；写作要求是否规定了篇幅下限。",
+   "items": [
+    {
+     "id": "iu1-density",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "信息密度。文中是否出现下列任何一种情况：话很多，实际信息很少；放在几乎任何语境下都成立的泛泛之谈；不增加任何内容的填充词句。"
+    },
+    {
+     "id": "iu2-relevance",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "相关性。文中是否出现下列任何一种情况：没有回应题目或任务里的具体要点；对上下文、问题或任务没有实质贡献；与文章本来的目的脱节。"
+    }
+   ]
+  },
+  {
+   "id": "information-quality",
+   "title": "信息质量",
+   "appliesTo": {
+    "workTypes": [
+     "article",
+     "note"
+    ]
+   },
+   "traces": "取材与核验流程；来源是否真的被读过；提示词是否要求给出判断，还是要求“全面、客观”。",
+   "items": [
+    {
+     "id": "iq1-factuality",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "事实性。文中是否出现下列任何一种情况：不正确或编造的信息；有误导性或逻辑不成立的说法。"
+    },
+    {
+     "id": "iq2-bias",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "立场。文中是否出现下列任何一种情况：该有主观看法的地方显得过于“客观”；需要观点的地方没有观点；视角与语境不相称；该投入的地方显得置身事外；带着不恰当的视角或预设（如一边倒的断言）。"
+    }
+   ]
+  },
+  {
+   "id": "style-quality",
+   "title": "文体质量",
+   "appliesTo": {
+    "workTypes": [
+     "article",
+     "note"
+    ]
+   },
+   "traces": "文风规则和去套话技能；正文模板与栏目要素的写法；人格与读者设定；成稿前有没有修改环节。",
+   "items": [
+    {
+     "id": "sq1-repetition",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "重复。文中是否出现下列任何一种情况：同样的词或短语用得过多；重复前文、没有新信息的句子；套路化写作里常见的过渡语用得过多；用词和表达缺少变化。"
+    },
+    {
+     "id": "sq2-templatedness",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "模板化。文中是否出现下列任何一种情况：过度依赖公式化的结构和句型；可预料的格式，比如过多的要点列表；同样的过渡语反复出现；一再出现按同一个模式写成的句子或段落。"
+    },
+    {
+     "id": "sq3-coherence",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "连贯性。文中是否出现下列任何一种情况：句子结构或组织不好；论证或叙述前后不一致；要花很大力气才能读懂；各段没有合力推进论点或叙事。"
+    },
+    {
+     "id": "sq4-naturalness",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "语言自然度。文中是否出现下列任何一种情况：读起来像人造的、生产出来的语言；奇怪的说法或不自然的措辞；语法没错但读着别扭；用词与语境不合。"
+    },
+    {
+     "id": "sq5-verbosity",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "冗长。文中是否出现下列任何一种情况：相对于传达的信息，文字过多；不必要的华丽或描写性语言；把字数放在内容之前；解释拖沓，需要大幅删改。"
+    },
+    {
+     "id": "sq6-word-complexity",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "用词复杂度。文中是否出现下列任何一种情况：词汇与语境不相称；不必要的术语或复杂说法；让意思变模糊的时髦词；过多使用生僻词。"
+    },
+    {
+     "id": "sq7-tone",
+     "type": "check",
+     "polarity": "tell",
+     "note": true,
+     "text": "语气。文中是否出现下列任何一种情况：千篇一律的腔调，没有个性或目的；没有视角或观点；场合随意却过于正式，或相反；读起来像旁观者，而不是投入其中的作者；回答时过度自信。"
     }
    ]
   }
