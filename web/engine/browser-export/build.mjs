@@ -9,7 +9,7 @@ import {headingAnchors} from '../../themes/structures.mjs';
 import {courseLabels} from '../../themes/academic/archive-pages.mjs';
 import {articleStyles,articleHeading} from './article-style.mjs';
 import {shareShell} from './share-shell.mjs';
-import {TOPIC_SITES,articleTopics} from './topics.mjs';
+import {TAG_SITES,articleTags} from './tags.mjs';
 import {notePictures,noteRatio,noteSlides,cardSlides,galleryHtml,cardsLink,workLinks} from './note-layout.mjs';
 import {sectionsForSite} from '../../../contracts/site-sections.mjs';
 import {sectionWorkPolicy,articleCardState,workPages,cardsRoute,adaptationIndex} from '../../../contracts/work-types.mjs';
@@ -50,14 +50,14 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   const endnotes=rendered.endnotes?`<div class="article-body article-endnotes">${rendered.endnotes}</div>`:'';
   const course=record.course?`<p class="rssd-byline">${courseLabels(record.course)}</p>`:'';
   const html=course+facts+rendered.body+sourcePanel+endnotes;
-  // Live page only: the #topics row sits inside the article, under the body. `html` above, which copies and
+  // Live page only: the #tags row sits inside the article, under the body. `html` above, which copies and
   // downloads use, leaves it out.
   // An edition in another language is the same work, so it takes its type from the source.
   const source=locale==='zh-CN'?record:content.records.find(r=>r.id==='news:'+record.sourceArticleId);
   const type=record.type||source?.type||'article';
   const collection=content.collections?.find(c=>c.id===record.collectionId);
-  // Notes always show their #topics; articles where the site has opted in.
-  const topics=TOPIC_SITES.has(site.id)||type==='note'?articleTopics({sectionId:record.collectionId,sectionName:localeSection(names,sectionId,sectionName),sectionRoute:locale==='zh-CN'?collection?.route:'',tags:record.tags}):'';
+  // Notes always show their #tags; articles where the site has opted in.
+  const tags=TAG_SITES.has(site.id)||type==='note'?articleTags({sectionId:record.collectionId,sectionName:localeSection(names,sectionId,sectionName),sectionRoute:locale==='zh-CN'?collection?.route:'',tags:record.tags}):'';
   // A note's standalone pictures move into a gallery beside its text. A note without one keeps the article page.
   const split=type==='note'?notePictures(rendered.body):null,pictures=split?.pictures.length?split.pictures:null;
   const gallery=pictures?galleryHtml(noteSlides(pictures),{ratio:await noteRatio(target,pictures),en}):'';
@@ -100,7 +100,7 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
    const sourceRoute=old.match(/data-community-source-route="([^"]*)"/)?.[1],versionState=old.match(/data-source-version-state="([a-z_]+)"/)?.[1];
    const attributes=` data-article-template="${esc(selected.wechat.id)}"${sourceRoute?` data-community-source-route="${sourceRoute}"`:''}${versionState?` data-source-version-state="${versionState}"`:''}`;
    // The links row sits under the heading; an article repeats it after its text, where a reader finishes.
-   const text=`${articleHeading(model)}${linkRow}${course}${stale}${facts}<div class="article-body">${pictures?split.body:rendered.body}</div>${topics}${type==='article'?linkRow:''}${sourcePanel}${endnotes}${extras}`;
+   const text=`${articleHeading(model)}${linkRow}${course}${stale}${facts}<div class="article-body">${pictures?split.body:rendered.body}</div>${tags}${type==='article'?linkRow:''}${sourcePanel}${endnotes}${extras}`;
    const nav=`<nav class="rssd-reading-nav" aria-label="${en?'Article navigation':'文章导航'}">${oldBack||`<a class="back" href="${en?'/en/':'/archive/'}">← ${en?'All articles':'全部文章'}</a>`}</nav>`;
    return nav+(pictures?`<article class="rssd-article rssd-note-article"${attributes}>${gallery}<div class="rssd-note-text">${text}</div></article>`:`<article class="rssd-article"${attributes}>${text}</article>`);
   }).replace(/<aside class="reading-aside">[\s\S]*?<\/aside>/g,'').replace('</head>',`<link rel="stylesheet" href="/${path}article.css"><link rel="stylesheet" href="${base}share.css">${usesNote?`<link rel="stylesheet" href="${base}note.css">`:''}</head>`)

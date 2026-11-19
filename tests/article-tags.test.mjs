@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {articleTopics,TOPIC_SITES} from '../web/engine/browser-export/topics.mjs';
+import {articleTags,TAG_SITES} from '../web/engine/browser-export/tags.mjs';
 import {createFeedIndex,feedCard} from '../web/engine/content-feed.mjs';
 
 const picture='/article-media/'+'a'.repeat(64)+'.webp';
 
-test('the topics row shows the section first, then bound tags, without duplicates or guesses',()=>{
- assert.deepEqual([...TOPIC_SITES],['pets']);
- assert.equal(articleTopics({sectionId:'daily-cat',sectionName:'每日一猫',sectionRoute:'/archive/daily-cat/',tags:['缅因猫','每日一猫',' ','<b>']}),
-  '<p class="rssd-topics" data-section="daily-cat"><a href="/archive/daily-cat/">#每日一猫</a><span>#缅因猫</span><span>#&lt;b&gt;</span></p>');
- assert.equal(articleTopics({sectionName:'Daily cat',sectionRoute:'',tags:[]}),'<p class="rssd-topics"><span>#Daily cat</span></p>');
- assert.equal(articleTopics({sectionName:'',tags:[]}),'');
+test('the tags row shows the section first, then bound tags, without duplicates or guesses',()=>{
+ assert.deepEqual([...TAG_SITES],['pets']);
+ assert.equal(articleTags({sectionId:'daily-cat',sectionName:'每日一猫',sectionRoute:'/archive/daily-cat/',tags:['缅因猫','每日一猫',' ','<b>']}),
+  '<p class="rssd-tags" data-section="daily-cat"><a href="/archive/daily-cat/">#每日一猫</a><span>#缅因猫</span><span>#&lt;b&gt;</span></p>');
+ assert.equal(articleTags({sectionName:'Daily cat',sectionRoute:'',tags:[]}),'<p class="rssd-tags"><span>#Daily cat</span></p>');
+ assert.equal(articleTags({sectionName:'',tags:[]}),'');
 });
 
 test('feed cards reserve each cover at its real shape when the ratio is known',()=>{

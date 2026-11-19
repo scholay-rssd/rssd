@@ -41,13 +41,13 @@ test('notes get a gallery page, articles a linked card page, and the feed says w
  assert.equal(manifest.browserExports.notes,1);
  assert.equal(manifest.browserExports.cardPages,1);
 
- // The note: pictures in a gallery beside its text, its #topics, and the way back to the article it came from.
+ // The note: pictures in a gallery beside its text, its #tags, and the way back to the article it came from.
  const note=await readFile(join(target,'news/maine-coon-signs/index.html'),'utf8');
  assert.match(note,/<article class="rssd-article rssd-note-article"/);
  assert.equal((note.match(/<figure class="rssd-note-slide"/g)||[]).length,2);
  assert.doesNotMatch(note.slice(note.indexOf('rssd-note-text')),/<img[^>]+article-media/);
  assert.match(note,/<a href="\/news\/maine-coon\/">改写自《长文 maine-coon》<\/a><span class="rssd-outdated">原文已更新<\/span>/);
- assert.match(note,/<p class="rssd-topics" data-section="daily-cat"><a href="\/archive\/daily-cat\/">#每日一猫<\/a><\/p>/);
+ assert.match(note,/<p class="rssd-tags" data-section="daily-cat"><a href="\/archive\/daily-cat\/">#每日一猫<\/a><\/p>/);
  assert.match(note,/assets\/rssd-export\/v1\/note\.css/);
  assert.match(note,/assets\/rssd-export\/v1\/note\.mjs/);
 
