@@ -34,6 +34,8 @@ import {durableWriteJson} from './durable-json.mjs';
 import {saveCloudContinuationArtifact,readCloudContinuationEvidence,assertCloudArtifactSupersessionSettled,CLOUD_CONTINUATION_SITES} from './publishing-flow-artifact.mjs';
 import {assertCloudRecoverySettled,restoreOriginalCloudRequest} from './publication-cloud-identity-recovery.mjs';
 import {createEditorialCenterTransport} from './rssd-editorial-transport.mjs';
+import {WORK_TYPES_CAPABILITY,WORK_FIELD_KEYS,workFieldsOf,applyWorkFields,checkWorkFields,workFieldsForCenter,declaredWorkSection} from './work-fields.mjs';
+import {sectionWorkPolicy} from '../contracts/work-types.mjs';
 
 function validatePayload(input,site){
   // The old website protocol required every English article to be a derived
@@ -77,11 +79,14 @@ export function publicationStage(packet,receipt){
 }
 export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace(root),origin=process.env.SCHOLAY_TODAY_ORIGIN||site.origin,tokenFile=process.env.SCHOLAY_TODAY_TOKEN_FILE||join(publicationDirectory(root) ,'publish-token'),fetcher=fetch,queueKick=kickPublicationQueue,centerDirectory}={}){
   if(origin!==site.origin&&!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin))throw Error('Unsupported website origin');
-  const metadataOf=data=>({date:data.date||'',summary:data.summary||'',author:data.author||site.author,category:data.category||site.columns[0],...(validateSectionId(data.sectionId,site)?{sectionId:data.sectionId}:{})});
+  const metadataOf=data=>({date:data.date||'',summary:data.summary||'',author:data.author||site.author,category:data.category||site.columns[0],...(validateSectionId(data.sectionId,site)?{sectionId:data.sectionId}:{}),...workFieldsOf(data)});
+  const withoutWorkFields=meta=>Object.fromEntries(Object.entries(meta).filter(([key])=>!WORK_FIELD_KEYS.includes(key)));
   let verified=false,flowSite=site;
   const center=createEditorialCenterTransport({site,directory:centerDirectory,fetcher});
   async function applyCenterWorkspace(workspace){
     const catalog=validateSectionCatalog({version:1,revision:'center-'+(workspace.revision||1),sections:workspace.sections});
+    // The Center lists sections without the work types they take; keep what the site itself declares.
+    catalog.sections=catalog.sections.map(section=>{const declared=declaredWorkSection(site,section.id);if(!declared)return section;const policy=sectionWorkPolicy(declared);return {...section,workTypes:[...policy.workTypes],articleCards:policy.articleCards};});
     const known=new Set(catalog.sections.map(section=>section.id));
     for(const old of sectionsForSite(site))if(!known.has(old.id))catalog.sections.push({...old,enabled:false,writable:false});
     site={...site,centerManaged:true,languages:['zh-CN','en'],sectionCatalog:{...catalog,status:'ready'}};flowSite=site;
@@ -109,7 +114,21 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
     try{const flow=await enqueuePublished({root,site:flowSite,data,receipt});receipt.publishingFlow=flow;if(flow.status==='queued')await kickPublishingFlow({root,site:flowSite,tokenFile});}
     catch(e){receipt.publishingFlow={status:'deferred',error:e.message};}
   }
-  async function handshake(){if(await center.active()){if(!site.centerManaged){const {workspace}=await center.verify();await applyCenterWorkspace(workspace);}verified=true;return;}if(verified||site.legacy)return;const response=await fetcher(origin+'/manage/api/site',{redirect:'error',signal:AbortSignal.timeout(20000)});const descriptor=await response.json();if(!response.ok||descriptor.protocol!=='scholay-content'||descriptor.version!==1||descriptor.siteId!==site.id||descriptor.origin!==site.origin)throw Error('服务器身份或协议版本与当前站点不匹配');if(descriptor.capabilities?.includes('language-editions-v1'))flowSite={...site,languages:['zh-CN','en']};verified=true;}
+  // Whether the connected Center takes a work's type, note source and tags on a draft save. The answer is kept
+  // beside the receipts, so screens that read only local files can tell whether these fields can be changed.
+  const centerSiteFile=()=>join(publicationDirectory(root),'center-site.json');
+  async function takesWorkFields(){
+    if(!await center.active())return false;
+    const {descriptor}=await center.verify(),value=Array.isArray(descriptor?.capabilities)&&descriptor.capabilities.includes(WORK_TYPES_CAPABILITY);
+    const identity=await center.cacheIdentity(),saved=await optional(centerSiteFile()).catch(()=>null);
+    if(saved?.identity!==identity||saved?.workFields!==value)await atomicJson(centerSiteFile(),{identity,workFields:value,checkedAt:new Date().toISOString()});
+    return value;
+  }
+  async function cachedWorkFields(){
+    const identity=await center.cacheIdentity();if(!identity)return false;
+    const saved=await optional(centerSiteFile()).catch(()=>null);return saved?.identity===identity&&saved.workFields===true;
+  }
+  async function handshake(){if(await center.active()){if(!site.centerManaged){const {workspace}=await center.verify();await applyCenterWorkspace(workspace);await takesWorkFields();}verified=true;return;}if(verified||site.legacy)return;const response=await fetcher(origin+'/manage/api/site',{redirect:'error',signal:AbortSignal.timeout(20000)});const descriptor=await response.json();if(!response.ok||descriptor.protocol!=='scholay-content'||descriptor.version!==1||descriptor.siteId!==site.id||descriptor.origin!==site.origin)throw Error('服务器身份或协议版本与当前站点不匹配');if(descriptor.capabilities?.includes('language-editions-v1'))flowSite={...site,languages:['zh-CN','en']};verified=true;}
   const paths=id=>{if(typeof id!=='string'||!/^[a-z0-9][a-z0-9-]{2,99}$/.test(id))throw Error('Invalid article ID');const dir=join(publicationDirectory(root),id);return {id,dir,packet:join(dir,'prepared.json'),receipt:join(dir,'receipt.json'),metadata:join(dir,'metadata.json')};};
   async function connection(localOnly=false){if(await center.active())return center.connection();if(localOnly&&process.env.SCHOLAY_DESKTOP_RUNTIME==='1'&&!process.env.SCHOLAY_TODAY_TOKEN)return {configured:false,requiresCheck:true,origin,message:'推送时连接当前站点'};if(process.env.SCHOLAY_TODAY_TOKEN)return {configured:true,origin};if(process.env.SCHOLAY_REQUIRE_VAULT==='1')return {configured:false,origin,message:'请在设置 → 账号与连接中绑定官网凭证。'};try{const s=await stat(tokenFile);return s.size>0&&await isPrivateFile(tokenFile,s)?{configured:true,origin}:{configured:false,origin,message:'官网发布凭证需为非空私有文件。'};}catch{return {configured:false,origin,message:'本机尚未配置官网发布凭证，请按项目维护文档完成绑定。'};}}
   async function api(path,data,signal){
@@ -145,9 +164,14 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
     if(aliases.length>1)throw Error('多个本地稿件绑定同一云端编号，请先核对');
     return aliases[0]||id;
   }
-  async function packedPayload(id,pack,meta){
+  // `workFields` says the Center takes a work's type, note source and tags; without it none of them is sent.
+  async function packedPayload(id,pack,meta,{workFields=false}={}){
     const record=await optional(join(paths(id).dir,'record.json'));
-    return validatePayload({id:await remoteId(id),title:pack.markdown.match(/^# (.+)$/m)?.[1]||pack.draft.shortTitle,markdown:pack.markdown,assets:pack.assets,...meta,...(record?{record:{...record,fields:recordFields(record.kind,record.fields,pack.markdown)}}:{})},site);
+    const fields=workFields?workFieldsForCenter(meta,{record:!!record}):{};
+    const data=validatePayload({id:await remoteId(id),title:pack.markdown.match(/^# (.+)$/m)?.[1]||pack.draft.shortTitle,markdown:pack.markdown,assets:pack.assets,...withoutWorkFields(meta),...fields,...(record?{record:{...record,fields:recordFields(record.kind,record.fields,pack.markdown)}}:{})},site);
+    // An empty list asks the Center to remove the work's tags.
+    if(fields.tags&&!fields.tags.length)data.tags=[];
+    return data;
   }
   async function locked(id,work,{recovery=false}={}){
     const p=paths(id);
@@ -165,12 +189,12 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
     const receipt=useAction?{...action,revision:action.version}:savedReceipt;
     const stage=useAction?(action.status==='success'?(action.publicReadback?(action.cleanupError?'cleanup':'published'):'verify'):action.status):publicationStage(packet,receipt);
     let stale=Boolean(packet&&packet.sourceSha256!==draft.sha256),validation='';
-    if(packet&&!stale){try{const pack=await packedDraft(id,root);stale=sha(JSON.stringify(await packedPayload(id,pack,meta)))!==sha(JSON.stringify(packet.data));}catch(e){stale=true;validation=e.message;}}
+    if(packet&&!stale){try{const pack=await packedDraft(id,root);stale=sha(JSON.stringify(await packedPayload(id,pack,meta,{workFields:packet.workFields===true})))!==sha(JSON.stringify(packet.data));}catch(e){stale=true;validation=e.message;}}
     const catalog=await optional(join(publicationDirectory(root) ,'remote-index.json'));
     const target=await remoteId(id);
     const sync=await syncItem(root,id,catalog?.items.find(x=>x.id===target),Boolean(catalog&&(!catalog.partial||catalog.items.some(x=>x.id===target))),pending(receipt));
     const incoming=await optional(join(p.dir,'incoming.json'));
-    return {id,title:draft.shortTitle,canonicalPath:draft.canonicalPath,sourceSha256:draft.sha256,metadata:meta,metadataSha256:sha(JSON.stringify(meta)),stage,stale,validation,receipt,sync,cleanupError:receipt?.cleanupError,
+    return {id,title:draft.shortTitle,canonicalPath:draft.canonicalPath,sourceSha256:draft.sha256,metadata:meta,metadataSha256:sha(JSON.stringify(meta)),workFields:await cachedWorkFields(),stage,stale,validation,receipt,sync,cleanupError:receipt?.cleanupError,
       incoming:incoming?{revision:incoming.revision,html:previewHtml(incoming.data),markdown:incoming.localMarkdown||incoming.data.markdown,metadata:metadataOf(incoming.data)}:null,
       prepared:packet?{requestKey:packet.requestKey,packetSha256:sha(JSON.stringify(packet)),sourceSha256:packet.sourceSha256,preparedAt:packet.preparedAt,intent:packet.intent||'publish',expectedVersion:packet.expectedVersion,title:packet.data.title,metadata:metadataOf(packet.data),assetCount:packet.data.assets.length}:null,
       html:packet?previewHtml(packet.data):preview.html,warnings:packet?[]:preview.warnings||[]};
@@ -178,9 +202,9 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
   function previewHtml(data,notes=false){const sources=new Map(data.assets.map(a=>[a.path,'data:image/'+(a.path.endsWith('.jpg')?'jpeg':a.path.split('.').pop())+';base64,'+a.data]));const prepared=notes?protectMathMarkdown(data.markdown):null;return restoreMathHtml(renderArticle(prepared?.markdown??data.markdown,{imageSources:sources}),prepared?.replacements||[]);}
   async function snapshot(){
     const {articles}=await workspaceCall('draft_list',{},root);
-    const catalog=await optional(join(publicationDirectory(root) ,'remote-index.json'));
-    const items=await Promise.all(articles.map(async d=>{const p=paths(d.id),packet=await optional(p.packet),saved=await optional(p.receipt),action=await optional(join(p.dir,'cloud-action.json'));const useAction=action?.action==='publish'&&['unknown','queued','running','success'].includes(action.status)&&(!saved||Date.parse(action.submittedAt)>=Date.parse(saved.submittedAt));const receipt=useAction?{...action,revision:action.version}:saved,meta=await metadata(d.id,d),target=await remoteId(d.id);return {...d,...(d.id.startsWith('record-')?{recordKind:structureFor(d.archiveCategory).kind}:{}),metadata:meta,archiveCategory:sectionsForSite(site).find(s=>s.id===meta.sectionId)?.name||meta.category,stage:useAction?(action.status==='success'?(action.publicReadback?(action.cleanupError?'cleanup':'published'):'verify'):action.status):publicationStage(packet,receipt),receipt,preparedAt:packet?.preparedAt||null,...(await optional(join(p.dir,'pull-origin.json'))?{editCopy:true}:{}),sync:await syncItem(root,d.id,catalog?.items.find(x=>x.id===target),Boolean(catalog&&(!catalog.partial||catalog.items.some(x=>x.id===target))),pending(receipt))};}));
-    return {connection:await connection(true),checkedAt:catalog?.checkedAt||null,articles:items.reverse()};
+    const catalog=await optional(join(publicationDirectory(root) ,'remote-index.json')),workFields=await cachedWorkFields();
+    const items=await Promise.all(articles.map(async d=>{const p=paths(d.id),packet=await optional(p.packet),saved=await optional(p.receipt),action=await optional(join(p.dir,'cloud-action.json'));const useAction=action?.action==='publish'&&['unknown','queued','running','success'].includes(action.status)&&(!saved||Date.parse(action.submittedAt)>=Date.parse(saved.submittedAt));const receipt=useAction?{...action,revision:action.version}:saved,meta=await metadata(d.id,d),target=await remoteId(d.id);return {...d,...(d.id.startsWith('record-')?{recordKind:structureFor(d.archiveCategory).kind}:{}),metadata:meta,...(workFields?{workFields:true}:{}),archiveCategory:sectionsForSite(site).find(s=>s.id===meta.sectionId)?.name||meta.category,stage:useAction?(action.status==='success'?(action.publicReadback?(action.cleanupError?'cleanup':'published'):'verify'):action.status):publicationStage(packet,receipt),receipt,preparedAt:packet?.preparedAt||null,...(await optional(join(p.dir,'pull-origin.json'))?{editCopy:true}:{}),sync:await syncItem(root,d.id,catalog?.items.find(x=>x.id===target),Boolean(catalog&&(!catalog.partial||catalog.items.some(x=>x.id===target))),pending(receipt))};}));
+    return {connection:{...await connection(true),...(workFields?{workFields:true}:{})},checkedAt:catalog?.checkedAt||null,articles:items.reverse()};
   }
   async function refresh(){const started=Date.now();return withFileLock(join(publicationDirectory(root) ,'refresh.lock'),async()=>{const cached=await optional(join(publicationDirectory(root) ,'remote-index.json'));return !cached?.partial&&Date.parse(cached?.fetchedAt)>=started?snapshot():refreshIndex();},{timeout:115000});}
   async function refreshIndex(){
@@ -206,7 +230,7 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
           try{
             const before=await localFingerprint(root,draft.id),meta=await metadata(draft.id,draft);
             const pack=await packedDraft(draft.id,root);
-            if(sha(JSON.stringify(await packedPayload(draft.id,pack,meta)))===sha(JSON.stringify(packet.data))&&before===await localFingerprint(root,draft.id))fingerprint=before;
+            if(sha(JSON.stringify(await packedPayload(draft.id,pack,meta,{workFields:packet.workFields===true})))===sha(JSON.stringify(packet.data))&&before===await localFingerprint(root,draft.id))fingerprint=before;
           }catch{/* Incomplete local files remain dirty, never silently synced. */}
         }
         await atomicJson(join(p.dir,'sync.json'),{remoteId:packet.data.id,revision:receipt.revision,cloudRevision:receipt.revision,publishedRevision:receipt.revision,fingerprint,at:receipt.checkedAt,origin:'receipt',requestKey:receipt.requestKey});
@@ -367,7 +391,7 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
           let proof=await optional(join(p.dir,'release-proof.json'));
           if(!proof||proof.requestKey!==action.requestKey){
             const draft=await readDraft(id,root),fingerprint=await localFingerprint(root,id),pack=await packedDraft(id,root);
-            if(!samePublishedContent(await packedPayload(id,pack,await metadata(id,draft)),data))throw Error('本地已有新的修改，保留工作副本');
+            if(!samePublishedContent(await packedPayload(id,pack,await metadata(id,draft),{workFields:await takesWorkFields()}),data))throw Error('本地已有新的修改，保留工作副本');
             if(await localFingerprint(root,id)!==fingerprint)throw Error('稿件在核验时发生变化，保留本地副本');
             proof={requestKey:action.requestKey,data,sourceSha256:draft.sha256,localFingerprint:fingerprint,proofType:'content-action',preparedAt:new Date().toISOString()};
             await atomic(join(p.dir,'release-proof.json'),proof);
@@ -421,9 +445,20 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
       if(!input||typeof input!=='object'||Array.isArray(input))throw Error('稿件信息须为对象');
       for(const [key,max] of [['date',10],['summary',4000],['author',100],['category',80]])if(typeof input[key]!=='string'||input[key].length>max)throw Error('稿件信息字段格式无效：'+key);
       if(input.date)day(input.date);
-      const next=metadataOf(input);if(next.sectionId){if(next.sectionId!==before.sectionId)requirePublishSection(next.sectionId,site);next.category=sectionsForSite(site).find(s=>s.id===next.sectionId)?.name||before.category;}else if(Object.hasOwn(input,'sectionId'))next.category='未归栏';
+      // Work fields the form leaves out keep their saved values; a changed type, source or tag list, or a new section, is checked.
+      const fields=applyWorkFields(before,input),next={...withoutWorkFields(metadataOf(input)),...fields};if(next.sectionId){if(next.sectionId!==before.sectionId)requirePublishSection(next.sectionId,site);next.category=sectionsForSite(site).find(s=>s.id===next.sectionId)?.name||before.category;}else if(Object.hasOwn(input,'sectionId'))next.category='未归栏';
+      const sectionId=Object.hasOwn(input,'sectionId')?next.sectionId:before.sectionId;
+      if(JSON.stringify(fields)!==JSON.stringify(workFieldsOf(before))||sectionId!==before.sectionId)checkWorkFields(fields,{site,sectionId,articleId:await remoteId(id),record:!!await optional(join(p.dir,'record.json'))});
       await withWorkspaceLock(root,async()=>{const current=await readDraft(id,root);if(current.sha256!==draft.sha256||sha(JSON.stringify(await metadata(id,current)))!==params.expectedMetadataSha256)throw Error('稿件或栏目已变化，请重新载入后保存');const file=join(root,'_ops/inventory/article-index.json'),index=await optional(file);if(Object.hasOwn(input,'sectionId')){if(next.sectionId)index.articles[id].sectionId=next.sectionId;else delete index.articles[id].sectionId;if(!current.id.startsWith('record-'))index.articles[id].archiveCategory=next.category;}await atomic(p.metadata,next);if(Object.hasOwn(input,'sectionId'))await atomic(file,index);});
       return inspect(id);
+    }
+    // Sets a local manuscript's type, note source or tags, as the category action sets its section.
+    if(params.action==='work_fields'){
+      const draft=await readDraft(id,root),before=await metadata(id,draft);
+      const fields=checkWorkFields(applyWorkFields(before,params),{site,sectionId:before.sectionId,articleId:await remoteId(id),record:!!await optional(join(p.dir,'record.json'))});
+      const next={...withoutWorkFields(before),...fields};
+      await withWorkspaceLock(root,async()=>{if(!params.expectedFingerprint||await localFingerprint(root,id)!==params.expectedFingerprint)throw Error('本地稿件已变化，请刷新后设置作品类型与标签');await atomic(p.metadata,next);});
+      return {id,metadata:next};
     }
     return params.action==='delete'?deleteLocalDraft(root,{...params,id}):params.action==='discard_pull'?discardPulledCopy(root,{...params,id}):params.action==='category'?setDraftCategory(root,{...params,id}):Promise.reject(Error('本地操作无效'));
   });}
@@ -443,12 +478,18 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
     const draft=await readDraft(id,root),before=await metadata(id,draft);
     if(params.expectedSourceSha256&&params.expectedSourceSha256!==draft.sha256)throw Error('稿件已被其他编辑器更新，请重新载入后预览。');
     if(params.expectedMetadataSha256&&params.expectedMetadataSha256!==sha(JSON.stringify(before)))throw Error('发布信息已变化，请重新载入后编辑。');
-    const meta=metadataOf(params.metadata||before);await checkPublicationSection(meta,id);const frozenFingerprint=await localFingerprint(root,id,meta);
+    // Metadata sent with the request keeps the saved work fields it leaves out.
+    const meta=params.metadata?{...withoutWorkFields(metadataOf(params.metadata)),...applyWorkFields(before,params.metadata)}:before;await checkPublicationSection(meta,id);const frozenFingerprint=await localFingerprint(root,id,meta);
     const pack=await packedDraft(id,root);
     // The server enforces this too; checking the cached catalog first gives the
     // producer a clear answer before any preview is frozen. An unreadable
     // catalog never blocks a push on its own.
     const recordBinding=await optional(join(p.dir,'record.json'));
+    // A Center that takes the work fields gets the ones the metadata states, checked here first; any other
+    // destination gets none. The choice is frozen with the request, so a retry sends the same payload.
+    const workFields=await takesWorkFields();
+    const fields=Object.fromEntries(Object.entries(meta).filter(([key])=>WORK_FIELD_KEYS.includes(key)));
+    if(workFields||JSON.stringify(fields)!==JSON.stringify(workFieldsOf(before)))checkWorkFields(fields,{site,sectionId:meta.sectionId,articleId:await remoteId(id),record:!!recordBinding});
     if(recordBinding?.kind==='openSource'){
       const owner=linkOwner((await catalog({all:true,cache:true}).catch(()=>null))?.items,recordBinding);
       if(owner)throw Object.assign(Error('该资源链接已有记录「'+owner.title+'」（'+owner.articleId+'）。请取回该记录再更新，不要新建。'),{code:'duplicate_source',existing:{articleId:owner.articleId,documentId:owner.documentId}});
@@ -463,7 +504,7 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
       await atomicJson(join(p.dir,'remote-id.json'),{id:target,previousId:id,siteId:site.id,origin,reason:'deleted',createdAt:new Date().toISOString()});
       remote=await api('/'+target);
     }
-    const data=await packedPayload(id,pack,meta);
+    const data=await packedPayload(id,pack,meta,{workFields});
     await cacheRemote(target,remote);
     // A newer admin draft is not implicitly approved by a desktop upload.
     const previousPacket=await optional(p.packet);
@@ -483,7 +524,7 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
     if(base&&!remote.publishedVersion&&!ownFailedRevision&&!acknowledged)throw Error('官网文章已撤下，请先核对官网状态，不能自动重新公开。');
     if((await readDraft(id,root)).sha256!==pack.draft.sha256)throw Error('稿件在生成预览时发生变化，请重新预览。');
     if(await localFingerprint(root,id,meta)!==frozenFingerprint||sha(JSON.stringify(await metadata(id,draft)))!==sha(JSON.stringify(before)))throw Error('正文、图片或发布信息在预览时变化，请重新预览');
-    const packet={...(!site.legacy?{siteId:site.id,spaceId:site.spaceId,origin}:{}),data,intent,releaseLocal:params.releaseLocal===true,expectedVersion:remote.version,expectedPublishedVersion:remote.publishedVersion??null,requestKey:randomUUID(),sourceSha256:pack.draft.sha256,localFingerprint:frozenFingerprint,preparedAt:new Date().toISOString()};
+    const packet={...(!site.legacy?{siteId:site.id,spaceId:site.spaceId,origin}:{}),data,...(workFields?{workFields:true}:{}),intent,releaseLocal:params.releaseLocal===true,expectedVersion:remote.version,expectedPublishedVersion:remote.publishedVersion??null,requestKey:randomUUID(),sourceSha256:pack.draft.sha256,localFingerprint:frozenFingerprint,preparedAt:new Date().toISOString()};
     if(previous)await atomic(join(p.dir,'receipt-'+previous.requestKey+'.json'),previous);
     await atomic(p.metadata,meta);await atomic(p.packet,packet);
     await writeFile(join(p.dir,'preview.html'),'<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>官网发布预览</title><style>body{max-width:740px;margin:40px auto;padding:0 22px;font:17px/1.9 system-ui}img{max-width:100%;height:auto}pre{overflow:auto}</style>'+previewHtml(data),{mode:0o600});
@@ -508,7 +549,7 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
     }
     const pack=await packedDraft(id,root),meta=await metadata(id,pack.draft);
     if(packet.sourceSha256!==pack.draft.sha256)throw Error('正文已在预览后修改，请重新生成预览。');
-    const current=await packedPayload(id,pack,meta);
+    const current=await packedPayload(id,pack,meta,{workFields:packet.workFields===true});
     if(sha(JSON.stringify(current))!==sha(JSON.stringify(packet.data)))throw Error('发布信息或图片已在预览后修改，请重新生成预览。');
     await checkPublicationSection(meta,id);
     const centerManaged=await center.active(),queue=centerManaged?null:await publicationQueueConfig(root);
@@ -765,7 +806,7 @@ export function createWebsitePublisher({root=workspaceRoot,site=siteForWorkspace
         try{await api('/requests/'+intent.requestKey);return;}catch(missing){if(missing.statusCode!==404)throw missing;}
         if((intent.resends||0)>=3)throw Error('Original submission recovery exhausted');
         const pack=await packedDraft(id,root),meta=await metadata(id,pack.draft);
-        if(packet.sourceSha256!==pack.draft.sha256||sha(JSON.stringify(await packedPayload(id,pack,meta)))!==sha(JSON.stringify(packet.data)))throw Error('Original submission source changed; review required');
+        if(packet.sourceSha256!==pack.draft.sha256||sha(JSON.stringify(await packedPayload(id,pack,meta,{workFields:packet.workFields===true})))!==sha(JSON.stringify(packet.data)))throw Error('Original submission source changed; review required');
         intent.resends=(intent.resends||0)+1;
         await atomic(join(root,'.local/publishing-flow/submissions',intent.requestKey+'.json'),intent);
         const submission={...latestReceipt,status:'submit_intent',publicReadback:false,recoveryAt:new Date().toISOString()};

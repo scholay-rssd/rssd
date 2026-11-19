@@ -2879,5 +2879,15 @@
   "{{count}} 项": "{{count}} items",
   "暂无内部审查记录": "No internal review notes",
   "逐段批注": "Block annotations",
-  "读取失败": "Could not load"
+  "读取失败": "Could not load",
+  "只看此类作品": "Show only this type",
+  "作品类型": "Work type",
+  "此栏目不收": "not taken by this section",
+  "（此栏目不收）": " (not taken by this section)",
+  "改写自": "Rewritten from",
+  "改写自长文": "Rewritten from article",
+  "作品标签": "Work tags",
+  "逗号分隔，最多 10 个": "Comma-separated, up to 10",
+  "中心尚不支持作品类型与标签，暂不能修改": "The Center does not support work types and tags yet, so they cannot be changed",
+  "改写自长文 {{articleId}} · v{{revision}}": "Rewritten from article {{articleId}} · v{{revision}}"
 }

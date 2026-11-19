@@ -84,6 +84,15 @@ test('a missing resume ID cannot silently create a new task',()=>{
  assert.equal(parseArgs(['pets','pet-news','observation','--resume','saved-task']).resume,'saved-task');
 });
 
+test('a produced work may name its type and tags; both are checked before any task starts',()=>{
+ const args=parseArgs(['today','briefings','xiwen','brief.txt','--type','note','--tags','#AI, 教育,AI','--no-publish']);
+ assert.equal(args.workType,'note');assert.deepEqual(args.tags,['AI','教育']);assert.equal(args.briefFile,'brief.txt');assert.equal(args.noPublish,true);
+ assert.equal(parseArgs(['today','briefings','xiwen','brief.txt']).workType,undefined);
+ assert.throws(()=>parseArgs(['today','briefings','xiwen','brief.txt','--type','essay']),/--type requires/);
+ assert.throws(()=>parseArgs(['today','briefings','xiwen','brief.txt','--tags']),/--tags requires/);
+ assert.throws(()=>parseArgs(['today','briefings','xiwen','brief.txt','--tags',Array.from({length:11},(_,i)=>'t'+i).join(',')]),/最多 10 个标签/);
+});
+
 test('a terminal run event arriving before the RPC response is not lost',async t=>{
  const child=spawn(process.execPath,['--input-type=module','-e',`import {createInterface} from 'node:readline';createInterface({input:process.stdin}).on('line',line=>{const r=JSON.parse(line);console.log(JSON.stringify({event:{type:'task_state',taskId:'task',state:{runId:'run',busy:false,status:'done'}}}));console.log(JSON.stringify({id:r.id,result:{runId:'run'}}));});`],{stdio:['pipe','pipe','pipe']});
  const client=createBridgeClient(child,{runTimeout:300});t.after(()=>client.close());

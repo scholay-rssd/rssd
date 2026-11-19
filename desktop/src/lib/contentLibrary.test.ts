@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {collectWorks,matchesWork,tagCount,EMPTY_FILTERS,localDraftDate,workSummary,workActions,websiteCategory,type Filters} from '../editorial/contentLibrary';
+import {collectWorks,matchesWork,tagCount,EMPTY_FILTERS,localDraftDate,workSummary,workActions,websiteCategory,siteWorkTypes,type Filters} from '../editorial/contentLibrary';
 import {EMPTY,type Snapshot,type WebsiteItem,type Publication} from '../publications/model';
 import type {WebsiteDraft} from '../publications/websitePublishing';
 const local:WebsiteDraft={id:'same-work',shortTitle:'本地可编辑标题',canonicalPath:'articles/annex/新闻聚合/正文.md',batchDate:null,stage:'local',receipt:null,preparedAt:null};
@@ -111,4 +111,16 @@ it('uses saved mounted skills for all tags and filters, including multiple and n
  const tasks=[{articleId:local.id,completedAt:'2026-10-13',workIds:[local.id],notebook:{skills:['encyclopedia']}}];
  expect(collectWorks([{...local,writingSkills:[]}],EMPTY,tasks)[0].types).toEqual(['unskilled']);
  expect(collectWorks([{...local,type:'encyclopedia'}],EMPTY)[0].type).toBe('encyclopedia');
+});
+it('a work shows its stated type or its section default, and the type filter narrows the list',()=>{
+ const items=[{...cloud,articleId:'cloud-both',key:'news:cloud-both',sectionId:'briefings'},{...cloud,articleId:'cloud-calendar',key:'news:cloud-calendar',sectionId:'calendar'}];
+ const works=collectWorks([{...local,id:'note',sectionId:'briefings',metadata:{workType:'note',tags:['AI']}},{...local,id:'plain',sectionId:'briefings'},{...local,id:'year',recordKind:'year',archiveCategory:'学术情报'}],{...EMPTY,website:{items,updatedAt:null}});
+ const by=(id:string)=>works.find(w=>w.id===id)!;
+ expect(by('note').workType).toBe('note');expect(by('note').tags).toEqual(['AI']);
+ expect(by('plain').workType).toBe('article');expect(by('plain').tags).toBeUndefined();
+ expect(by('year').workType).toBeUndefined();
+ // A cloud list entry carries no type: it is known only where the section takes a single one.
+ expect(by('cloud-both').workType).toBeUndefined();expect(by('cloud-calendar').workType).toBe('article');
+ expect(works.filter(w=>matchesWork(w,{...EMPTY_FILTERS,workType:'note'})).map(w=>w.id)).toEqual(['note']);
+ expect(siteWorkTypes()).toEqual(['article','note']);
 });

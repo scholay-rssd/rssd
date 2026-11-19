@@ -2,6 +2,7 @@
 import {act,createElement} from 'react';
 import {createRoot,type Root} from 'react-dom/client';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {invoke} from '@tauri-apps/api/core';
 import WorkDetail from '../editorial/WorkDetail';
 import {collectWorks,type Work} from '../editorial/contentLibrary';
 import {EMPTY,type WebsiteItem} from '../publications/model';
@@ -45,4 +46,22 @@ it('shows third-party releases as a read-only strip of chips that open each reco
  await act(async()=>strip.querySelectorAll('button')[1].click());expect(strip.querySelectorAll('button')[1].getAttribute('aria-pressed')).toBe('true');expect(host.querySelector('.work-external')).not.toBeNull();expect(host.querySelector('.work-external-records [aria-pressed=true]')!.textContent).toContain('微博');
  await act(async()=>root.render(createElement(WorkDetail,{work:decorated,workflow:true,active:true,refreshToken:0,onChanged:noop,onCloudChanged:async()=>{},onEditorContext:noop,onLocalView:noop,onOpenLocal:noop})));expect(host.querySelector('.work-published-on')).toBeNull();
  await render(work(local));expect(host.querySelector('.work-published-on')).toBeNull();
+});
+
+it('shows a note\'s type, source and tags in the work information and sets the type from the local settings',async()=>{
+ const records=[{id:'a',taskId:'t',sourceId:'local',title:'知乎版',platform:'知乎',status:'已发布',url:'https://example.invalid/z'}];
+ const draft:WebsiteDraft={...local,sectionId:'briefings',workFields:true,sync:{state:'synced',fingerprint:'fp',baseRevision:null,remoteRevision:null},metadata:{workType:'note',adaptedFrom:{articleId:'source-article',revision:2},tags:['AI']}};
+ const decorated=collectWorks([draft],{...EMPTY,website:{items:[cloud],updatedAt:null},feishu:{configured:true,updatedAt:null,records},drafts:[{id:'local',title:'作品',sourceIds:[]}]})[0];
+ const calls:unknown[]=[],original=vi.mocked(invoke).getMockImplementation()!;
+ vi.mocked(invoke).mockImplementation(async(command:string,args?:unknown)=>{const {method,params}=args as {method:string;params:unknown};if(method==='local_action'){calls.push(params);return {};}return original(command,args as never);});
+ try{
+  await render(decorated);
+  const info=host.querySelector('.work-info')!.textContent;
+  expect(info).toContain('笔记');expect(info).toContain('#AI');expect(info).toContain('改写自长文 source-article · v2');
+  await act(async()=>host.querySelector<HTMLButtonElement>('.work-published-on button')!.click());
+  const select=host.querySelector<HTMLSelectElement>('.work-more [aria-label="作品类型"]')!;
+  expect([...select.options].map(o=>o.value)).toEqual(['article','note']);expect(select.disabled).toBe(false);
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value')!.set!.call(select,'article');select.dispatchEvent(new Event('change',{bubbles:true}));});
+  expect(calls).toEqual([{id:'local',action:'work_fields',workType:'article',expectedFingerprint:'fp'}]);
+ }finally{vi.mocked(invoke).mockImplementation(original);}
 });

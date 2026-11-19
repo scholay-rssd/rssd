@@ -5,6 +5,8 @@ import type {WebsiteDraft} from '../publications/websitePublishing';
 import {WRITING_TYPES,writingTypes} from '../../scripts/agent/notebook.mjs';
 import {typeOfColumn} from '../../scripts/agent/destinations.mjs';
 import { trKey } from "../trKey";
+import {sectionPolicyFor} from '../../../scripts/work-fields.mjs';
+import type {ChosenWorkType} from '../../../contracts/work-types.mjs';
 
 const buildCategories=()=>sectionsForSite(ACTIVE_SITE).map(s=>s.name);
 export let CATEGORIES=buildCategories();
@@ -13,8 +15,9 @@ export type Category=typeof CATEGORIES[number];
 export type Location='local'|'cloud';
 export type PublicationState='public'|'unpublished'|'withdrawn';
 /** `type` is how the work was produced; `category` is the column it is used in at the destination. */
-export type Work={id:string;title:string;type:string;types?:string[];category:Category;sectionId?:string;locations:Location[];status:PublicationState|null;local?:WebsiteDraft;cloud?:WebsiteItem;external:Publication[];date:string};
-export type Filters={query:string;status:PublicationState[];location:Location[];type:string[];category:Category[];english?:'missing'};
+/** `workType` is the long article or note a work is, when known; `tags` are its own #tags. */
+export type Work={id:string;title:string;type:string;types?:string[];category:Category;sectionId?:string;workType?:ChosenWorkType;tags?:string[];locations:Location[];status:PublicationState|null;local?:WebsiteDraft;cloud?:WebsiteItem;external:Publication[];date:string};
+export type Filters={query:string;status:PublicationState[];location:Location[];type:string[];category:Category[];english?:'missing';workType?:ChosenWorkType};
 export const EMPTY_FILTERS:Filters={query:'',status:[],location:[],type:[],category:[]};
 const buildGroups=()=>([
   {key:'publication',label:'发布状态',sections:[
@@ -35,6 +38,15 @@ export const cloudIsPublic=(x:WebsiteItem)=>x.publishedVersion===undefined?true:
 export const localDraftDate=(draft?:WebsiteDraft)=>draft?.metadata?.date?.trim()||draft?.batchDate||'';
 export const missingEnglish=(w:Work)=>w.cloud?.english==='missing';
 export const workSummary=(work:Work)=>work.local?.metadata?.summary?.trim()||work.cloud?.summary||'';
+/** The types the current site's sections take; with only one there is nothing to show or filter. */
+export const siteWorkTypes=():ChosenWorkType[]=>[...new Set(sectionsForSite(ACTIVE_SITE).filter(s=>s.enabled!==false).flatMap(s=>sectionPolicyFor(ACTIVE_SITE,s.id).workTypes))];
+// A local manuscript states its type or takes its section's default. A cloud list entry carries no type, so a
+// cloud-only work shows one only when its section takes a single type. Records keep the type of their kind.
+function workTypeOfWork(w:Work):ChosenWorkType|undefined{
+  if(w.local?.recordKind||w.local?.id.startsWith('record-')||(!w.local&&w.cloud&&w.cloud.kind!=='news'))return undefined;
+  const policy=sectionPolicyFor(ACTIVE_SITE,w.sectionId);
+  return w.local?.metadata?.workType||(w.local||policy.workTypes.length===1?policy.defaultType:undefined);
+}
 
 // IDs and explicit publishing-package aliases identify a work. Similar titles
 // never merge unrelated manuscripts or third-party records.
@@ -51,6 +63,7 @@ export function collectWorks(local:WebsiteDraft[],snapshot:Snapshot,tasks:{artic
   for(const w of works.values()){
     w.sectionId=w.local?.sectionId||w.local?.metadata?.sectionId||w.cloud?.sectionId||(w.category==='未归栏'?undefined:sectionsForSite(ACTIVE_SITE).find(s=>s.name===w.category||s.aliases?.includes(w.category))?.id);
     if(w.sectionId)w.category=sectionName(w.sectionId)||w.category;
+    w.workType=workTypeOfWork(w);if(w.local?.metadata?.tags?.length)w.tags=w.local.metadata.tags;
     else if(w.local?.archiveCategory==='未归栏'||w.local?.canonicalPath.includes('/未归栏/'))w.category='未归栏';
     // Explicit skill snapshots survive saving; completed notebook tasks recover
     // pre-snapshot drafts by stable ID without rewriting their files or index.
@@ -72,6 +85,7 @@ export function matchesWork(w:Work,f:Filters,skip?:'status'|'location'|'type'|'c
     (skip==='type'||!f.type.length||f.type.some(type=>(w.types||[w.type]).includes(type)))&&
     (skip==='category'||!f.category.length||f.category.some(tag=>matchesSection(w,tag)))&&
     (!f.english||w.cloud?.english===f.english)&&
+    (!f.workType||w.workType===f.workType)&&
     [w.title,w.local?.canonicalPath,workSummary(w),...w.external.map(x=>x.platform+' '+x.title)].join(' ').toLocaleLowerCase().includes(f.query.trim().toLocaleLowerCase());
 }
 export function tagCount(works:Work[],f:Filters,group:'status'|'location'|'type'|'category',tag:string){return works.filter(w=>matchesWork(w,f,group)&&(group==='status'?w.status===tag:group==='type'?(w.types||[w.type]).includes(tag):group==='category'?matchesSection(w,tag):w.locations.includes(tag as Location))).length;}
