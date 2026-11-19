@@ -23,17 +23,14 @@ async function main(args){
   if(args[0]==='postiz')return tick();
   const controller=new AbortController();process.once('SIGINT',()=>controller.abort());process.once('SIGTERM',()=>controller.abort());const {watchPostiz}=await import('./publishing-flow-watch.mjs');return watchPostiz({directory:handoffDirectory,tick,signal:controller.signal});
  }
- let root,site,tokenFile,command,rest;
- if(args[0]==='root'){
-  root=resolve(args[1]);const declared=process.env.SCHOLAY_SITE_JSON?validateSite(JSON.parse(process.env.SCHOLAY_SITE_JSON)):null;if(declared)setSiteContext(declared);
-  site=siteForWorkspace(root);if(declared&&(declared.id!==site.id||declared.origin!==site.origin))throw Error('Background workspace identity mismatch');
-  tokenFile=process.env.SCHOLAY_TODAY_TOKEN_FILE||join(publicationDirectory(root),'publish-token');[command,...rest]=args.slice(2);
- }
- else{const {applySiteEnv}=await import('../desktop/scripts/agent/headless/env.mjs');const context=applySiteEnv(args[0]);({root,site,tokenFile}=context);[command,...rest]=args.slice(1);}
+ if(args[0]!=='root'||!args[1])throw Error('Usage: root <workspace> <command>; supervise <workspaces.json>; postiz <handoff>; cloud-sync <config.json>');
+ const root=resolve(args[1]);const declared=process.env.SCHOLAY_SITE_JSON?validateSite(JSON.parse(process.env.SCHOLAY_SITE_JSON)):null;if(declared)setSiteContext(declared);
+ let site=siteForWorkspace(root);if(declared&&(declared.id!==site.id||declared.origin!==site.origin))throw Error('Background workspace identity mismatch');
+ const tokenFile=process.env.SCHOLAY_TODAY_TOKEN_FILE||join(publicationDirectory(root),'publish-token'),[command,...rest]=args.slice(2);
  // An English capability is still verified at the server before any call.
  site={...site,languages:['zh-CN','en']};setSiteContext(site);
  if(command==='handoff-cloud'){
-  const [articleId,handoffPath,grantFile]=rest;if(!articleId||!handoffPath)throw Error('Usage: flow <site> handoff-cloud <articleId> <handoff> [exact-authorization.json]');
+  const [articleId,handoffPath,grantFile]=rest;if(!articleId||!handoffPath)throw Error('Usage: root <workspace> handoff-cloud <articleId> <handoff> [exact-authorization.json]');
   const receipt=await optional(join(publicationDirectory(root),articleId,'receipt.json'));
   const {handoffCloudContinuation}=await import('./publishing-flow-handoff.mjs');
   return handoffCloudContinuation({root,siteId:site.id,articleId,receipt,handoffDirectory:resolve(handoffPath),...(grantFile?{authorization:JSON.parse(await readFile(grantFile,'utf8'))}:{})});
@@ -54,7 +51,7 @@ async function main(args){
  if(command==='retry-translation'){
   const {retryTranslation}=await import('./publishing-flow-recovery.mjs');return retryTranslation({root,site,id:rest[0],readSource:website.readSource});
  }
- if(!['tick','drain','resume'].includes(command))throw Error('Usage: flow <site> configure <policy.json>|enqueue <sourceId>|tick|drain|resume|status|retry-translation <job>|accept-translation <job> <json> --reviewed; flow supervise <workspaces.json>; flow postiz <handoff>');
+ if(!['tick','drain','resume'].includes(command))throw Error('Usage: root <workspace> configure <policy.json>|enqueue <sourceId>|tick|drain|resume|status|retry-translation <job>|accept-translation <job> <json> --reviewed; supervise <workspaces.json>; postiz <handoff>');
  let planIds,reviewBeforeEnglishPlanIds;
  if(rest.length){
   planIds=[];for(let index=0;index<rest.length;index+=2){
@@ -69,12 +66,10 @@ async function main(args){
  const {recoverSubmissions,pendingSubmissions}=await import('./publishing-flow-recovery.mjs');
  const cloudExecutor=process.env.SCHOLAY_CLOUD_EXECUTOR==='1';
  const run=async()=>{
-  // The independent cloud service is managed by systemd and has a read-only
-  // code release. It neither uses nor locks the desktop updater runtime.
-  const release=process.env.SCHOLAY_DESKTOP_RUNTIME==='1'||cloudExecutor?async()=>{}:await (await import('../desktop/scripts/agent/headless/update.mjs')).runtimeLease();
   // The cloud queue owns Chinese submission recovery. Its continuation worker
   // consumes frozen plans only, without the desktop's editorial inventory.
-  try{if(!cloudExecutor&&planIds===undefined)await recoverSubmissions({root,site,tokenFile});return await todayTick({root,site,...website,translate:translateEdition,planIds,reviewBeforeEnglishPlanIds});}finally{await release();}
+  if(!cloudExecutor&&planIds===undefined)await recoverSubmissions({root,site,tokenFile});
+  return todayTick({root,site,...website,translate:translateEdition,planIds,reviewBeforeEnglishPlanIds});
  };
  if(command==='tick')return run();
  // Keep one small worker while links are pending. This process closes each

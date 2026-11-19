@@ -24,8 +24,7 @@ deployed and overview advertises `contracts.translateContinuation` with
 integer `version >= 1` and all seven guarantees, enqueue then run the
 official Center worker on the Owner-named device. `--agent` selects that
 device's Agent Registry ACP CLI (`codex`, `cursor`, …), not a cloud job
-id and not `SCHOLAY_CLOUD_EXECUTOR`. `rssd produce` and `cloud-sync` are
-not this path.
+id and not `SCHOLAY_CLOUD_EXECUTOR`. `cloud-sync` is not this path.
 
 ```sh
 rssd center enqueue-translate --work <existingWorkId>
@@ -95,4 +94,14 @@ any production command holds a lease. After work stops, rerun the update.
 The previous runtime remains on disk. `RSSD_RUNTIME_HOME` changes the install
 location; `RSSD_CENTER_HOME` changes the private device-state location. Keep
 them separate. Credentials, local drafts, jobs and receipts never enter the
-runtime package, and old Git-based private-repository auto-updates are not used.
+runtime package. Nothing updates itself: a new runtime takes effect only
+through `rssd update`.
+
+### From a source checkout
+
+`npm run headless -- <command>` runs the same entry, `standalone.mjs`, from a
+checkout of this repository, for example `writing-defaults` or `center`. It
+runs the checkout's code as it is; `install` and `version` need an extracted
+runtime. This is the only headless entry: the older per-site commands
+(`produce`, `queue`, `recover`, `jobs`, `flow <site>`, `agents`, `spaces`,
+`verify`, `briefs`) and their Git self-update have been removed.

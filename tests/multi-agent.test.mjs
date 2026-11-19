@@ -3,15 +3,13 @@ import assert from 'node:assert/strict';
 import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
-import {spawn,spawnSync} from 'node:child_process';
+import {spawn} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {AgentRegistry,executableCommand,validAuthUrl,AGENTS} from '../desktop/scripts/agent/agent-registry.mjs';
 import {agentModelOptions,configurationRequest,normalizeAgentTool} from '../desktop/scripts/agent/agent-configuration.mjs';
 import {flowPermission} from '../desktop/scripts/agent/workflow.mjs';
 import {TaskStore,taskInstructions} from '../desktop/scripts/agent/task-store.mjs';
-import {parseArgs} from '../desktop/scripts/agent/headless/produce.mjs';
 import {configurationRestoration} from '../desktop/scripts/agent/session-state.mjs';
-import {profiles} from '../scripts/site-config.mjs';
 import {AgentManager} from '../desktop/scripts/agent/agent-manager.mjs';
 
 test('concurrent logins share one pending launch and cancellation owns the spawned child',async t=>{
@@ -85,23 +83,6 @@ test('all ten workspace defaults stay isolated and old conversations bind to Cur
  const dir=join(store.dir(task.id),'cursor');await mkdir(dir,{recursive:true});await writeFile(join(dir,'session.json'),JSON.stringify({root:store.root,sessionId:'existing',history:[{role:'user',text:'earlier'}]}));
  await assert.rejects(store.selectAgent(task.id,'claude'),/绑定原智能体/);assert.equal(await readFile(join(root,'article.md'),'utf8'),'正文与自定义模板保留');
 });
-test('headless parser supports explicit agents and rejects malformed selection',()=>{
- assert.equal(parseArgs(['today','news','observation','brief.txt','--agent','codex','--no-publish']).agentId,'codex');
- assert.throws(()=>parseArgs(['today','news','observation','brief.txt','--agent']));
- assert.throws(()=>parseArgs(['today','news','observation','brief.txt','--agent','../../bad']));
-});
-
-test('headless CLI lists, checks and sets an isolated space default without a display or task',async t=>{
- const root=await directory(t),site=profiles.find(p=>p.id==='pets'),space=join(root,'spaces',site.spaceId);
- await mkdir(join(space,'workspace'),{recursive:true});await writeFile(join(space,'site.json'),JSON.stringify(site));
- const registry=new AgentRegistry(join(root,'global','agents.json'));await registry.save({id:'custom-fixture',name:'Fixture',command:process.execPath,args:[resolve('tests/fixtures/agent/generic.mjs')]});
- const env={...process.env,DISPLAY:'',WAYLAND_DISPLAY:'',SCHOLAY_HEADLESS_SKIP_UPDATE:'1',SCHOLAY_SPACES_ROOT:join(root,'spaces'),SCHOLAY_AUTH_DIR:join(root,'auth'),SCHOLAY_HEADLESS_HOME:join(root,'headless'),SCHOLAY_GLOBAL_APP_DATA:join(root,'global')};delete env.SCHOLAY_AUTH_FILE;delete env.SCHOLAY_SITE_CONFIG;
- const run=(action,...args)=>{const result=spawnSync(process.execPath,[resolve('desktop/scripts/agent/headless/cli.mjs'),'agents','pets',action,...args],{env,encoding:'utf8',timeout:12000});assert.equal(result.status,0,result.stderr);return result.stdout;};
- assert.equal(JSON.parse(run('list')).defaultAgentId,'cursor');assert.equal(JSON.parse(run('check','custom-fixture')).protocolVersion,1);
- run('default','custom-fixture');assert.equal(JSON.parse(run('list')).defaultAgentId,'custom-fixture');
- assert.equal((await new TaskStore(join(space,'workspace')).list()).length,0);
-});
-
 test('real bridge uses a non-Cursor ACP agent: no Auto, model switching, scoped tools, resume and cancellation',async t=>{
  const root=await mkdtemp(join(tmpdir(),'today-multi-agent-'));await mkdir(join(root,'articles'));await mkdir(join(root,'_ops/inventory'),{recursive:true});await writeFile(join(root,'_ops/inventory/article-index.json'),JSON.stringify({articles:{},annexColumns:[]}));
  const global=join(root,'global');const registry=new AgentRegistry(join(global,'agents.json'));await registry.save({id:'custom-fixture',name:'Fixture',command:process.execPath,args:[resolve('tests/fixtures/agent/generic.mjs')]});

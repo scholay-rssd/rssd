@@ -8,13 +8,12 @@ import {TaskStore} from '../desktop/scripts/agent/task-store.mjs';
 import {openNotebook,exportNotebook} from '../desktop/scripts/agent/notebook-store.mjs';
 import {emptyWritingContext,migrateSourcesToContext,validateWritingContext,publicContextView} from '../desktop/scripts/agent/writing-context.mjs';
 import {loadWritingContext,saveWritingContext,mountResource,unmountResource,adjustMountScope,searchMount,readMount,citeEvidence,freezeWritingContext,restoreBoundContext,assertContextScope,exportContextPath,applyMountList} from '../desktop/scripts/agent/writing-context-store.mjs';
-import {parseMountSpec,parseProduceMounts,parseBriefMounts} from '../desktop/scripts/agent/resources/mount-spec.mjs';
+import {parseMountSpec} from '../desktop/scripts/agent/resources/mount-spec.mjs';
 import {parseDocument,sliceDocument} from '../desktop/scripts/agent/resources/parse-document.mjs';
 import {zip} from '../desktop/scripts/agent/resources/zip.mjs';
 import {resolveGithubMount,readGithubFile} from '../desktop/scripts/agent/resources/github.mjs';
 import {readPublicPage,webSearchCandidate} from '../desktop/scripts/agent/resources/web.mjs';
 import {resolveTimeRange,resolveRssMount,queryRssArticles} from '../desktop/scripts/agent/resources/rss.mjs';
-import {parseArgs} from '../desktop/scripts/agent/headless/produce.mjs';
 import {publicationDirectory} from '../scripts/site-config.mjs';
 
 const blank=()=>({version:2,title:'短文',kind:'article',skills:[],blocks:[{id:'body',type:'paragraph',text:'正式正文足够长，用于导出。',state:'ready',sourceIds:[]}],groups:[],sources:[],fields:{},assets:{},mounts:{templates:[],brands:[]}});
@@ -32,15 +31,6 @@ test('public page reads reject redirects to local services before following them
  const calls=[];
  await assert.rejects(readPublicPage('https://example.org/article',async(url,options)=>{calls.push(url);assert.equal(options.redirect,'manual');return new Response(null,{status:302,headers:{location:'http://127.0.0.1/private'}});}),/无法读取网页/);
  assert.deepEqual(calls,['https://example.org/article']);
-});
-
-test('headless agent selection and resource mounts coexist across all site mappings',async()=>{
- const {profiles}=await import('../scripts/site-config.mjs');
- const {spaceIdOf}=await import('../desktop/scripts/agent/headless/env.mjs');
- for(const profile of profiles)assert.equal(spaceIdOf(profile.id),profile.spaceId);
- assert.equal(spaceIdOf('today'),'academic');
- const args=parseArgs(['pets','stories','essay','brief.txt','--agent','codex','--mount','github:acme/tools@v1,dirs=docs','--allow-network','--no-publish']);
- assert.equal(args.agentId,'codex');assert.equal(args.mounts.length,1);assert.equal(args.allowNetwork,true);assert.equal(args.noPublish,true);
 });
 
 async function workspace(t){
@@ -231,25 +221,13 @@ test('scope checks reject the wrong mount version',async t=>{
  assert.match(ok.evidence.text,/one/);
 });
 
-test('headless mount specs parse CLI flags and brief frontmatter',async()=>{
+test('mount specs parse RSS, file and GitHub sources',()=>{
  assert.deepEqual(parseMountSpec('rss:group=学界,range=30d'),{kind:'rss',articleId:undefined,group:'学界',folderId:undefined,feedId:undefined,starred:false,range:'30d',query:undefined,role:undefined});
  assert.equal(parseMountSpec('file:/tmp/book.epub,chapters=1-3').chapters,'1-3');
  assert.deepEqual(parseMountSpec('github:acme/tools@v1,dirs=docs|src'),{kind:'github',repo:'acme/tools',ref:'v1',dirs:['docs','src'],role:undefined});
- const parsed=parseProduceMounts(['today','observations','observation','brief.txt','--allow-network','--mount','rss:group=学界,range=7d']);
- assert.equal(parsed.allowNetwork,true);
- assert.equal(parsed.mounts[0].group,'学界');
- assert.deepEqual(parsed.argv,['today','observations','observation','brief.txt']);
- const args=parseArgs(['today','observations','observation','brief.txt','--no-publish','--mount','github:acme/tools@v1,dirs=docs']);
- assert.equal(args.noPublish,true);
- assert.equal(args.mounts[0].repo,'acme/tools');
- const brief=parseBriefMounts('---\nmount: rss:group=学界,range=30d\nmount: github:acme/tools@v1,dirs=docs\nallow-network: true\n---\n写一篇综述\n');
- assert.equal(brief.text,'写一篇综述\n');
- assert.equal(brief.allowNetwork,true);
- assert.equal(brief.mounts[0].group,'学界');
- assert.equal(brief.mounts[1].repo,'acme/tools');
 });
 
-test('headless produce mounts pin RSS collections and GitHub commits',async t=>{
+test('mount lists pin RSS collections and GitHub commits',async t=>{
  const {root,store,task}=await fixture(t);
  const db=join(root,'papr.db');
  seedRss(db);
@@ -260,8 +238,8 @@ test('headless produce mounts pin RSS collections and GitHub commits',async t=>{
   if(url.includes('/git/trees/'+'e'.repeat(40)))return {ok:true,status:200,json:async()=>({truncated:false,tree:[{path:'docs/guide.md',type:'blob',sha:'f'.repeat(40),size:20},{path:'src/main.rs',type:'blob',sha:'1'.repeat(40),size:8}]})};
   throw Error('unexpected '+url);
  };
- const spec=parseProduceMounts(['today','observations','observation','brief.txt','--mount','rss:group=学界,range=30d','--mount','github:acme/tools@v1,dirs=docs']);
- const mounted=await applyMountList(store,task,spec.mounts,{fetcher});
+ const mounts=['rss:group=学界,range=30d','github:acme/tools@v1,dirs=docs'].map(parseMountSpec);
+ const mounted=await applyMountList(store,task,mounts,{fetcher});
  assert.equal(mounted.context.mounts.length,2);
  const rss=mounted.context.mounts.find(m=>mounted.context.resources.find(r=>r.id===m.resourceId)?.kind==='rss');
  const github=mounted.context.mounts.find(m=>mounted.context.resources.find(r=>r.id===m.resourceId)?.kind==='github');

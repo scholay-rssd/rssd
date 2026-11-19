@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {profiles} from '../scripts/site-config.mjs';
 import {migrateRenamedSpaces,migrateCenterCache} from '../scripts/space-rename.mjs';
-import {canonicalSiteId} from '../desktop/scripts/agent/headless/env.mjs';
+import {renamedSiteId} from '../contracts/site-renames.mjs';
 import {spaceContext} from '../scripts/space-registry.mjs';
 
 const json=file=>JSON.parse(readFileSync(file,'utf8'));
@@ -79,8 +79,7 @@ test('the Center connection cache follows a rename even after the space already 
   assert.deepEqual(again.map(r=>[r.files,r.stale]),[[0,['outbox/pending.json']]],'a second run changes nothing');
 });
 
-test('headless commands accept the retired site ID',()=>{
-  assert.equal(canonicalSiteId('lingxi'),'xsime');
-  assert.equal(canonicalSiteId('xsime'),'xsime');
-  assert.equal(canonicalSiteId('today'),'scholay-today');
+test('a retired site ID resolves to its new name and a current ID is unchanged',()=>{
+  assert.equal(renamedSiteId('lingxi'),'xsime');
+  assert.equal(renamedSiteId('xsime'),'xsime');
 });

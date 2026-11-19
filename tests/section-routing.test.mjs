@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SITE_SECTIONS,sectionsForSite,sectionWritingMode,validateSectionId} from '../contracts/site-sections.mjs';
-import {assertHeadlessTarget} from '../desktop/scripts/agent/headless/target.mjs';
 import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -19,27 +18,12 @@ test('all sites declare writing defaults on stable sections without a four-secti
  assert.throws(()=>sectionWritingMode('pets','history'),/同步栏目配置/);
 });
 
-test('new sections and reordered defaults cannot retarget a headless task already in progress',()=>{
+test('new sections and reordered defaults keep an existing section ID valid',()=>{
  const siteId='scholay-today',original=SITE_SECTIONS[siteId];
- const task={siteId,mode:'opensource',notebook:{sectionId:'resources',kind:'openSource',mounts:{skills:[{id:'original',content:'saved version'}]}}};
- const before=JSON.stringify(task),target={siteId,sectionId:'resources',mode:'opensource'};
  try{
   SITE_SECTIONS[siteId]=[{id:'new-section',name:'新增栏目',defaultMode:'essay'},...[...original].reverse().map(s=>({...s,defaultMode:'observation'}))];
   assert.equal(validateSectionId('resources',{id:siteId}),'resources');
-  assert.equal(assertHeadlessTarget(task,target),task);
-  assert.equal(JSON.stringify(task),before);
  }finally{SITE_SECTIONS[siteId]=original;}
-});
-
-test('resume and publication stop on changed site, section, mode or record kind without mutating saved work',()=>{
- const target={siteId:'scholay-today',sectionId:'history',mode:'history'};
- const task={siteId:target.siteId,mode:'history',notebook:{sectionId:'history',kind:'history',title:'原稿'}};
- for(const other of [{...target,siteId:'pets'},{...target,sectionId:'calendar'},{...target,mode:'calendar'}])assert.throws(()=>assertHeadlessTarget(task,other),/does not match/);
- assert.throws(()=>assertHeadlessTarget({...task,notebook:{...task.notebook,kind:'year'}},target),/record kind/);
- assert.throws(()=>assertHeadlessTarget({...task,notebook:{...task.notebook,sectionId:undefined}},target),/section/);
- assert.throws(()=>assertHeadlessTarget({...task,notebook:undefined},target),/section/);
- assert.doesNotThrow(()=>assertHeadlessTarget({...task,notebook:undefined},target,{allowMissingNotebook:true}));
- assert.equal(task.notebook.title,'原稿');
 });
 
 test('library snapshots keep the record type separate from the renamed category and chosen writing skill',async t=>{

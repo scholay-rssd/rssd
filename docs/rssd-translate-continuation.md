@@ -112,7 +112,7 @@ Fail-closed (`409 contract_unavailable`): missing key, `true`, `version: 0`, str
 
 Wiring (not a vendor model run):
 
-1. Installed CLI `rssd center …` → `desktop/scripts/agent/headless/cli.mjs` lines 14–18 imports `centerCommand`.
+1. Installed CLI `rssd center …` → `desktop/scripts/agent/headless/standalone.mjs` imports `centerCommand`.
 2. Enqueue only: `center.mjs` 35–39 → `enqueueTranslateContinuation` (`scripts/rssd-translate-continuation.mjs`). No claim.
 3. Official work: `center.mjs` 13 and 53–62 pass `producer:CENTER_WORK_PRODUCER` where `CENTER_WORK_PRODUCER === produceCenterEdition`. Desktop daemon `desktop/scripts/rssd-center.mjs` 133–187 defaults the same producer.
 4. Turn: `scripts/rssd-production-worker.mjs` claim 201, heartbeat `running` 241–242, EN-only locales 245–246, `producer(...)` 268, `requireTranslatePacket` 280/294, durable `en.packet.json` 282, outbox enqueue/flush 296–297, heartbeat `idle`/`blocked` 304, return `accepted`/`pending` 305, failure `blocked` + `failure.json` 307–309.

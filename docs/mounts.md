@@ -54,7 +54,6 @@
 可用范围：
 
 - 桌面端交互写作：可用。
-- 无人值守的单篇产出（`desktop/scripts/agent/headless/produce.mjs` 的 `--mount`）：可用。
 - 选题入池：热榜可用。`rssd center pool-leads` 列出热榜词作为线索（`scripts/rssd-topic-leads.mjs`），
   选题连同线索用 `rssd center pool-add` 入池（`scripts/rssd-topic-pool.mjs`）。
 - 调度器的即时选题（`scripts/rssd-multisite-*.mjs`）：不可用。它要求每个题在选题时就带已核验并冻结的

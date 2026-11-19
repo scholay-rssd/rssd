@@ -113,11 +113,10 @@ test('missing, altered, revoked, or unbound cloud credentials never fall back to
  assert(f.calls.length>0);assert(f.calls.every(call=>call.token===tokens.bob));
 });
 
-test('cloud flow CLI resumes without importing or leasing the desktop updater runtime',async t=>{
+test('cloud flow CLI resumes a workspace with no pending jobs',async t=>{
  const f=await fixture(t);await writeFile(join(f.root,'.site.json'),JSON.stringify(site));await mkdir(join(f.root,'articles'));await atomic(join(f.root,'_ops/inventory/article-index.json'),{articles:{},annexColumns:site.columns});
- const hook="import {registerHooks} from 'node:module'; registerHooks({resolve(specifier,context,nextResolve){if(specifier.endsWith('/headless/update.mjs'))throw Error('Cloud must not load the desktop updater');return nextResolve(specifier,context);}});";
  const env={...process.env,SCHOLAY_CLOUD_EXECUTOR:'1',SCHOLAY_SITE_JSON:JSON.stringify(site),SCHOLAY_EDITORIAL_ROOT:f.root,SCHOLAY_APP_DATA:f.root,SCHOLAY_SITE_CONFIG:join(f.root,'.site.json'),SCHOLAY_SITE_ID:site.id};delete env.SCHOLAY_DESKTOP_RUNTIME;
- const result=await promisify(execFile)(process.execPath,['--import','data:text/javascript,'+encodeURIComponent(hook),'scripts/publishing-flow-cli.mjs','root',f.root,'resume'],{cwd:new URL('..',import.meta.url),env,timeout:10000});
+ const result=await promisify(execFile)(process.execPath,['scripts/publishing-flow-cli.mjs','root',f.root,'resume'],{cwd:new URL('..',import.meta.url),env,timeout:10000});
  assert.deepEqual(JSON.parse(result.stdout),{modelCalls:0,jobs:[]});assert.equal(result.stderr,'');
 });
 

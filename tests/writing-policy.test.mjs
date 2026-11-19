@@ -10,8 +10,8 @@ import {ARTICLE_WRITING_POLICY,ARTICLE_WRITING_INSTRUCTIONS} from '../contracts/
 
 test('external agents can read the current writing policy without initializing a workspace or runtime',async t=>{
  const root=await mkdtemp(join(tmpdir(),'writing-policy-'));t.after(()=>rm(root,{recursive:true,force:true}));
- const cli=fileURLToPath(new URL('../desktop/scripts/agent/headless/cli.mjs',import.meta.url));
- const env={...process.env,SCHOLAY_HEADLESS_HOME:join(root,'runtime'),SCHOLAY_AUTH_DIR:join(root,'auth'),SCHOLAY_SPACES_ROOT:join(root,'spaces')};
+ const cli=fileURLToPath(new URL('../desktop/scripts/agent/headless/standalone.mjs',import.meta.url));
+ const env={...process.env,RSSD_RUNTIME_HOME:join(root,'runtime'),RSSD_CENTER_HOME:join(root,'center')};
  const result=spawnSync(process.execPath,[cli,'writing-policy'],{cwd:root,env,encoding:'utf8',timeout:10000});
  assert.equal(result.status,0,result.stderr);
  const policy=JSON.parse(result.stdout);
