@@ -29,7 +29,7 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
     const result=await saveCenterConnection(home,{origin:args[0],token:(await readFile(tokenFile,'utf8')).trim()});emit(result);return result;
   }
   if(!command||command==='help'||command==='--help'){
-    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id] [--section id] [--states a,b] [--type article|note] [--since iso] [--search text] [--limit n] [--offset n] [--total]','withdraw --id demandId','pool-leads [--platform id] [--query text] [--limit n]','pool-add --workspace id --section id --file topics.json [--locales zh-CN,en] [--dry-run]','store-en --work workId [--revision n]','enqueue-translate --work workId [--revision n]','claim --workspace id [--section id] [--id demandId] [--store-only]','submit <packet.json> [--store-only]','recover [requestId] [--retry]','retry-website --workspace id --request-key key --job-id id','work --agent id --workspace id [--section id] [--id demandId] [--once] [--resume] [--store-only]']});return;
+    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id] [--section id] [--states a,b] [--type article|note] [--since iso] [--search text] [--limit n] [--offset n] [--total]','withdraw --id demandId','personas --pack persona-pack.json [--check]','pool-leads [--platform id] [--query text] [--limit n]','pool-add --workspace id --section id --file topics.json [--locales zh-CN,en] [--dry-run]','store-en --work workId [--revision n]','enqueue-translate --work workId [--revision n]','claim --workspace id [--section id] [--id demandId] [--store-only]','submit <packet.json> [--store-only]','recover [requestId] [--retry]','retry-website --workspace id --request-key key --job-id id','work --agent id --workspace id [--section id] [--id demandId] [--once] [--resume] [--store-only]']});return;
   }
   const {client,identity}=await loadCenterConnection(home),outbox=new CenterOutbox({directory:join(home,'outbox'),client});
   if(command==='status'){const entries=await outbox.list();const result={origin:client.origin,identity,outbox:entries.map(e=>({requestId:e.requestId,workId:e.packet.workId,state:e.state,error:e.error,receipt:e.receipt}))};emit(result);return result;}
@@ -43,6 +43,13 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
   if(command==='withdraw'){
     const id=flag('--id');if(!id)throw Error('Usage: center withdraw --id <queued demandId>');
     const result=await client.changeDemand(id,{action:'cancel'});emit(result);return result;
+  }
+  if(command==='personas'){
+    // The roster of a persona pack (ID and name only) and, with --check, the Center's section bindings against it.
+    const pack=flag('--pack');if(!pack)throw Error('Usage: center personas --pack <persona-pack.json> [--check]');
+    const {readPersonaRoster,checkPersonaBindings}=await import('../../../../scripts/rssd-persona-roster.mjs');
+    const roster=await readPersonaRoster(resolve(pack));
+    const result=args.includes('--check')?{roster,bindings:checkPersonaBindings(await client.registry(),roster)}:{roster};emit(result);return result;
   }
   if(command==='pool-leads'){
     // Hot-board terms as topic leads. They suggest topics; they are not sources.
