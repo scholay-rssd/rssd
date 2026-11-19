@@ -57,7 +57,14 @@ Normal uploads cannot revive a withdrawn/deleted identity; use explicit restore.
 The action sequence is separate from the article revision. Receipts include
 both, and replaying a request returns its original receipt without another build.
 The SQLite upgrade is additive and retains existing packet hashes. A failed
-build or public verification leaves the previous release active. Successful
+build or public verification leaves the previous release active.
+
+Every build renders the whole site, so one build takes the requests that queued
+up meanwhile: up to 20, the oldest first, at most one per work (a later action
+on the same work waits for the next build). Each request gets its own receipt
+naming the shared release, whose `release.json` lists them in `rssd.requestIds`.
+If such a build fails, the same requests are built again one at a time, so only
+the request at fault is marked failed. Successful
 removal requires the original article URL to return 404/410 and leaves a minimal
 `rssd-content/KEY.json` tombstone for verifiable recovery. Keep the tombstone:
 later builds must continue masking the original baseline article.

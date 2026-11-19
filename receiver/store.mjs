@@ -95,15 +95,36 @@ export class ReceiverStore {
       return this.receipt(value.requestId);
     });
   }
-  claim(){return this.transaction(()=>{
-    const row=this.db.prepare("SELECT * FROM requests WHERE state='building' ORDER BY created,operation_sequence,id LIMIT 1").get()||this.db.prepare("SELECT r.* FROM requests r WHERE r.state='queued' AND NOT EXISTS (SELECT 1 FROM requests previous WHERE previous.work_key=r.work_key AND previous.operation_sequence<r.operation_sequence AND previous.state IN ('queued','building')) ORDER BY r.created,r.id LIMIT 1").get();
-    if(!row)return null;const resume=row.state==='building';
-    this.db.prepare("UPDATE requests SET state='building' WHERE id=?").run(row.id);
-    const packet=JSON.parse(row.payload),published=this.db.prepare('SELECT * FROM published').all(),all=published.filter(x=>x.work_key!==row.work_key).map(x=>JSON.parse(x.payload));
-    const previousPackets=published.flatMap(x=>x.previous_payload?[JSON.parse(x.previous_payload)]:x.work_key===row.work_key&&!visible(packet)?[JSON.parse(x.payload)]:[]);
-    return {id:row.id,packet,packets:[...all,packet],previousPackets,operationSequence:row.operation_sequence,resume};
+  /** Takes up to `limit` requests for one build. Requests left building by an interrupted build come back
+   * together, on their own, so the build can recognise the release it already activated. Otherwise the oldest
+   * queued requests are taken, at most one per work: a later action on the same work waits for the next build. */
+  claim({limit=1}={}){return this.transaction(()=>{
+    let rows=this.db.prepare("SELECT * FROM requests WHERE state='building' ORDER BY created,operation_sequence,id LIMIT ?").all(limit);
+    const resume=rows.length>0;
+    if(!resume)rows=this.db.prepare("SELECT r.* FROM requests r WHERE r.state='queued' AND NOT EXISTS (SELECT 1 FROM requests previous WHERE previous.work_key=r.work_key AND previous.operation_sequence<r.operation_sequence AND previous.state IN ('queued','building')) ORDER BY r.created,r.id LIMIT ?").all(limit);
+    if(!rows.length)return null;
+    for(const row of rows)this.db.prepare("UPDATE requests SET state='building' WHERE id=?").run(row.id);
+    return this.job(rows,resume);
   });}
-  finish(id,receipt){return this.transaction(()=>{
+  /** A build of one request that is already building, for when the batch it was claimed in failed. */
+  buildingJob(id){
+    const row=this.db.prepare("SELECT * FROM requests WHERE id=? AND state='building'").get(id);
+    if(!row)p.fail('Request is not building',409);
+    return this.job([row],false);
+  }
+  /** Every published packet with the claimed ones in place of their works' current packets. `id`, `packet` and
+   * `operationSequence` name the first request; `batch` lists all of them in claim order. */
+  job(rows,resume){
+    const batch=rows.map(row=>({id:row.id,packet:JSON.parse(row.payload),operationSequence:row.operation_sequence})),claimed=new Map(rows.map((row,i)=>[row.work_key,batch[i]]));
+    const published=this.db.prepare('SELECT * FROM published').all(),others=published.filter(x=>!claimed.has(x.work_key)).map(x=>JSON.parse(x.payload));
+    const previousPackets=published.flatMap(x=>x.previous_payload?[JSON.parse(x.previous_payload)]:claimed.has(x.work_key)&&!visible(claimed.get(x.work_key).packet)?[JSON.parse(x.payload)]:[]);
+    const [first]=batch;
+    return {id:first.id,packet:first.packet,packets:[...others,...batch.map(item=>item.packet)],previousPackets,operationSequence:first.operationSequence,resume,batch};
+  }
+  finish(id,receipt){return this.transaction(()=>this.settle(id,receipt));}
+  /** Records the receipts of one build's requests together. */
+  finishAll(receipts){return this.transaction(()=>receipts.map(receipt=>this.settle(receipt.requestId,receipt)));}
+  settle(id,receipt){
     const row=this.db.prepare('SELECT * FROM requests WHERE id=?').get(id);
     if(!row||row.state!=='building')p.fail('Request is not building',409);
     const packet=JSON.parse(row.payload);
@@ -112,7 +133,7 @@ export class ReceiverStore {
     this.db.prepare('INSERT INTO published(work_key,revision,payload,operation_sequence,previous_payload) VALUES(?,?,?,?,?) ON CONFLICT(work_key) DO UPDATE SET revision=excluded.revision,payload=excluded.payload,operation_sequence=excluded.operation_sequence,previous_payload=excluded.previous_payload WHERE excluded.operation_sequence>published.operation_sequence').run(row.work_key,row.revision,row.payload,row.operation_sequence,previousPayload||null);
     this.db.prepare("UPDATE requests SET state='success',receipt=?,error=NULL WHERE id=?").run(JSON.stringify(receipt),id);
     return this.receipt(id);
-  });}
+  }
   fail(id,message){this.db.prepare("UPDATE requests SET state='failed',error=? WHERE id=? AND state='building'").run(String(message).slice(0,1500),id);return this.receipt(id);}
   retry(id){return this.transaction(()=>{
     const row=this.db.prepare('SELECT * FROM requests WHERE id=?').get(id);if(!row)p.fail('Request not found',404);

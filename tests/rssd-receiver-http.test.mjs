@@ -101,6 +101,44 @@ test('HTTP receiver builds bilingual pages and applies recoverable withdraw/dele
   assert.equal(recovered.state,'success',recovered.error);assert.equal(recovered.release,activated.release);assert.equal(recovered.operationSequence,6);
 });
 
+test('queued articles share one site build, a failed batch is rebuilt one article at a time, and a lost acknowledgement is recovered',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'rssd-http-batch-')),base=join(dir,'public'),current=join(base,'current');
+  const server=createServer(async(req,res)=>{try{
+    const pathname=new URL(req.url,'http://localhost').pathname,path=resolve(current,'.'+pathname+(pathname.endsWith('/')?'index.html':''));
+    if(!path.startsWith(current+sep))throw Error('Invalid path');const data=await readFile(path);res.writeHead(200,{'Content-Type':path.endsWith('.json')?'application/json':'text/plain'});res.end(data);
+  }catch{res.writeHead(404);res.end();}});
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  const site={...profiles.find(x=>x.id==='metho'),origin:'http://127.0.0.1:'+server.address().port,languages:['zh-CN','en']};
+  const token='fixture-site-credential-not-real-1234567890',sectionId=sectionsForSite(site)[0].id,builds=[];
+  const receiver=await createReceiver({config:{home:join(dir,'state'),source:artifact,sites:[{site,publicRoot:base,tokenHash:p.hash(token)}]},
+    build:options=>{builds.push(options.job.batch.map(item=>item.id));if(options.job.batch.some(item=>item.id==='poison'))throw Error('Simulated broken article');return buildAndActivate(options);}});
+  t.after(async()=>{await receiver.app.close();await new Promise(r=>server.close(r));await rm(dir,{recursive:true,force:true});});
+  const endpoint='/api/rssd-receiver/v1/sites/metho/submissions',headers={authorization:'Bearer '+token};
+  const article=id=>({version:1,requestId:id,siteId:site.id,workspaceId:site.spaceId,sectionId,workId:'work-'+id,locale:'en',revision:1,contentHash:'a'.repeat(64),route:'/en/news/'+id+'/',content:{locale:'en',title:'Article '+id,bodyMarkdown:'Body of '+id+'.',metadata:{date:'2026-11-19'}}});
+  const submit=async id=>assert.equal((await receiver.app.inject({method:'POST',url:endpoint,headers,payload:article(id)})).json().state,'queued');
+  const receiptOf=async id=>(await receiver.app.inject({url:endpoint+'/'+id,headers})).json();
+  for(const id of ['first','second','third'])await submit(id);
+  await receiver.tick();
+  assert.deepEqual(builds,[['first','second','third']]);
+  const receipts=await Promise.all(['first','second','third'].map(receiptOf));
+  for(const r of receipts){assert.equal(r.state,'success',r.error);assert.equal(r.release,receipts[0].release);}
+  for(const id of ['first','second','third'])assert.match(await (await fetch(site.origin+'/en/news/'+id+'/')).text(),new RegExp('Body of '+id));
+  assert.deepEqual(JSON.parse(await readFile(join(current,'release.json'),'utf8')).rssd.requestIds,['first','second','third']);
+  // One broken article fails only itself: the batch is built again one article at a time.
+  builds.length=0;await submit('good');await submit('poison');await receiver.tick();
+  assert.deepEqual(builds,[['good','poison'],['good'],['poison']]);
+  assert.equal((await receiptOf('good')).state,'success');
+  const poisoned=await receiptOf('poison');assert.equal(poisoned.state,'failed');assert.match(poisoned.error,/Simulated broken article/);
+  assert.match(await (await fetch(site.origin+'/en/news/good/')).text(),/Body of good/);assert.equal((await fetch(site.origin+'/en/news/poison/')).status,404);
+  // A batch activated before its acknowledgement was written is recognised instead of rebuilt.
+  await submit('fourth');await submit('fifth');
+  const entry=receiver.sites.get(site.id),interrupted=entry.store.claim({limit:20});
+  const activated=await buildAndActivate({job:interrupted,site:entry.site,source:artifact,base,baseline:entry.baseline,media:entry.media});
+  await receiver.tick();
+  for(const id of ['fourth','fifth']){const r=await receiptOf(id);assert.equal(r.state,'success',r.error);assert.equal(r.release,activated.release);}
+  assert.equal(JSON.parse(await readFile(join(current,'release.json'),'utf8')).release,activated.release);
+});
+
 test('public release permissions reject links without touching their targets', {skip:process.platform==='win32'},async t=>{
  const dir=await mkdtemp(join(tmpdir(),'rssd-public-modes-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const stage=join(dir,'stage'),outside=join(dir,'private');await mkdir(stage);await writeFile(outside,'private',{mode:0o600});await chmod(outside,0o600);
