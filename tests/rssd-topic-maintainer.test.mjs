@@ -75,3 +75,22 @@ test('rejects stale/incomplete catalogs and catches punctuation or near-duplicat
   assert.equal(similarTopic('失访偏差：怎样影响结果？','失访偏差 怎样影响结果'),true);
   assert.equal(similarTopic('缺失数据的多重插补','随机化与因果推断'),false);
 });
+test('a topic Center refuses as a repeat is closed as rejected and never sent again',async t=>{
+  const f=await fixture(t);let posts=0;
+  f.client.createDemand=async()=>{posts++;throw Object.assign(Error('This topic repeats the work w1 (倾向得分入门): same-subject'),{status:409,code:'topic_repeat'});};
+  const result=await replenishTopics(f);
+  assert.deepEqual(result.map(x=>x.status),['rejected']);assert.equal(posts,1);assert.equal(f.rows.length,0);
+  const saved=JSON.parse(await readFile(join(f.home,'topic-maintainer.json'),'utf8')).entries;
+  assert.equal(saved.length,1);assert.equal(saved[0].status,'rejected');assert.equal(saved[0].reason,'topic_repeat');assert.match(saved[0].detail,/same-subject/);
+  // The next run has nothing pending to replay; the rejected title still counts as taken.
+  f.client.createDemand=async()=>{throw Error('must not be sent again');};
+  await assert.rejects(replenishTopics(f),/duplicates/);assert.equal(posts,1);
+});
+test('a saved pending topic refused as a repeat on replay is closed, and another conflict still stops',async t=>{
+  const f=await fixture(t);
+  f.client.createDemand=async()=>{throw Error('response lost');};
+  await assert.rejects(replenishTopics(f),/response lost/);
+  f.client.createDemand=async()=>{throw Object.assign(Error('This topic repeats the open demand d1: same-topic-key'),{status:409,code:'topic_repeat'});};
+  assert.deepEqual((await replenishTopics(f)).map(x=>x.status),['rejected']);
+  assert.equal(JSON.parse(await readFile(join(f.home,'topic-maintainer.json'),'utf8')).entries[0].status,'rejected');
+});

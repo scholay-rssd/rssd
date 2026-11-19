@@ -82,7 +82,7 @@ test('a receiver builds the note page and the card page, and refuses a note wher
  const notePage=await page(note.route),articlePage=await page(article.route),cardPage=await page('/news/maine-coon/cards/');
  assert.match(notePage,/<article class="rssd-article rssd-note-article"/);
  assert.match(notePage,/<a href="\/news\/maine-coon\/">改写自《缅因猫》<\/a>/);
- assert.match(notePage,/<p class="rssd-topics" data-section="daily-cat"><a href="\/archive\/daily-cat\/">#每日一猫<\/a><span>#缅因猫<\/span><span>#长毛猫<\/span><\/p>/);
+ assert.match(notePage,/<p class="rssd-tags" data-section="daily-cat"><a href="\/archive\/daily-cat\/">#每日一猫<\/a><span>#缅因猫<\/span><span>#长毛猫<\/span><\/p>/);
  assert.match(articlePage,/<a class="rssd-cards-link" href="\/news\/maine-coon\/cards\/">/);
  assert.match(articlePage,/<a href="\/news\/maine-coon-signs\/">图文笔记《缅因猫的 5 个特征》<\/a>/);
  assert.equal((cardPage.match(/<figure class="rssd-note-slide"/g)||[]).length,2);

@@ -37,6 +37,10 @@ async function all(client, method, workspaceId) {
   }
   throw Error('Center history exceeds supported pagination');
 }
+// Center refused the topic as a repeat of a work or an open demand and stored nothing. The entry is closed
+// as rejected, so it is neither retried nor mistaken for an accepted demand.
+const repeatRefusal = error => error?.status===409 && error.code==='topic_repeat';
+function reject(entry, error) { entry.status='rejected'; entry.reason='topic_repeat'; entry.detail=String(error.message||'').slice(0,500); entry.rejectedAt=new Date().toISOString(); }
 function validateProposal(topic) {
   if (!topic || typeof topic.title !== 'string' || !topic.title.trim() || topic.title.length > 400 || typeof topic.brief !== 'string' || !topic.brief.trim() || topic.brief.length > 45000) throw Error('Invalid topic proposal');
   if (!Array.isArray(topic.sources) || !topic.sources.length || topic.sources.length > 8) throw Error('A topic needs one to eight source candidates');
@@ -83,6 +87,7 @@ export async function replenishTopics({client, generate, judge, verifySource, ca
       if (!existing) {
         try { existing=await client.createDemand(entry.demand); }
         catch (e) {
+          if (repeatRefusal(e)) { reject(entry,e); await writeCenterJson(path,state); continue; }
           if (e.status!==409 && e.code!=='identity_conflict') throw e;
           demands=await all(client,'demands',workspaceId); existing=demands.find(d=>d.id===entry.demand.id);
         }
@@ -129,6 +134,7 @@ export async function replenishTopics({client, generate, judge, verifySource, ca
       let receipt;
       try { receipt=await client.createDemand(entry.demand); }
       catch (e) {
+        if (repeatRefusal(e)) { reject(entry,e); await writeCenterJson(path,state); continue; }
         if (e.status!==409 && e.code!=='identity_conflict') throw e;
         const current=await all(client,'demands',workspaceId); receipt=current.find(d=>d.id===entry.demand.id);
       }
