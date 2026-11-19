@@ -18,7 +18,13 @@ export async function portableNode(cache){
  const response=await fetch(base+name);if(!response.ok)throw Error('Node download failed');
  const bytes=Buffer.from(await response.arrayBuffer());if(createHash('sha256').update(bytes).digest('hex')!==expected)throw Error('Node checksum mismatch');
  const archive=join(cache,name);await writeFile(archive,bytes);
- const args=zip?['-NoProfile','-NonInteractive','-Command',`$ProgressPreference='SilentlyContinue'; Expand-Archive -LiteralPath '${archive.replaceAll("'","''")}' -DestinationPath '${cache.replaceAll("'","''")}' -Force`]:['-xzf',archive,'-C',cache];
- const result=spawnSync(zip?'powershell.exe':'tar',args,{stdio:'inherit'});if(result.status!==0)throw Error('Node extraction failed');
+ // Windows ships bsdtar, which reads zip. Name it by path: Git for Windows puts
+ // GNU tar on PATH, which cannot read zip. Expand-Archive is not used because
+ // powershell.exe started from a pwsh step loads PowerShell 7's Archive module,
+ // which fails on .NET Framework and still exits 0.
+ const tar=zip?join(process.env.SystemRoot||'C:\\Windows','System32','tar.exe'):'tar';
+ const result=spawnSync(tar,[zip?'-xf':'-xzf',archive,'-C',cache],{stdio:'inherit'});
+ if(result.error||result.status!==0)throw Error('Node extraction failed'+(result.error?': '+result.error.message:''));
+ try{await access(binary);}catch{throw Error('Node extraction left no '+binary);}
  return binary;
 }
