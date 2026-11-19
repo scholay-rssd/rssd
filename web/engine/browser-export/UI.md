@@ -6,7 +6,9 @@ navigation, source links, course/event facts and related project links.
 
 A fixed Share button on article and note pages opens a compact panel for
 readers: copy the page's address, the system share sheet where the browser has
-one, and Weibo, QQ and Qzone links. Card pages carry no panel. Old export
+one, a poster with the page's QR code, and Weibo, QQ and Qzone links. The poster
+is drawn in the reader's browser (`poster.mjs`, `qr.mjs`, loaded only when asked)
+in the article's light colours; on a phone it is saved by pressing and holding. Card pages carry no panel. Old export
 bookmarks redirect to their canonical article with the panel open.
 
 The site offers no copy-for-WeChat, HTML download or page-image ZIP. Those
