@@ -63,7 +63,8 @@ export function organizeContent(content,organization){
     const historical=previous.get(r.sectionId);
     if(r.sectionId&&!known.has(r.sectionId)&&!(historical?.enabled===false&&historical?.writable===false))throw Error('Unknown article section');
     const collectionId=r.sectionId||binding?.sectionId||names.get(old?.name)||r.collectionId;
-    return {...r,collectionId,...(binding?{tags:[...binding.tags],related:binding.related.map(({id,role})=>({id,role})),...(binding.course?{course:{format:binding.course.format,fee:binding.course.fee,registration:binding.course.registration}}:{})}:{})};
+    // Tags bound here come first, then the work's own, each once.
+    return {...r,collectionId,...(binding?{tags:[...new Set([...binding.tags,...(r.tags||[])])],related:binding.related.map(({id,role})=>({id,role})),...(binding.course?{course:{format:binding.course.format,fee:binding.course.fee,registration:binding.course.registration}}:{})}:{})};
   });
   const legacy=content.collections.filter(c=>!known.has(c.id)&&!names.has(c.name)).map(c=>({...c,legacy:true}));
   return {...content,collections:[...sections,...legacy],records};

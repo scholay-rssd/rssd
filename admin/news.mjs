@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {renderArticle,markdownImages} from '../scripts/article-format.mjs';
 import {articleViewsFromMarkdown} from '../scripts/article-metadata.mjs';
 import {languageFields} from '../contracts/language-editions.mjs';
-import {CHOSEN_WORK_TYPES,validateAdaptedFrom} from '../contracts/work-types.mjs';
+import {CHOSEN_WORK_TYPES,validateAdaptedFrom,validateWorkTags} from '../contracts/work-types.mjs';
 
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const bad=message=>{throw Object.assign(new Error(message),{statusCode:400});};
@@ -34,11 +34,11 @@ export function validateNews(input,previous=null,site=SITE){
   for(const src of images)if(!/^https?:\/\//i.test(src)&&!assets.some(a=>a.path===src))bad('正文含未打包的本地图片');
   renderArticle(markdown);
   const sectionId=validateSectionId(input.sectionId,site);
-  // A work's type, and the article a note was rewritten from, are kept only when the work states them. Whether
-  // the section takes that type is checked when the site is built.
+  // A work's type, its own #tags and the article a note was rewritten from are kept only when the work states
+  // them. Whether the section takes that type is checked when the site is built.
   const workType=input.workType==null?undefined:CHOSEN_WORK_TYPES.includes(input.workType)?input.workType:bad('作品类型只能是长文或笔记');
-  let adaptedFrom;try{adaptedFrom=validateAdaptedFrom(input.adaptedFrom,{type:workType,articleId:id});}catch(error){bad(error.message);}
-  return {id,title,summary,markdown,date,category,author,assets,...(sectionId?{sectionId}:{}),...(workType?{workType}:{}),...(adaptedFrom?{adaptedFrom}:{}),...languageFields({...input,id},previous,site)};
+  let adaptedFrom,tags;try{adaptedFrom=validateAdaptedFrom(input.adaptedFrom,{type:workType,articleId:id});tags=validateWorkTags(input.tags);}catch(error){bad(error.message);}
+  return {id,title,summary,markdown,date,category,author,assets,...(sectionId?{sectionId}:{}),...(workType?{workType}:{}),...(adaptedFrom?{adaptedFrom}:{}),...(tags?{tags}:{}),...languageFields({...input,id},previous,site)};
 }
 
 // No build clock or transport metadata participates in a content identity.

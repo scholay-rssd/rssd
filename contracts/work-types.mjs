@@ -26,6 +26,8 @@ export const CARD_STATES=Object.freeze(['waived','absent','pending','stale','pre
 export const CARDS_SEGMENT='cards';
 /** The most pages one card set may have; the Center stores no more. */
 export const MAX_CARD_PAGES=500;
+/** How many #tags a writer may give a work, and how long each may be. */
+export const MAX_WORK_TAGS=10,MAX_TAG_LENGTH=40;
 const ARTICLE_ID=/^[a-z0-9][a-z0-9-]{2,99}$/,SITE_MEDIA=/^\/article-media\/[a-f0-9]{64}\.(?:png|jpg|webp)$/;
 
 const fail=message=>{throw Object.assign(Error(message),{statusCode:400});};
@@ -106,6 +108,18 @@ export function adaptationIndex(works){
   notesOf.get(article.articleId).push({articleId:note.articleId,outdated:Number.isSafeInteger(article.revision)&&article.revision>note.adaptedFrom.revision});
  }
  return {notesOf,missing};
+}
+
+/**
+ * The #tags a writer gives a work, in order: each a short phrase without the leading #, each once. The site shows
+ * them after the tags bound to the work in its organization file. Returns the tags, or undefined when there are none.
+ */
+export function validateWorkTags(value){
+ if(value===undefined||value===null)return undefined;
+ if(!Array.isArray(value)||value.length>MAX_WORK_TAGS)fail('A work has at most '+MAX_WORK_TAGS+' tags');
+ for(const tag of value)if(typeof tag!=='string'||!tag||tag!==tag.trim()||tag.length>MAX_TAG_LENGTH||tag.startsWith('#')||/[\x00-\x1f]/.test(tag))fail('A tag is a phrase of up to '+MAX_TAG_LENGTH+' characters, without spaces around it or a leading #');
+ if(new Set(value).size!==value.length)fail('Each tag is given once');
+ return value.length?[...value]:undefined;
 }
 
 /**

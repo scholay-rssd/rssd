@@ -6,8 +6,8 @@ import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import p from '../contracts/rssd-v1.cjs';
 import media from '../contracts/rssd-media.cjs';
-import {publication,packetMedia,contentKey,CHOSEN_WORK_TYPES as PACKET_TYPES,WORK_TYPES_CAPABILITY} from '../contracts/rssd-publication.cjs';
-import {CHOSEN_WORK_TYPES} from '../contracts/work-types.mjs';
+import {publication,packetMedia,contentKey,CHOSEN_WORK_TYPES as PACKET_TYPES,MAX_WORK_TAGS as PACKET_TAGS,MAX_TAG_LENGTH as PACKET_TAG_LENGTH,WORK_TYPES_CAPABILITY} from '../contracts/rssd-publication.cjs';
+import {CHOSEN_WORK_TYPES,MAX_WORK_TAGS,MAX_TAG_LENGTH} from '../contracts/work-types.mjs';
 import {SITE_SECTIONS} from '../contracts/site-sections.mjs';
 import {snapshotForPackets,buildAndActivate} from '../receiver/build.mjs';
 import {createReceiver} from '../receiver/server.mjs';
@@ -25,20 +25,24 @@ const article={...base,requestId:'article-1',workId:'maine-coon',route:'/news/ma
  content:{locale:'zh-CN',title:'缅因猫',bodyMarkdown:`第一段。\n\n![配图](${picture.path})\n\n第二段。`,metadata:{date:'2026-11-18',workType:'article'}},
  cards:{revision:1,pages:[{...picture,width:1,height:1},{...cardOnly,width:1,height:1}],cover:cardOnly}};
 const note={...base,requestId:'note-1',workId:'maine-coon-signs',route:'/news/maine-coon-signs/',assets:[picture,second],
- content:{locale:'zh-CN',title:'缅因猫的 5 个特征',bodyMarkdown:`![第一张](${picture.path})\n\n![第二张](${second.path})\n\n耳尖簇毛、胸前领毛。`,metadata:{date:'2026-11-19',workType:'note',adaptedFrom:{workId:'maine-coon',revision:1}}}};
+ content:{locale:'zh-CN',title:'缅因猫的 5 个特征',bodyMarkdown:`![第一张](${picture.path})\n\n![第二张](${second.path})\n\n耳尖簇毛、胸前领毛。`,metadata:{date:'2026-11-19',workType:'note',adaptedFrom:{workId:'maine-coon',revision:1},tags:['缅因猫','长毛猫']}}};
 
 test('the packet carries a work type, a note link and a card set only when the work states them',()=>{
  assert.deepEqual(PACKET_TYPES,CHOSEN_WORK_TYPES);
+ assert.deepEqual([PACKET_TAGS,PACKET_TAG_LENGTH],[MAX_WORK_TAGS,MAX_TAG_LENGTH]);
  const plain={...base,requestId:'plain',workId:'plain',route:'/news/plain/',content:{locale:'zh-CN',title:'普通',bodyMarkdown:'正文',metadata:{author:'A',privateNotes:'never ships'}}};
  assert.deepEqual(Object.keys(publication(plain)).sort(),Object.keys({...plain}).filter(k=>k!=='cards').sort());
  assert.deepEqual(publication(plain).content.metadata,{author:'A'});
  const sent=publication(note);
- assert.deepEqual(sent.content.metadata,{date:'2026-11-19',workType:'note',adaptedFrom:{workId:'maine-coon',revision:1}});
+ assert.deepEqual(sent.content.metadata,{date:'2026-11-19',workType:'note',adaptedFrom:{workId:'maine-coon',revision:1},tags:['缅因猫','长毛猫']});
  const cards=publication(article).cards;
  assert.equal(cards.revision,1);
  assert.deepEqual(cards.pages.map(page=>[page.path,page.width,page.height]),[[picture.path,1,1],[cardOnly.path,1,1]]);
  assert.deepEqual(packetMedia(publication(article)).map(m=>m.path),[picture.path,picture.path,cardOnly.path,cardOnly.path]);
  const meta=metadata=>({...plain,content:{...plain.content,metadata}});
+ assert.throws(()=>publication(meta({tags:['#缅因猫']})),/Invalid work tags/);
+ assert.throws(()=>publication(meta({tags:['缅因猫','缅因猫']})),/Invalid work tags/);
+ assert.deepEqual(publication(meta({tags:[]})).content.metadata,{});
  assert.throws(()=>publication(meta({workType:'event'})),/Unsupported work type/);
  assert.throws(()=>publication(meta({adaptedFrom:{workId:'maine-coon',revision:1}})),/Only a note/);
  assert.throws(()=>publication(meta({workType:'note',adaptedFrom:{workId:'maine-coon'}})),/adaptedFrom revision/);
@@ -56,6 +60,8 @@ test('the receiver maps types, revisions, note links and card sets into the site
  assert.deepEqual(item('maine-coon').cards,{revision:1,pages:[{src:picture.path,width:1,height:1},{src:cardOnly.path,width:1,height:1}],cover:{src:cardOnly.path}});
  assert.equal(item('maine-coon-signs').workType,'note');
  assert.deepEqual(item('maine-coon-signs').adaptedFrom,{articleId:item('maine-coon').id,revision:1});
+ assert.deepEqual(item('maine-coon-signs').tags,['缅因猫','长毛猫']);
+ assert.equal(item('maine-coon').tags,undefined);
 });
 
 test('a receiver builds the note page and the card page, and refuses a note where the section takes none',async t=>{
@@ -76,6 +82,7 @@ test('a receiver builds the note page and the card page, and refuses a note wher
  const notePage=await page(note.route),articlePage=await page(article.route),cardPage=await page('/news/maine-coon/cards/');
  assert.match(notePage,/<article class="rssd-article rssd-note-article"/);
  assert.match(notePage,/<a href="\/news\/maine-coon\/">改写自《缅因猫》<\/a>/);
+ assert.match(notePage,/<p class="rssd-topics" data-section="daily-cat"><a href="\/archive\/daily-cat\/">#每日一猫<\/a><span>#缅因猫<\/span><span>#长毛猫<\/span><\/p>/);
  assert.match(articlePage,/<a class="rssd-cards-link" href="\/news\/maine-coon\/cards\/">/);
  assert.match(articlePage,/<a href="\/news\/maine-coon-signs\/">图文笔记《缅因猫的 5 个特征》<\/a>/);
  assert.equal((cardPage.match(/<figure class="rssd-note-slide"/g)||[]).length,2);

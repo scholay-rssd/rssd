@@ -33,6 +33,7 @@ export function snapshotForPackets(packets,site,baseline={},previousPackets=[]) 
       sources:c.sources.map(s=>({label:s.title||'Source',url:s.url})),assets:[],revision:packet.revision};
     // A work's type and, for a note, the work it was rewritten from: that work's Chinese edition on this site.
     if(c.metadata.workType)data.workType=c.metadata.workType;
+    if(c.metadata.tags)data.tags=[...c.metadata.tags];
     if(c.metadata.adaptedFrom){const source=contentKey({workId:c.metadata.adaptedFrom.workId,locale:'zh-CN'});data.adaptedFrom={articleId:identity[source]?.id||'rssd-'+source.slice(0,32),revision:c.metadata.adaptedFrom.revision};}
     // An article's card set: its pages are site media placed with the release.
     if(packet.cards)data.cards={revision:packet.cards.revision,pages:packet.cards.pages.map(page=>({src:page.path,width:page.width,height:page.height})),...(packet.cards.cover?{cover:{src:packet.cards.cover.path}}:{})};

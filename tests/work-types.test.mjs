@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {WORK_TYPES,CHOSEN_WORK_TYPES,DEFAULT_WORK_TYPES,CARD_STATES,MAX_CARD_PAGES,workTypeLabel,sectionWorkPolicy,workTypeOf,validateAdaptedFrom,validateCardSet,adaptationIndex,articleCardState,workPages,cardsRoute} from '../contracts/work-types.mjs';
+import {WORK_TYPES,CHOSEN_WORK_TYPES,DEFAULT_WORK_TYPES,CARD_STATES,MAX_CARD_PAGES,MAX_WORK_TAGS,workTypeLabel,sectionWorkPolicy,workTypeOf,validateAdaptedFrom,validateCardSet,validateWorkTags,adaptationIndex,articleCardState,workPages,cardsRoute} from '../contracts/work-types.mjs';
+import {organizeContent} from '../web/engine/site-organization.mjs';
 import {SITE_SECTIONS,validateSectionCatalog} from '../contracts/site-sections.mjs';
 import {adaptPublishedSnapshot} from '../web/engine/published-content.mjs';
 import {profiles} from '../scripts/site-config.mjs';
@@ -66,6 +67,25 @@ test('only a note names the article and revision it was rewritten from',()=>{
  refused(()=>validateAdaptedFrom({articleId:'maine-coon',revision:1,sha256:'x'},{type:'note'}),/names an article/);
  refused(()=>validateAdaptedFrom('maine-coon',{type:'note'}),/names an article/);
  refused(()=>validateAdaptedFrom({articleId:'maine-coon',revision:1},{type:'note',articleId:'maine-coon'}),/itself/);
+});
+
+test('a work names its own tags: short phrases without #, each once, at most ten',()=>{
+ assert.equal(validateWorkTags(undefined),undefined);
+ assert.equal(validateWorkTags([]),undefined);
+ assert.deepEqual(validateWorkTags(['缅因猫','长毛猫']),['缅因猫','长毛猫']);
+ refused(()=>validateWorkTags('缅因猫'),/at most 10 tags/);
+ refused(()=>validateWorkTags(Array.from({length:MAX_WORK_TAGS+1},(_,i)=>'tag'+i)),/at most 10 tags/);
+ for(const tag of ['#缅因猫',' 缅因猫','','猫'.repeat(41),'a\nb',3])refused(()=>validateWorkTags([tag]),/up to 40 characters/);
+ refused(()=>validateWorkTags(['缅因猫','缅因猫']),/once/);
+});
+
+test('tags bound in the organization file come first, then the work\'s own, each once',()=>{
+ const content={siteId:'pets',collections:[{id:'daily-cat',name:'每日一猫',route:'/archive/daily-cat/'}],
+  records:[{id:'news:a',collectionId:'daily-cat',sectionId:'daily-cat',tags:['缅因猫','长毛猫']},{id:'news:b',collectionId:'daily-cat',sectionId:'daily-cat',tags:['缅因猫']}]};
+ const organization={version:1,siteId:'pets',sections:[{id:'daily-cat',name:'每日一猫',description:'每天认识一只猫'}],hubs:[],bindings:[{recordId:'news:a',sectionId:'daily-cat',tags:['猫咪品种','缅因猫'],related:[]}]};
+ const organized=organizeContent(content,organization);
+ assert.deepEqual(organized.records[0].tags,['猫咪品种','缅因猫','长毛猫']);
+ assert.deepEqual(organized.records[1].tags,['缅因猫']);
 });
 
 test('only a long article has a card set, made of pictures in the site media store',()=>{
