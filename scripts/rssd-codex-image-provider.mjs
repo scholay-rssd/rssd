@@ -36,9 +36,9 @@ export function drawingModelFromBytes(bytes){
 }
 
 /** Spawn `codex exec --json` and resolve with its thread id once the run ends. Rejects on a failed run. */
-export function runCodexExec({prompt,cwd,images=[],command=['npx','-y','@openai/codex'],signal,timeoutMs=600000}){
+export function runCodexExec({prompt,cwd,images=[],command=['npx','-y','@openai/codex'],signal,timeoutMs=600000,sandbox='read-only'}){
  return new Promise((resolvePromise,reject)=>{
-  const args=[...command.slice(1),'exec','--json','--skip-git-repo-check','--sandbox','read-only','-C',cwd,...images.flatMap(file=>['-i',file]),'-'];
+  const args=[...command.slice(1),'exec','--json','--skip-git-repo-check','--sandbox',sandbox,'-C',cwd,...images.flatMap(file=>['-i',file]),'-'];
   const child=spawn(command[0],args,{cwd,stdio:['pipe','pipe','pipe'],signal,timeout:timeoutMs});
   let threadId=null,buffer='',errors='',failure=null;
   child.stdout.on('data',chunk=>{
@@ -93,7 +93,8 @@ export function createCodexImageProvider({stateDirectory,codexHome=process.env.C
    (scope.alt?'\nWhat the picture shows (alt text): '+scope.alt:'')+
    (scope.caption?'\nCaption it will sit above: '+scope.caption:'')+
    (scope.referenceSha256?'\nThe attached image is the approved style reference; follow its style.':'')+
-   '\nNo words, letters, logos or watermarks in the picture. Landscape 3:2.'+policyText+
+   (scope.lettering?'\nLettering: draw exactly these lines, in this order, and no other words, letters, numbers, logos or watermarks:\n'+scope.lettering.map(line=>'「'+line+'」').join('\n'):'\nNo words, letters, logos or watermarks in the picture.')+
+   (scope.aspect==='portrait'?' Portrait 2:3.':' Landscape 3:2.')+policyText+
    '\nWhen the picture is drawn, reply with one word: done.';
  }
  async function operate(requestId,scope,start,signal){
@@ -106,6 +107,8 @@ export function createCodexImageProvider({stateDirectory,codexHome=process.env.C
    if(state||!start)return state?inspect(state):pending();
    if(typeof scope?.requirement!=='string'||!scope.requirement.trim()||scope.requirement.length>3500)throw Error('Image requirement is invalid');
    if(scope.style!==undefined&&(typeof scope.style!=='string'||!scope.style.trim()||scope.style.length>1000))throw Error('Image style is invalid');
+   if(scope.lettering!==undefined&&(!Array.isArray(scope.lettering)||!scope.lettering.length||scope.lettering.length>5||scope.lettering.some(line=>typeof line!=='string'||!line.trim()||[...line].length>60)))throw Error('Image lettering is invalid');
+   if(scope.aspect!==undefined&&!['landscape','portrait'].includes(scope.aspect))throw Error('Image aspect is invalid');
    const work=join(states,protocol.hash(requestId).slice(0,32)+'.run');await mkdir(work,{recursive:true,mode:0o700});
    const images=[];
    if(scope.referenceSha256){
@@ -123,5 +126,7 @@ export function createCodexImageProvider({stateDirectory,codexHome=process.env.C
  }
  return {id:providerId,
   start:({requestId,scope,signal})=>operate(requestId,scope,true,signal),
-  lookup:({requestId,scope,signal})=>operate(requestId,scope,false,signal)};
+  lookup:({requestId,scope,signal})=>operate(requestId,scope,false,signal),
+  // The saved state of a request (phase, thread, error), or null when it was never started. Read-only.
+  record:requestId=>optional(join(states,protocol.hash(protocol.id(requestId,'requestId'))+'.json'))};
 }
