@@ -151,7 +151,7 @@ export async function produce(argv=process.argv.slice(2)){
   const finalized=finalizeNotebook(t.notebook,{siteId:ctx.site.id,brands});
   t=await call('task_update',{taskId:t.id,patch:{notebook:finalized.notebook},expectedRevision:t.revision});
   L('finalize','images',finalized.images.length,'alts',finalized.images.map(x=>x.alt),'endnotes',finalized.added);
-  const c=await call('notebook_check',{taskId:t.id});L('check',c.ready,c.issues);if(!c.ready)throw Error('check: '+c.issues.join('；'));
+  const c=await call('notebook_check',{taskId:t.id});L('check',c.ready,c.issues);if(c.notices?.length)L('source gaps',c.notices);if(!c.ready)throw Error('check: '+c.issues.join('；'));
   assertHeadlessTarget(await call('task_get',{taskId:t.id}),target);
   t=await call('notebook_export',{taskId:t.id,expectedRevision:t.revision});result.articleId=t.articleId;result.canonicalPath=t.delivery?.canonicalPath;L('exported',t.delivery?.canonicalPath);
   const id=t.articleId;let cur=await client.inspect(id);

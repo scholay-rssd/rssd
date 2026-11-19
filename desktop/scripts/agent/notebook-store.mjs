@@ -20,8 +20,21 @@ import {WRITING_SKILLS,kindMode,writingTypes,notebookIssues,notebookMarkdown,val
 import {pendingCloudDelivery} from './workflow.mjs';
 import {imageAlt,publicationMetadataFromNotebook,writeNotebookImageRights} from './notebook-finalize.mjs';
 import {loadWritingContext,saveWritingContext,freezeWritingContext,workflowFromContext,bindExportContext,restoreBoundContext} from './writing-context-store.mjs';
-import {privateEditorialData,restorePrivateEditorial,validatePrivateEditorial} from '../../../contracts/article-internal-notes.mjs';
+import {sourceEvidenceLinks,sourceGapNote} from './writing-context.mjs';
+import {privateEditorialData,restorePrivateEditorial,validatePrivateEditorial,appendInternalNotes} from '../../../contracts/article-internal-notes.mjs';
 const hash=s=>createHash('sha256').update(s).digest('hex');
+// Cited sources without a matching read record. Reported only: a context that
+// cannot be read leaves the check as it was rather than inventing gaps.
+async function sourceEvidence(store,t){try{return sourceEvidenceLinks(t.notebook,await loadWritingContext(store,t));}catch{return null;}}
+// Each gap becomes a private verification to-do on the first row citing it.
+// appendInternalNotes skips a paragraph that is already there, so exporting
+// again does not repeat it; a row whose notes are full is left unchanged.
+function withSourceGapNotes(n,gaps){
+ if(!gaps.length)return n;
+ const blockNotes={...(n.blockNotes||{})};
+ for(const gap of gaps){const id=gap.blockIds[0],entry=blockNotes[id]||{};try{blockNotes[id]={...entry,notes:appendInternalNotes(entry.notes||{},{verification:sourceGapNote(gap)})};}catch{}}
+ return {...n,blockNotes};
+}
 const writingHash=draft=>hash(JSON.stringify({type:draft.type??null,writingSkills:draft.writingSkills??null,shortTitle:draft.shortTitle??null}));
 const draftSkills=(draft,fallback)=>{const values=draft?.writingSkills??(draft?.type?[draft.type]:null);if(!Array.isArray(values))return fallback;const known=values.filter(id=>Object.hasOwn(WRITING_SKILLS,id));return known.length||values.length===0||draft.type==='unskilled'?known:fallback;};
 const writingMetadata=n=>({type:writingTypes(n.skills)[0],writingSkills:[...n.skills],shortTitle:n.title.replace(/[\\/:*?"<>|\x00-\x1f]/g,'').trim().slice(0,60)});
@@ -153,7 +166,9 @@ export async function checkNotebook(store,t,{preparing=false}={}){
  const images=[];
  for(const path of [...new Set(markdownImages(markdown))])try{const file=await imageFile(store,t,path,draft);await (await import('sharp')).default(await readFile(file)).metadata();images.push({path,file});}catch{issues.push('配图尚未就绪：'+path);}
  const pending=await pendingCloudDelivery(store.root,t.articleId);if(pending)issues.push('云端原请求待查询，请先在作品库查询原请求');
- return {ready:issues.length===0,issues,markdown,fields,images,draft};
+ const evidence=preparing?null:await sourceEvidence(store,t);
+ const notices=(evidence?.gaps||[]).map(gap=>sourceGapNote(gap)+'（引用行：'+gap.blockIds.join('、')+'）');
+ return {ready:issues.length===0,issues,notices,evidence,markdown,fields,images,draft};
 }
 export async function exportNotebook(store,id,revision,{completionOperationId}={}){
  await store.lease((await store.get(id)).articleId,id);
@@ -164,7 +179,7 @@ export async function exportNotebook(store,id,revision,{completionOperationId}={
   if(completionOperationId&&!completing)throw Error('成稿运行已变化，请重新检查');
   if((t.runtime?.busy||t.runtime?.queued)&&!completing)throw Error('请等待对话完成');
   const c=await checkNotebook(store,t);if(!c.ready)throw Error(c.issues.join('；'));
-  const n=t.notebook,sha=hash(c.markdown),writing=writingMetadata(n);
+  const n=withSourceGapNotes(t.notebook,c.evidence?.gaps||[]),sha=hash(c.markdown),writing=writingMetadata(n);
   // Persist an export intent first: a stopped process can resume this exact stable-ID save.
   const finalBinding=c.fields?{documentId:t.articleId.slice(7),kind:n.kind,fields:c.fields}:null;
   t.notebookExport={sha,revision:t.revision,writingHash:writingHash(writing),...(finalBinding?{recordHash:hash(JSON.stringify(finalBinding))}:{})};await store.save(t);
@@ -178,7 +193,7 @@ export async function exportNotebook(store,id,revision,{completionOperationId}={
   const publication={date:existing?.date||generated.date,summary:existing?.summary||generated.summary,author:existing?.author||generated.author,category:generated.sectionId===existing?.sectionId&&existing?.category?existing.category:generated.category,...(generated.sectionId?{sectionId:generated.sectionId}:{}),...workFieldsOf(existing)};
   await mkdir(dirname(metaFile),{recursive:true,mode:0o700});await atomicJson(metaFile,publication);
   if(c.fields)await withWorkspaceLock(store.root,async()=>{if((await readDraft(t.articleId,store.root)).sha256!==sha)throw Error('CONFLICT: 正文已有新版');const file=join(publicationDirectory(store.root),t.articleId,'record.json'),old=await optionalJson(file);const currentHash=hash(JSON.stringify(old));if(n.baseRecordHash&&currentHash!==n.baseRecordHash&&currentHash!==t.notebookExport.recordHash)throw Error('CONFLICT: 发布字段已变化，保留了作品库中的新字段');await atomicJson(file,finalBinding);});
-  await withWorkspaceLock(store.root,async()=>{const current=await readDraft(t.articleId,store.root);if(current.sha256!==sha)throw Error('CONFLICT: 正文已有新版，结构未绑定到其他版本');if(writingHash(current)!==(n.baseWritingHash||writingHash(draft))&&writingHash(current)!==t.notebookExport.writingHash)throw Error('CONFLICT: 作品库标题或文章类型已变化，请重新载入');if((current.sectionId||null)!==(c.draft?.sectionId||null)&&(current.sectionId||null)!==(n.sectionId||null))throw Error('CONFLICT: 作品库栏目已变化，请重新载入');const indexFile=join(store.root,'_ops/inventory/article-index.json'),index=await optionalJson(indexFile);if(index?.articles?.[t.articleId]){Object.assign(index.articles[t.articleId],writing);if(n.sectionId)index.articles[t.articleId].sectionId=n.sectionId;else delete index.articles[t.articleId].sectionId;await atomicJson(indexFile,index);}await atomicJson(join(publicationDirectory(store.root),t.articleId,'notebook.json'),{version:2,bodySha:sha,savedAt:new Date().toISOString(),document:{...upgradeNotebook(n),baseSectionId:n.sectionId||null,baseWritingHash:writingHash(writing),baseSha:sha,...(finalBinding?{baseRecordHash:hash(JSON.stringify(finalBinding))}:{}),exportedSha:sha}});if(Object.keys(n.internalNotes||{}).length||Object.keys(n.blockNotes||{}).length||n.modelSignatures?.length||await optionalJson(join(publicationDirectory(store.root),t.articleId,'internal-notes.json')))await atomicJson(join(publicationDirectory(store.root),t.articleId,'internal-notes.json'),{version:1,bodySha:sha,...privateEditorialData(n)});await bindExportContext(store,t,sha);});
+  await withWorkspaceLock(store.root,async()=>{const current=await readDraft(t.articleId,store.root);if(current.sha256!==sha)throw Error('CONFLICT: 正文已有新版，结构未绑定到其他版本');if(writingHash(current)!==(n.baseWritingHash||writingHash(draft))&&writingHash(current)!==t.notebookExport.writingHash)throw Error('CONFLICT: 作品库标题或文章类型已变化，请重新载入');if((current.sectionId||null)!==(c.draft?.sectionId||null)&&(current.sectionId||null)!==(n.sectionId||null))throw Error('CONFLICT: 作品库栏目已变化，请重新载入');const indexFile=join(store.root,'_ops/inventory/article-index.json'),index=await optionalJson(indexFile);if(index?.articles?.[t.articleId]){Object.assign(index.articles[t.articleId],writing);if(n.sectionId)index.articles[t.articleId].sectionId=n.sectionId;else delete index.articles[t.articleId].sectionId;await atomicJson(indexFile,index);}await atomicJson(join(publicationDirectory(store.root),t.articleId,'notebook.json'),{version:2,bodySha:sha,savedAt:new Date().toISOString(),document:{...upgradeNotebook(n),baseSectionId:n.sectionId||null,baseWritingHash:writingHash(writing),baseSha:sha,...(finalBinding?{baseRecordHash:hash(JSON.stringify(finalBinding))}:{}),exportedSha:sha}});if(Object.keys(n.internalNotes||{}).length||Object.keys(n.blockNotes||{}).length||n.modelSignatures?.length||await optionalJson(join(publicationDirectory(store.root),t.articleId,'internal-notes.json')))await atomicJson(join(publicationDirectory(store.root),t.articleId,'internal-notes.json'),{version:1,bodySha:sha,...privateEditorialData(n)});await bindExportContext(store,t,sha,c.evidence?{links:c.evidence.links}:{});});
   t.notebook={...n,baseSectionId:n.sectionId||null,baseWritingHash:writingHash(writing),baseSha:sha,...(finalBinding?{baseRecordHash:hash(JSON.stringify(finalBinding))}:{}),exportedSha:sha};t.workIds=[...new Set([...t.workIds,t.articleId])];t.generated={revision:t.revision,sha,at:new Date().toISOString()};t.draftStale=false;
   t.delivery={destination:'local',articleId:t.articleId,canonicalPath:draft.canonicalPath,sha256:sha,taskRevision:t.revision,at:new Date().toISOString()};t.completedAt=t.delivery.at;t.updatedAt=t.completedAt;t.stage='deliver';t.workflow={...t.workflow,authorized:false};t.runtime={...t.runtime,busy:false,queued:false,status:'已完成',pendingPrompt:null};return store.save(t);
  });}finally{await store.releaseOwner(id);}
