@@ -65,7 +65,8 @@ rssd center withdraw --id <queued demandId>
 result per topic: `created`, `existing` (queued before), `repeat` (the Center
 says which work or open demand it repeats), `conflict`, or `invalid` (not
 sent). Sending the same file again creates nothing new. A work type must be
-one the section takes.
+one the section takes. Write each `brief` in the order format of
+`docs/pool-orders.md`, the same format a topic note in Obsidian uses.
 
 `pool-leads` lists hot-board terms the Center has collected. A lead suggests a
 topic; it is not a fact or a source. Copy a lead into a topic's `lead` field
