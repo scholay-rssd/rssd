@@ -20,6 +20,7 @@ import {assertBoundSourceCurrent,assertStoreOnlyReceipt,requireStoreOnlyContract
 import {parseCenterMediaRef} from './rssd-center-media-ref.mjs';
 import {recoverPersistedCenterEdition} from './rssd-center-generation-evidence.mjs';
 import {siteByline,withEditionByline} from '../contracts/edition-byline.mjs';
+import {personaSnapshot} from '../contracts/persona-voice.mjs';
 import {profiles as siteProfiles} from './site-config.mjs';
 
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};
@@ -258,6 +259,27 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
       await client.heartbeat({state:'blocked',agentId,message:String(error.message).slice(0,2000)}).catch(()=>{});
       await save(join(directory,'failure.json'),{message:error.message,at:new Date().toISOString(),...(error.diagnostics?{diagnostics:error.diagnostics}:{})});throw error;
     }
+    // The persona that writes this work was decided by the Center when the demand was claimed and is frozen
+    // with it (docs/persona-voice.md). `claimVoice()` reads it: null for no persona, else the decision and,
+    // once it is settled, the persona's snapshot. Where the section lets the writer choose, the decision is
+    // pending until `claimVoice(answer)` sends the writer's answer ({personaId,reason}, or {} to decline);
+    // the settled claim is saved before anything is written with it.
+    const claimVoice=async answer=>{
+      const decision=claim.payload?.voiceDecision;
+      if(!decision||decision.state==='none')return null;
+      const checked=(settled,snapshot)=>{
+        if(!snapshot||personaSnapshot(snapshot).snapshotHash!==settled.persona.snapshotHash)throw Error('本篇已定人格，但设备没有拿到与认领一致的人格快照，原任务已保留等待核对');
+        return {decision:settled,snapshot};
+      };
+      if(decision.state==='chosen'&&claim.mounts?.voice)return checked(decision,claim.mounts.voice);
+      if(decision.state==='pending'&&answer===undefined)return {decision,snapshot:null};
+      const reply=await client.chooseVoice({demandId:claim.id,claimToken:claim.claimToken,...(answer?.personaId?{personaId:answer.personaId,reason:answer.reason}:{})});
+      const {mounts:_,...rest}=claim;
+      claim={...rest,payload:{...claim.payload,voiceDecision:reply.voiceDecision},...(reply.mounts?{mounts:reply.mounts}:{})};
+      await save(claimFile,claim);await save(activeFile,{origin:client.origin,claim});
+      return reply.voiceDecision.state==='chosen'?checked(reply.voiceDecision,reply.mounts?.voice):null;
+    };
+    const voice=claim.payload?.voiceDecision?{current:()=>claimVoice(),choose:answer=>claimVoice(answer||{})}:undefined;
     const translateSource=claim.kind==='translate'?requireTranslateClaim(claim):null;
     const workId=translateSource?.workId||claim.payload.workId||claim.payload.source?.workId||'work-'+protocol.hash(claim.id).slice(0,32);
     const contextFile=join(directory,'context.json');
@@ -309,7 +331,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
             if(recovered?.edition){output=recovered.edition;if(recovered.repair)onEvent({type:'notebook_repaired',demandId:claim.id,locale,repair:recovered.repair});}
             else{
             let imageInstructions;if(scoped?.imagePlanRequired&&locale==='en'){if(!chinesePacket)throw Error('英文稿缺少原中文稿图片凭据');await attest(chinesePacket,claim);const originalReceipt=await read(join(directory,'zh-CN.image-receipt.json')),originalPlan=await read(join(directory,'zh-CN.image-plan.json'));imageInstructions=imageTranslationInstructions({edition:chinesePacket.editions[0],images:originalReceipt.images,captionVersion:originalPlan?.version});}
-            output=await producer({claim,locale,workId,source,directory,agentId,origin:client.origin,...(scoped?{expectedModel:scoped.modelId,verifiedSourcePrompt:evidence.prompt,verifiedSourceSnapshotHash:evidence.snapshot.snapshotHash,verifiedSourceSelectionHash:evidence.selectionHash,verifiedSourceBindingHash:evidence.bindingHash}:{}),...(scoped?.imagePlanRequired&&locale==='zh-CN'?{imagePlanRequired:true}:{}),...(imageInstructions?{imageTranslationInstructions:imageInstructions}:{}),...(bibliography?{verifiedBibliographyInstructions:VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS}:{}),signal,onEvent,writingPolicy:context.writingPolicy});
+            output=await producer({claim,locale,workId,source,directory,agentId,origin:client.origin,...(voice?{voice}:{}),...(scoped?{expectedModel:scoped.modelId,verifiedSourcePrompt:evidence.prompt,verifiedSourceSnapshotHash:evidence.snapshot.snapshotHash,verifiedSourceSelectionHash:evidence.selectionHash,verifiedSourceBindingHash:evidence.bindingHash}:{}),...(scoped?.imagePlanRequired&&locale==='zh-CN'?{imagePlanRequired:true}:{}),...(imageInstructions?{imageTranslationInstructions:imageInstructions}:{}),...(bibliography?{verifiedBibliographyInstructions:VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS}:{}),signal,onEvent,writingPolicy:context.writingPolicy});
             }
             if(requiredModel||scoped)requirePilotEdition(output);
             if(bibliography)output=applyVerifiedBibliography(output,bibliography,locale);
@@ -326,7 +348,10 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
             const issues=writingDefaults.deliveryIssues(output.metadata?.notebook,effective);if(issues.length)throw Object.assign(Error(issues.join('；')),{code:'writing_delivery_incomplete'});
           }
           // New packets only: a saved packet keeps its exact bytes and request hash.
-          output=withEditionByline(output,{source,site:siteByline(profiles,claim.workspaceId,claim.sectionId),persona:claim.payload.policy?.persona});
+          // A work is never signed or recorded with a persona it was not written with: a decision the
+          // producer left pending stops here instead of lapsing to the fallback at the Center.
+          if(claim.payload.voiceDecision?.state==='pending')throw Object.assign(Error('本篇的人格尚未选定，稿件已保留，未提交'),{code:'voice_pending'});
+          output=withEditionByline(output,{source,site:siteByline(profiles,claim.workspaceId,claim.sectionId),persona:claim.payload.policy?.persona,...(claim.payload.voiceDecision?{voice:claim.payload.voiceDecision}:{})});
           packet=protocol.submission({requestId:randomUUID(),workId,workspaceId:claim.workspaceId,sectionId:claim.sectionId,
             demandId:claim.id,claimToken:claim.claimToken,baseRevisions:{[locale]:context.baseRevisions[locale]||0},
             editions:[{...output,locale,translationOf}]});

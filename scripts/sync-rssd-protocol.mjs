@@ -11,8 +11,10 @@ await writeFile(new URL('rssd-media.cjs',target),await readFile(new URL('../cont
 await writeFile(new URL('rssd-record.cjs',target),await readFile(new URL('../contracts/rssd-record.cjs',import.meta.url)));
 // Center decides a repeated topic with the same module the devices use.
 await writeFile(new URL('topic-repeat.mjs',target),await readFile(new URL('../contracts/topic-repeat.mjs',import.meta.url)));
+// Center decides which persona writes a work with the same module the devices use.
+await writeFile(new URL('persona-voice.mjs',target),await readFile(new URL('../contracts/persona-voice.mjs',import.meta.url)));
 // Center checks annotation answers with the same form and rules, and the two files they read.
 for(const name of ['annotation-forms.mjs','annotation-forms.json','work-types.mjs','writing-column-families.json'])await writeFile(new URL(name,target),await readFile(new URL('../contracts/'+name,import.meta.url)));
-const files={};for(const path of ['contracts/rssd-v1.cjs','contracts/rssd-publication.cjs','contracts/rssd-media.cjs','contracts/rssd-record.cjs','contracts/topic-repeat.mjs','contracts/annotation-forms.mjs','contracts/annotation-forms.json','contracts/work-types.mjs','contracts/writing-column-families.json'])files[path]=createHash('sha256').update(await readFile(new URL('../'+path,import.meta.url))).digest('hex');
+const files={};for(const path of ['contracts/rssd-v1.cjs','contracts/rssd-publication.cjs','contracts/rssd-media.cjs','contracts/rssd-record.cjs','contracts/topic-repeat.mjs','contracts/persona-voice.mjs','contracts/annotation-forms.mjs','contracts/annotation-forms.json','contracts/work-types.mjs','contracts/writing-column-families.json'])files[path]=createHash('sha256').update(await readFile(new URL('../'+path,import.meta.url))).digest('hex');
 await writeFile(new URL('protocol.source.json',target),JSON.stringify({version:1,repository:'scholay-rssd/rssd',path:'contracts/rssd-v1.cjs',sha256:files['contracts/rssd-v1.cjs'],files,license:'MIT'},null,2)+'\n');
 console.log('RSSD protocol v1 synchronized with a source fingerprint');
