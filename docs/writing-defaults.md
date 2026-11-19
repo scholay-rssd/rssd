@@ -46,6 +46,17 @@ Explicit instructions for the current task retain their normal priority and are
 recorded with `origin:task`. Source/provenance and publication authority remain
 unchanged.
 
+## Write a note
+
+A section whose `workTypes` include `note` also carries a note form in its
+snapshot (`note`: skills, required elements and the composed instructions). The
+note form adds `rssd-writing-note` after the common skill and asks for one point
+from the column instead of every column element; family, domain and image rules
+are the same as for an article. Choose it with `"workType":"note"` in the
+overrides. An article is the default and is not recorded, so an article's context
+keeps its hash. A section that takes articles only refuses a note. A note
+rewritten from an article uses the same form; its last part covers that case.
+
 For a task with an explicit body target, record a structured budget in the
 overrides, for example
 `{"bodyLength":{"unit":"han","minimum":720,"target":800,"maximum":880}}`.
