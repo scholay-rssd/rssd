@@ -15,15 +15,15 @@ import {mkdir,readFile,writeFile,rm,access,readdir} from 'node:fs/promises';
 import {join,dirname,basename,resolve,relative,sep} from 'node:path';
 import {spawn,execFile} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import sharp from 'sharp';
+// The same yaml version as the plug-in (obsidian/package.json), so a note's fingerprint matches the one it computes.
+import YAML from 'yaml';
 import {noteToWork,workFingerprint,localMediaPaths} from '../obsidian/src/sync-model.mjs';
 import {launchChrome,renderCardPage,CARD} from './rssd-card-render.mjs';
 import {createCodexImageProvider,runCodexExec} from './rssd-codex-image-provider.mjs';
 import {HOUSE_STYLE} from './rssd-image-supplement.mjs';
 
-const YAML=createRequire(new URL('../obsidian/package.json',import.meta.url))('yaml');
 const HERE=dirname(fileURLToPath(import.meta.url));
 const exists=path=>access(path).then(()=>true,()=>false);
 const chars=value=>[...String(value)].length;
