@@ -47,7 +47,7 @@ export class ReceiverStore {
     }
     this.db.prepare("INSERT INTO state VALUES('legacyIdentityHash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(identityHash);
   });}
-  status(){return {siteId:this.site.id,workspaceId:this.site.spaceId,requests:this.db.prepare('SELECT state,count(*) AS count FROM requests GROUP BY state').all(),publications:this.db.prepare("SELECT count(*) AS count FROM published WHERE coalesce(json_extract(payload,'$.operation'),'publish') IN ('publish','restore')").get().count,tombstones:this.db.prepare("SELECT count(*) AS count FROM published WHERE json_extract(payload,'$.operation') IN ('withdraw','delete')").get().count,legacyIdentityHash:this.db.prepare("SELECT value FROM state WHERE key='legacyIdentityHash'").get()?.value||null};}
+  status(){return {siteId:this.site.id,workspaceId:this.site.spaceId,requests:this.db.prepare('SELECT state,count(*) AS count FROM requests GROUP BY state').all(),publications:this.db.prepare("SELECT count(*) AS count FROM published WHERE coalesce(json_extract(payload,'$.operation'),'publish') IN ('publish','restore','cards')").get().count,tombstones:this.db.prepare("SELECT count(*) AS count FROM published WHERE json_extract(payload,'$.operation') IN ('withdraw','delete')").get().count,legacyIdentityHash:this.db.prepare("SELECT value FROM state WHERE key='legacyIdentityHash'").get()?.value||null};}
   head(workId,locale){p.id(workId);p.locale(locale);const row=this.db.prepare('SELECT * FROM heads WHERE work_key=?').get(contentKey({workId,locale}));if(!row)p.fail('Publication identity not found',404,'not_found');const request=this.db.prepare('SELECT state FROM requests WHERE id=?').get(row.request_id);return {siteId:this.site.id,workspaceId:this.site.spaceId,workId,locale,revision:row.revision,operationSequence:row.operation_sequence,operation:row.operation,route:row.route,contentHash:row.content_hash,requestId:row.request_id,state:request?.state||'legacy'};}
   transaction(fn){this.db.exec('BEGIN IMMEDIATE');try{const result=fn();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}}
   receipt(id){
@@ -79,6 +79,11 @@ export class ReceiverStore {
         }else{
           if(value.revision!==head.revision)p.fail('Action must identify the current edition revision',409,'stale_revision');
           if(head.content_hash&&value.contentHash!==head.content_hash)p.fail('Action content hash differs',409,'content_conflict');
+          // A card update replaces only the card set of the live edition: same revision, same content and media.
+          if(action==='cards'){
+            if(['withdraw','delete'].includes(head.operation))p.fail('Restore the hidden edition before changing its cards',409,'edition_hidden');
+            if(!head.content_fingerprint||head.content_fingerprint!==p.hash([value.content,value.assets||[]]))p.fail('A card update must carry the live content unchanged',409,'content_conflict');
+          }
         }
       }
       if(value.operationSequence!==undefined&&value.operationSequence!==sequence)p.fail('Action sequence is stale or has a gap',409,'action_conflict');
