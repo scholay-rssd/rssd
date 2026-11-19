@@ -19,9 +19,19 @@ export function siteByline(profiles,workspaceId,sectionId){
  * of a new work in every language; a translation or update keeps the byline of the edition it came from, and
  * with it the persona that edition recorded. The persona's ID is kept in the edition's private metadata
  * (`metadata.persona`), which no public packet carries.
+ *
+ * `voice` is the claim's frozen voice decision (`decideVoice` in persona-voice.mjs), for a section that has
+ * a voice instead of a persona byline. A chosen voice is recorded in the private `metadata.voice`
+ * ({id,revision,snapshotHash} of the preset that wrote), which no public packet carries either. When the
+ * section signs with the persona, the founder the preset came from signs, as `persona` does above; when it
+ * signs with the site, the site's byline stays and `metadata.persona` is left out. An edition that has a
+ * source keeps the source's byline, persona and voice, whatever the claim decided.
  */
-export function withEditionByline(edition,{source,site,persona}={}){
+export function withEditionByline(edition,{source,site,persona,voice}={}){
  const prior=source?.payload?.metadata||{},metadata={...(edition?.metadata||{})};
+ const wrote=voice?.state==='chosen'&&filled(voice.persona?.id)&&filled(voice.persona?.revision)&&filled(voice.persona?.snapshotHash)?voice.persona:null;
+ if(wrote&&voice.byline==='persona'&&filled(wrote.founder?.id)&&filled(wrote.founder?.name))persona=wrote.founder;
+ else if(voice)persona=null;
  const signed=filled(persona?.name)&&filled(persona?.id)?persona:null;
  for(const key of ['author','category']){
   const value=filled(prior[key])||(key==='author'&&signed?signed.name:'')||filled(site?.[key]);
@@ -30,5 +40,8 @@ export function withEditionByline(edition,{source,site,persona}={}){
  // Which persona signed: the source edition's when the byline came from it, else this claim's.
  const from=filled(prior.author)?(filled(prior.persona?.id)?{id:prior.persona.id}:null):signed?{id:signed.id}:null;
  if(from)metadata.persona=from;else delete metadata.persona;
+ // Which preset wrote: the source edition's when there is a source, else this claim's.
+ const kept=prior.voice,by=source?.payload?(filled(kept?.id)&&filled(kept?.revision)&&filled(kept?.snapshotHash)?kept:null):wrote;
+ if(by)metadata.voice={id:by.id,revision:by.revision,snapshotHash:by.snapshotHash};else delete metadata.voice;
  return {...edition,metadata};
 }
