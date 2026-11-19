@@ -6,7 +6,7 @@ const answer=item=>({value:item.type==='scale'?4:item.type==='check'?true:item.o
 const sheet=items=>Object.fromEntries(items.map(item=>[item.id,answer(item)]));
 
 test('the form is valid, and every writing family has its own questions',()=>{
- assert.equal(ANNOTATION_FORM.schemaVersion,1);assert.match(ANNOTATION_FORM.version,/^draft-\d+$/);
+ assert.equal(ANNOTATION_FORM.schemaVersion,1);assert.equal(ANNOTATION_FORM.version,'1');
  const named=new Set(ANNOTATION_FORM.sections.flatMap(section=>section.appliesTo.families||[]));
  assert.deepEqual([...named].sort(),ANNOTATION_FAMILIES);
  assert.throws(()=>{ANNOTATION_FORM.sections.push({});},TypeError,'the form is frozen');

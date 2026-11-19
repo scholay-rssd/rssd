@@ -99,5 +99,5 @@ function deepFreeze(value){if(value&&typeof value==='object'&&!Object.isFrozen(v
 const FAMILIES=Object.freeze([...new Set(Object.values(JSON.parse(readFileSync(new URL('./writing-column-families.json',import.meta.url),'utf8'))))].sort());
 /** The writing families a form may name: the values of writing-column-families.json. */
 export const ANNOTATION_FAMILIES=FAMILIES;
-/** The current form. Its version starts with `draft-` until its wording is agreed. */
+/** The current form. */
 export const ANNOTATION_FORM=validateAnnotationForm(JSON.parse(readFileSync(new URL('./annotation-forms.json',import.meta.url),'utf8')),{families:FAMILIES});

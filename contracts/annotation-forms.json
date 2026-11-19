@@ -1,8 +1,8 @@
 {
  "schemaVersion": 1,
- "version": "draft-1",
+ "version": "1",
  "locale": "zh-CN",
- "note": "A draft for review. Wording may change freely until a version without the draft- prefix is published; after that a change of meaning is a new version.",
+ "note": "Version 1. A change of wording that changes what an item means, an added or removed item, or a changed option is a new version; answers always name the version they were given for.",
  "sections": [
   {
    "id": "article-facts",
