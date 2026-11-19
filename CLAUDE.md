@@ -53,6 +53,8 @@ rssd 是总仓库，另有五个子模块，各自是独立的公开仓库：
    功能 PR 如果依赖子仓库的新提交，可以顺带移动指针，但只能指向子仓库 main 上已合并的提交，
    并在 PR 描述里写明。rebase 时指针冲突，取两边里较新的那个 main 提交：
    `git update-index --cacheinfo 160000,<sha>,<路径>`。
+   CI 会检查这一条：`submodule-pins` 工作流在指向 main 的 PR 和 main 的推送上运行
+   `node scripts/check-submodule-pins.mjs`，指针不在子仓库 GitHub main 上就失败。
 5. **worktree 里的子模块。** 如果本机 git 配置把子模块地址指向主 checkout，
    worktree 里就检出不了主 checkout 还没 fetch 的提交。单条命令临时改用 GitHub 地址即可，
    不要改共享配置：

@@ -1,0 +1,29 @@
+name: Submodule pins
+# Rule 4 of CLAUDE.md: every submodule pin must be a commit on that
+# submodule's GitHub main. Runs on pull requests to main (checking the merge
+# commit) and on pushes to main. No submodule checkout: the script reads the
+# pins from the tree and clones each main without trees or blobs.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  submodule-pins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Every submodule pin is on that submodule's main
+        run: node scripts/check-submodule-pins.mjs
