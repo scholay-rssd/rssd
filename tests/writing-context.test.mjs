@@ -5,8 +5,9 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {DatabaseSync} from 'node:sqlite';
 import {TaskStore} from '../desktop/scripts/agent/task-store.mjs';
-import {openNotebook,exportNotebook} from '../desktop/scripts/agent/notebook-store.mjs';
-import {emptyWritingContext,migrateSourcesToContext,validateWritingContext,publicContextView} from '../desktop/scripts/agent/writing-context.mjs';
+import {openNotebook,exportNotebook,checkNotebook} from '../desktop/scripts/agent/notebook-store.mjs';
+import {randomUUID} from 'node:crypto';
+import {emptyWritingContext,migrateSourcesToContext,validateWritingContext,publicContextView,sourceEvidenceLinks} from '../desktop/scripts/agent/writing-context.mjs';
 import {loadWritingContext,saveWritingContext,mountResource,unmountResource,adjustMountScope,searchMount,readMount,citeEvidence,freezeWritingContext,restoreBoundContext,assertContextScope,exportContextPath,applyMountList} from '../desktop/scripts/agent/writing-context-store.mjs';
 import {parseMountSpec,parseProduceMounts,parseBriefMounts} from '../desktop/scripts/agent/resources/mount-spec.mjs';
 import {parseDocument,sliceDocument} from '../desktop/scripts/agent/resources/parse-document.mjs';
@@ -288,3 +289,72 @@ test('native allowlist includes every context bridge method',async()=>{
  for(const body of ['<title>Just a moment...</title>','<title>Chinese Text Project</title><p>Checking the security of your connection...</p>'])await assert.rejects(readPublicPage('https://example.org/source',async()=>new Response(body,{headers:{'content-type':'text/html'}})),/未读取正文/);
  const page=await readPublicPage('https://example.org/source',async()=>new Response('<title>Research</title><!-- private stale template -->Actual article text',{headers:{'content-type':'text/html'}}));assert.doesNotMatch(page.text,/private stale/);assert.match(page.text,/Actual article/);
  });
+
+function addRead(context,{kind='web',role='evidence',locator,gap}){
+ const resourceId=randomUUID(),versionId=randomUUID(),mountId=randomUUID(),id=randomUUID();
+ context.resources[resourceId]={id:resourceId,kind,title:'资料',locator:{},createdAt:context.updatedAt};
+ context.versions[versionId]={id:versionId,resourceId,immutable:true,createdAt:context.updatedAt,contentHash:'h',label:'page',snapshot:{}};
+ context.mounts.push({id:mountId,resourceId,versionId,enabled:true,role,state:'ready',scope:{}});
+ context.evidence.push({id,mountId,versionId,locator,text:'原文片段',hash:'h',truncated:false,readAt:context.updatedAt,...(gap?{gap}:{})});
+ return id;
+}
+const cites=(id,sourceIds,state='ready')=>({id,type:'paragraph',text:'正文',state,sourceIds});
+const source=(id,url,extra={})=>({id,title:'来源'+id,summary:'摘要',url,acquiredVia:'web',reviewed:false,...extra});
+
+test('cited sources are matched to what was read by address or RSS id',()=>{
+ const context=emptyWritingContext('article-x','academic');
+ const web=addRead(context,{locator:{url:'https://www.example.org/paper/?utm_source=feed#top'}});
+ const rss=addRead(context,{kind:'rss',locator:{articleId:42,url:'https://news.example.org/a'}});
+ const repo=addRead(context,{kind:'github',locator:{owner:'Acme',repo:'tools',commit:'a'.repeat(40),path:'docs/guide.md',url:'https://github.com/Acme/tools/blob/'+'a'.repeat(40)+'/docs/guide.md#L1-L9'}});
+ addRead(context,{kind:'signals',role:'lead',locator:{term:'热词',url:'https://hot.example.org/'}});
+ addRead(context,{role:'lead',locator:{url:'https://lead.example.org/'}});
+ addRead(context,{kind:'rss',locator:{articleId:7,url:'https://news.example.org/b'},gap:'缺正文'});
+ const notebook={blocks:[cites('p1',['web','rss','repo','repo-root']),cites('p2',['hot','lead','summary','web']),cites('p3',['checked']),cites('draft',['draft-only'],'placeholder')],sources:[
+  source('web','https://example.org/paper'),
+  source('rss','https://elsewhere.example.org/moved',{acquiredVia:'rss',rssId:'42'}),
+  source('repo','https://github.com/acme/tools/blob/main/docs/guide.md'),
+  source('repo-root','https://github.com/acme/tools'),
+  source('hot','https://hot.example.org/'),
+  source('lead','https://lead.example.org/'),
+  source('summary','https://news.example.org/b',{acquiredVia:'rss',rssId:7}),
+  source('checked','https://unread.example.org/',{reviewed:true}),
+  source('draft-only','https://draft.example.org/'),
+  source('uncited','https://uncited.example.org/'),
+ ]};
+ const {links,gaps}=sourceEvidenceLinks(notebook,validateWritingContext(context));
+ assert.deepEqual(links,[
+  {sourceId:'web',blockIds:['p1','p2'],evidenceId:web},
+  {sourceId:'rss',blockIds:['p1'],evidenceId:rss},
+  {sourceId:'repo',blockIds:['p1'],evidenceId:repo},
+  {sourceId:'repo-root',blockIds:['p1'],evidenceId:repo},
+ ]);
+ assert.deepEqual(gaps.map(g=>[g.sourceId,g.reason,g.blockIds]),[['hot','unread',['p2']],['lead','unread',['p2']],['summary','summary-only',['p2']]]);
+});
+
+test('export records cited reads and leaves unread sources as private to-dos without blocking',async t=>{
+ const {root,store,task}=await fixture(t,{notebook:{...blank(),sectionId:'observations',blocks:[cites('body',['read','unread'])],sources:[source('read','https://example.org/read'),source('unread','https://example.org/unread')]}});
+ const context=await loadWritingContext(store,task);
+ const read=addRead(context,{locator:{url:'https://example.org/read'}});
+ const manual=addRead(context,{locator:{url:'https://example.org/other'}});
+ context.citations.push({id:randomUUID(),blockId:'body',evidenceId:manual,label:'注1'});
+ await saveWritingContext(store,task,context);
+ const checked=await checkNotebook(store,await store.get(task.id));
+ assert.equal(checked.ready,true,checked.issues.join('；'));
+ assert.equal(checked.notices.length,1);
+ assert.match(checked.notices[0],/https:\/\/example\.org\/unread.*没有对应的已读原文.*引用行：body/);
+ const done=await exportNotebook(store,task.id,(await store.get(task.id)).revision);
+ assert.ok(done.completedAt);
+ const note=done.notebook.blockNotes.body.notes.verification;
+ assert.match(note,/来源「来源unread」/);
+ assert.doesNotMatch(note,/来源read」/);
+ const notes=JSON.parse(await readFile(join(publicationDirectory(root),task.articleId,'internal-notes.json'),'utf8'));
+ assert.equal(notes.blockNotes.body.notes.verification,note);
+ const sidecar=JSON.parse(await readFile(exportContextPath(root,task.articleId),'utf8'));
+ assert.deepEqual(sidecar.citations.map(c=>[c.label,c.blockId,c.evidenceId]),[['注1','body',manual],['source:read','body',read]]);
+ const {reloadNotebookDraft}=await import('../desktop/scripts/agent/notebook-store.mjs');
+ const reopened=await reloadNotebookDraft(store,done.id,done.revision,{reopen:true});
+ const again=await exportNotebook(store,reopened.id,reopened.revision);
+ assert.equal(again.notebook.blockNotes.body.notes.verification,note);
+ const resaved=JSON.parse(await readFile(exportContextPath(root,task.articleId),'utf8'));
+ assert.deepEqual(resaved.citations.map(c=>c.label),['注1','source:read']);
+});

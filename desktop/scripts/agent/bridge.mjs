@@ -157,7 +157,7 @@ async function dispatch(method,p={}){
   await flushRuntime(id);const result=await changeNotebookTemplate(store,id,p);
   output({event:{type:'task_changed',taskId:id}});return result;
  }
- if(method==='notebook_check'){const c=await checkNotebook(store,task,{preparing:p.phase==='prepare'});return {ready:c.ready,issues:c.issues};}
+ if(method==='notebook_check'){const c=await checkNotebook(store,task,{preparing:p.phase==='prepare'});return {ready:c.ready,issues:c.issues,notices:c.notices};}
  if(method==='notebook_image_read')return readNotebookImage(store,id,p.path);
  if(method==='notebook_image')return importNotebookImage(store,id,p);
  if(method==='notebook_image_search')return searchNotebookImages(store,p);

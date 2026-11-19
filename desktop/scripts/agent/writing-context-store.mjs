@@ -3,7 +3,7 @@ import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {atomicJson,optionalJson} from '../../../scripts/editorial-sync.mjs';
 import {publicationDirectory,siteForWorkspace} from '../../../scripts/site-config.mjs';
-import {emptyWritingContext,migrateSourcesToContext,validateWritingContext,publicContextView,contextSummary} from './writing-context.mjs';
+import {emptyWritingContext,migrateSourcesToContext,validateWritingContext,publicContextView,contextSummary,sourceCitations} from './writing-context.mjs';
 import {listConnectors,browseConnector,resolveRssMount,searchRssMount,readRssArticle,resolveWebMount,readPublicPage,webSearchCandidate,knownUrlCandidate,importLocalFile,loadImportedFile,resolveFileMount,searchFileChapters,readFileFragment,resolveGithubMount,readGithubFile,fileEvidence,loadSignals,resolveSignalsMount,resolveExistingMount,readExistingWork} from './resources/index.mjs';
 import {cachePath,validateGithubPath} from './resources/github.mjs';
 import {parseMountSpec} from './resources/mount-spec.mjs';
@@ -344,9 +344,10 @@ export function workflowFromContext(context,fallback='rss'){
  return {sources:allowNetwork||kinds.includes('web')||kinds.includes('github')?'combined':(kinds.length?'rss':fallback),allowNetwork,mountKinds:kinds,contextRevision:context.revision};
 }
 
-export async function bindExportContext(store,task,bodySha){
+export async function bindExportContext(store,task,bodySha,{links}={}){
  const context=await loadWritingContext(store,task);
  context.bodySha=bodySha;
+ if(links)context.citations=sourceCitations(context,links);
  const saved=await saveWritingContext(store,task,context);
  await atomicJson(exportContextPath(store.root,task.articleId),saved);
  return saved;

@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {cleanCitationUrl} from '../../../scripts/clean-citation-urls.mjs';
 export const WRITING_CONTEXT_SCHEMA=1;
 export const CONNECTOR_IDS=['rss','web','file','github','signals','existing'];
 export const MOUNT_ROLES=['evidence','background','lead','style'];
@@ -113,4 +114,64 @@ export function stripPrivateCaches(value){
  delete next.token;
  delete next.credential;
  return next;
+}
+
+// Which read evidence backs each source the public text cites. A source is
+// matched by its address or by its RSS/record id. Hot-list leads and style
+// mounts never count as reading, and an RSS item read without its body counts
+// only as its summary. This reports gaps; it never blocks completion, because
+// the writing policy keeps unresolved sourcing as a private to-do.
+export const SOURCE_CITATION_LABEL='source:';
+function comparableUrl(value){
+ try{
+  const url=new URL(cleanCitationUrl(String(value||'')));
+  if(!['http:','https:'].includes(url.protocol))return null;
+  return url.hostname.replace(/^www\./,'')+url.pathname.replace(/\/+$/,'')+url.search;
+ }catch{return null;}
+}
+function githubTarget(value){
+ try{
+  const url=new URL(String(value||''));if(url.hostname!=='github.com')return null;
+  const [owner,repo,kind,ref,...path]=url.pathname.split('/').filter(Boolean);if(!owner||!repo)return null;
+  return {owner:owner.toLowerCase(),repo:repo.replace(/\.git$/,'').toLowerCase(),path:['blob','tree'].includes(kind)&&ref?path.join('/'):''};
+ }catch{return null;}
+}
+function evidenceKind(context,item){return context.resources?.[context.versions?.[item.versionId]?.resourceId]?.kind;}
+function countsAsReading(context,item){
+ const mount=context.mounts.find(m=>m.id===item.mountId);
+ return evidenceKind(context,item)!=='signals'&&!['lead','style'].includes(mount?.role);
+}
+function evidenceBacks(source,item){
+ const at=item.locator||{};
+ if(source.rssId!=null&&at.articleId!=null&&String(source.rssId)===String(at.articleId))return true;
+ if(source.recordId&&at.id&&source.recordId===at.id)return true;
+ const cited=comparableUrl(source.url),read=comparableUrl(at.url);
+ if(cited&&cited===read)return true;
+ const target=at.owner&&at.repo&&at.path?githubTarget(source.url):null;
+ return !!target&&target.owner===String(at.owner).toLowerCase()&&target.repo===String(at.repo).toLowerCase()&&(!target.path||at.path===target.path||at.path.startsWith(target.path+'/'));
+}
+export function sourceEvidenceLinks(notebook,context){
+ const cited=new Map();
+ for(const block of notebook?.blocks||[])if(block?.state==='ready')for(const id of block.sourceIds||[]){const rows=cited.get(id)||[];if(!rows.includes(block.id))rows.push(block.id);cited.set(id,rows);}
+ const evidence=(context?.evidence||[]).filter(item=>countsAsReading(context,item)),links=[],gaps=[];
+ for(const source of notebook?.sources||[]){
+  const blockIds=cited.get(source?.id);if(!blockIds)continue;
+  const matched=evidence.filter(item=>evidenceBacks(source,item)),full=matched.filter(item=>item.gap!=='缺正文');
+  if(full.length)links.push({sourceId:source.id,blockIds,evidenceId:full.at(-1).id});
+  else if(source.reviewed!==true)gaps.push({sourceId:source.id,title:source.title,url:source.url,blockIds,reason:matched.length?'summary-only':'unread'});
+ }
+ return {links,gaps};
+}
+export function sourceGapNote(gap){
+ const name='来源「'+gap.title+'」（'+gap.url+'）';
+ return gap.reason==='summary-only'
+  ?name+'只读到摘要，缺正文。正文引用它之前，需要读到原文。'
+  :name+'在本篇读取记录里没有对应的已读原文。通过其他途径读过的，补记读取范围；没读过的，读原文后再引用。';
+}
+// Citations derived from sources are replaced on every export; citations
+// recorded by hand keep their own labels and stay.
+export function sourceCitations(context,links){
+ const kept=(context.citations||[]).filter(c=>!c.label.startsWith(SOURCE_CITATION_LABEL));
+ const derived=links.flatMap(link=>link.blockIds.map(blockId=>({id:randomUUID(),blockId,evidenceId:link.evidenceId,label:SOURCE_CITATION_LABEL+link.sourceId})));
+ return [...kept,...derived].slice(0,400);
 }
