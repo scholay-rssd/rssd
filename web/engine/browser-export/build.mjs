@@ -86,7 +86,8 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   // A page in another language names the site, its section and its default author in that language.
   // The heading and the share panel's view of the page.
   const model={site:{id:site.id,name:names?.name||site.name,origin:site.origin},sectionName:localeSection(names,sectionId,sectionName),title:record.title,locale,url:site.origin+route,
-   date:record.publication?.date||record.date||'',author:localeAuthor(names,record.publication?.author||site.author||'',site)};
+   date:record.publication?.date||record.date||'',author:localeAuthor(names,record.publication?.author||site.author||'',site),
+   ...(record.media?.[0]?.src?.startsWith('/')?{cover:record.media[0].src}:{})};
   // Keep existing export bookmarks usable: they open the canonical article's sharing panel. Copies, downloads
   // and page images for distribution come from the desktop app and the Obsidian plug-in, not from the site.
   const path='export/'+key(route)+'/';
@@ -127,7 +128,7 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   }
  }
  const noteFiles=notePages||cardPages||workLinkPages?['note.mjs','note.css']:[];
- if(count)for(const file of [...noteFiles,'share.mjs','share.css'])await write(base.slice(1)+file,await readFile(new URL(file,import.meta.url)));
+ if(count)for(const file of [...noteFiles,'share.mjs','share.css','poster.mjs','qr.mjs'])await write(base.slice(1)+file,await readFile(new URL(file,import.meta.url)));
  manifest.browserExports={version:2,articles:count,templates:[...templates].sort(),...(notePages?{notes:notePages}:{}),...(cardPages?{cardPages}:{})};
  await writeFile(join(target,'release.json'),JSON.stringify(manifest));return manifest;
 }

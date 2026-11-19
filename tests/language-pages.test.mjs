@@ -97,7 +97,7 @@ test('English pages take the site, section and author names from the site langua
  assert.match(await readFile(join(dir,'en/content-feed.xml'),'utf8'),/<category>Dog of the Day<\/category>/);
  // The English page's heading names the site, section and default author in English.
  assert.match(en,/<p class="rssd-kicker">Piggytuck Pets \/ Dog of the Day<\/p>/);assert.match(en,/<p class="rssd-byline">Piggytuck Pets · /);
- assert.match(en,/<aside class="rssd-share"[^>]* data-locale="en">/);
+ assert.match(en,/<aside class="rssd-share"[^>]* data-locale="en" data-site="Piggytuck Pets" data-section="Dog of the Day"/);
 });
 
 test('a build without a language pack keeps the earlier names, and every site has a valid pack',async t=>{

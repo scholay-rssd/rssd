@@ -106,7 +106,7 @@ test('an explicit page break starts a new page without an empty page or a visibl
  assert.ok(pages.every(p=>p.rules===0),'a page break is never laid out as a rule');
 });
 
-test('the share panel offers readers the page address only, and the site ships no distribution tools',{skip:!process.env.RSSD_BROWSER_EXECUTABLE,timeout:60000},async t=>{
+test('the share panel offers readers the page address and a poster, and the site ships no distribution tools',{skip:!process.env.RSSD_BROWSER_EXECUTABLE,timeout:60000},async t=>{
  const root=await mkdtemp(join(tmpdir(),'rssd-share-'));let output;
  const types={'.html':'text/html;charset=utf-8','.json':'application/json','.mjs':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml'};
  const requests=[];
@@ -117,7 +117,7 @@ test('the share panel offers readers the page address only, and the site ships n
  t.after(async()=>{await new Promise(r=>server.close(r));await rm(root,{recursive:true,force:true});});
  const build=await buildDemoVariant({...DEMO_VARIANTS.find(x=>x.id==='demo-archie'),origin},{output:root});output=build.target;
  // Only the panel's own script and style reach the site; no article model, page engine or ZIP writer.
- assert.deepEqual((await readdir(join(output,'assets/rssd-export/v1'))).filter(f=>!/^note\./.test(f)).sort(),['share.css','share.mjs']);
+ assert.deepEqual((await readdir(join(output,'assets/rssd-export/v1'))).filter(f=>!/^note\./.test(f)).sort(),['poster.mjs','qr.mjs','share.css','share.mjs']);
  const exports=await readdir(join(output,'export'));assert.ok(exports.length);
  for(const entry of exports)assert.deepEqual((await readdir(join(output,'export',entry))).sort(),['article.css','index.html']);
  const bookmark=await readFile(join(output,'export',exports[0],'index.html'),'utf8'),route=bookmark.match(/url=([^"#]+)#share/)[1];
@@ -137,6 +137,15 @@ test('the share panel offers readers the page address only, and the site ships n
  assert.deepEqual(await page.locator('.rssd-share-social a').evaluateAll(links=>links.map(a=>new URL(a.href).searchParams.get('url'))),Array(3).fill(origin+route));
  await page.locator('[data-action=copy-link]').click();await page.waitForFunction(()=>document.querySelector('.rssd-share-status').textContent.includes('已复制'));
  assert.equal(await page.evaluate(()=>navigator.clipboard.readText()),origin+route);
+ // The poster loads its script only when asked, then shows a PNG the reader can save.
+ assert.ok(!requests.some(path=>/poster|qr\.mjs/.test(path)));
+ await page.locator('[data-action=poster]').click();
+ await page.waitForSelector('.rssd-share-poster:not([hidden]) img[src^="data:image/png"]',{timeout:20000});
+ assert.ok(requests.some(path=>path.endsWith('/poster.mjs'))&&requests.some(path=>path.endsWith('/qr.mjs')));
+ const poster=await page.locator('.rssd-share-poster img').evaluate(img=>({width:img.naturalWidth,height:img.naturalHeight}));
+ assert.equal(poster.width,1500);assert.ok(poster.height>=1000);
+ const [posterDownload]=await Promise.all([page.waitForEvent('download'),page.locator('[data-action=save-poster]').click()]);
+ assert.match(posterDownload.suggestedFilename(),/\.png$/);
  const artifacts=resolve(process.env.RSSD_BROWSER_ARTIFACTS||'.local/article-sharing/browser');await mkdir(artifacts,{recursive:true});
  await page.screenshot({path:join(artifacts,'share-desktop.png')});
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(artifacts,'share-mobile.png')});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
