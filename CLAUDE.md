@@ -79,7 +79,7 @@ main 有分支保护，合并前必须通过下面四项检查，结果都要来
 | --- | --- |
 | `public-boundary` | 公开边界检查 |
 | `secrets-schema` | 代码读取的每个密钥都已在 rssd-secrets 里声明 |
-| `public-build` | `npm run check`、`npm test`、Python 测试、demo 构建、桌面端类型检查和网页构建 |
+| `public-build` | `npm run check`、`npm test`、Obsidian 插件（指针所指提交）的测试和构建、Python 测试、demo 构建、桌面端类型检查和网页构建 |
 | `linux` | 打包 receiver，并用装好的包跑双语页面测试 |
 
 - PR 开好、自己的检查做完之后，可以直接设成通过即自动合并：`gh pr merge <编号> --auto --merge`。
@@ -95,7 +95,7 @@ main 有分支保护，合并前必须通过下面四项检查，结果都要来
 
 - `npm run check`
 - `node scripts/check-public-boundary.mjs`
-- 跑和改动相关的测试：`node --test tests/<名称>.test.mjs`；改了桌面端加跑 `npm run desktop:test`
+- 跑和改动相关的测试：`node --test tests/<名称>.test.mjs`；改了桌面端加跑 `npm run desktop:test`；改了 `contracts/`、`web/themes` 或 `sites`，在 `obsidian/` 里跑 `npm ci && npm test && npm run build`
 
 ## 用词
 
