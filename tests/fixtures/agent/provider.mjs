@@ -1,5 +1,5 @@
 import {createInterface} from 'node:readline';
-let promptId,permissionId;
+let promptId,permissionId,servers=[];
 const send=v=>process.stdout.write(JSON.stringify(v)+'\n');
 const result=(id,value)=>send({jsonrpc:'2.0',id,result:value});
 createInterface({input:process.stdin}).on('line',line=>{
@@ -10,7 +10,7 @@ createInterface({input:process.stdin}).on('line',line=>{
   result(promptId,{stopReason:'end_turn'});return;
  }
  if(m.method==='initialize')setTimeout(()=>result(m.id,{agentCapabilities:{}}),150);
- else if(m.method==='session/new'||m.method==='session/load')result(m.id,{sessionId:'fixture-session',configOptions:[{id:'model',category:'model',currentValue:'auto',options:[{name:'Auto',value:'auto'}]}]});
+ else if(m.method==='session/new'||m.method==='session/load')servers=m.params.mcpServers||[],result(m.id,{sessionId:'fixture-session',configOptions:[{id:'model',category:'model',currentValue:'auto',options:[{name:'Auto',value:'auto'}]}]});
  else if(m.method==='session/prompt'){
   promptId=m.id;
   send({jsonrpc:'2.0',method:'session/update',params:{update:{sessionUpdate:'tool_call',toolCallId:'fixture-tool',title:'Fixture tool',status:'in_progress'}}});
@@ -19,6 +19,14 @@ createInterface({input:process.stdin}).on('line',line=>{
   if(text.endsWith('permission:auto:mcp')||text.endsWith('permission:deny:execute')){
    permissionId=1000000;const allowed=text.endsWith('permission:auto:mcp');
    send({jsonrpc:'2.0',id:permissionId,method:'session/request_permission',params:{toolCall:{toolCallId:'fixture-tool',title:allowed?'scholay-workbench-task_read: task_read':'Unapproved execution',kind:allowed?'other':'execute',rawInput:allowed?{}:{command:'touch /tmp/unapproved-cursor-command'}},options:[{optionId:'once',kind:'allow_once',name:'Allow once'}]}});
+  }
+  // Stand in for scholay-mcp: hand a library reply to the task's bridge with
+  // the address and token the worker gave the scholay-rss server.
+  if(text.endsWith('read:record')){
+   const env=Object.fromEntries((servers.find(s=>s.name==='scholay-rss')?.env||[]).map(e=>[e.name,e.value]));
+   const say=text=>send({jsonrpc:'2.0',method:'session/update',params:{update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}}});
+   fetch(env.SCHOLAY_AGENT_BRIDGE+'/read',{method:'POST',headers:{authorization:'Bearer '+env.SCHOLAY_AGENT_BRIDGE_TOKEN,'content-type':'application/json'},body:JSON.stringify({tool:'article_read',arguments:{article_id:4},result:{articleId:4,status:'cached',title:'原文',sourceUrl:'https://example.org/a',markdown:'读到的正文',complete:true}})})
+    .then(r=>r.text(),e=>'failed: '+e.message).then(reply=>{say('Read record: '+reply);result(promptId,{stopReason:'end_turn'});});
   }
   if(m.params.prompt[0].text.endsWith('complete'))result(promptId,{stopReason:'end_turn'});
   if(m.params.prompt[0].text.includes('图库无文件验收'))result(promptId,{stopReason:'end_turn'});

@@ -4,6 +4,9 @@ export const WRITING_CONTEXT_SCHEMA=1;
 export const CONNECTOR_IDS=['rss','web','file','github','signals','existing'];
 export const MOUNT_ROLES=['evidence','background','lead','style'];
 export const MOUNT_STATES=['parsing','ready','partial','failed','needs_ocr','unavailable'];
+// Reads made through the library's own tools rather than a mount. Their
+// records carry `via` and no mount or version.
+export const TOOL_READS=['article_read','page_read'];
 const isRecord=x=>!!x&&typeof x==='object'&&!Array.isArray(x);
 const text=(value,max,required=false)=>{
  if(typeof value!=='string'||value.length>max||(required&&!value.trim()))throw Error('上下文字段无效');
@@ -83,8 +86,9 @@ export function validateWritingContext(value){
   return next;
  });
  checkList(value.evidence||[],'evidence',item=>{
-  if(!isRecord(item)||typeof item.text!=='string'||item.text.length>20000)throw Error('已读证据格式无效');
-  const next={id:text(item.id,80,true),mountId:text(item.mountId,80,true),versionId:text(item.versionId,80,true),locator:isRecord(item.locator)?structuredClone(item.locator):{},text:item.text,hash:text(item.hash,128,true),truncated:item.truncated===true,readAt:text(item.readAt||context.updatedAt,40)};
+  if(!isRecord(item)||typeof item.text!=='string'||item.text.length>20000||item.via!==undefined&&!TOOL_READS.includes(item.via))throw Error('已读证据格式无效');
+  const mounted=item.via===undefined;
+  const next={id:text(item.id,80,true),mountId:text(item.mountId??'',80,mounted),versionId:text(item.versionId??'',80,mounted),...(mounted?{}:{via:item.via}),locator:isRecord(item.locator)?structuredClone(item.locator):{},text:item.text,hash:text(item.hash,128,true),truncated:item.truncated===true,readAt:text(item.readAt||context.updatedAt,40)};
   if(item.runId)next.runId=text(item.runId,80);
   if(item.gap)next.gap=text(item.gap,400);
   context.evidence.push(next);
@@ -174,4 +178,21 @@ export function sourceCitations(context,links){
  const kept=(context.citations||[]).filter(c=>!c.label.startsWith(SOURCE_CITATION_LABEL));
  const derived=links.flatMap(link=>link.blockIds.map(blockId=>({id:randomUUID(),blockId,evidenceId:link.evidenceId,label:SOURCE_CITATION_LABEL+link.sourceId})));
  return [...kept,...derived].slice(0,400);
+}
+
+// What article_read or page_read returned, as a read record. The tool's own
+// output is the evidence; nothing is fetched again. A read that returned no
+// text (an article never cleaned or cached, a page not captured) is not one.
+const words=value=>typeof value==='string'&&value.trim()?value:undefined;
+function blockText(blocks){return Array.isArray(blocks)?blocks.map(b=>words(b?.markdown)||words(b?.text)||'').filter(Boolean).join('\n\n'):'';}
+export function toolReadEvidence(tool,input,result){
+ if(!TOOL_READS.includes(tool)||!isRecord(result))return null;
+ if(tool==='article_read'){
+  const articleId=Number(result.articleId??input?.article_id),body=words(result.markdown)||blockText(result.blocks);
+  if(!Number.isSafeInteger(articleId)||articleId<1||!body)return null;
+  return {via:tool,locator:{articleId,url:words(result.sourceUrl),title:words(result.title),publishedAt:words(result.publishedAt),sourceKind:words(result.sourceKind),offset:Number.isSafeInteger(result.offset)?result.offset:undefined},text:body,truncated:result.complete===false};
+ }
+ const document=isRecord(result.document)?result.document:{},url=words(document.sourceUrl)||words(document.url)||words(result.requestedUrl),body=words(result.text)||words(result.markdown);
+ if(result.status!=='captured'||!url||!body)return null;
+ return {via:tool,locator:{url,title:words(document.title),publishedAt:words(document.publishedAt),dateBasis:words(result.dateBasis),sourceKind:words(document.sourceKind)},text:body,truncated:result.complete===false};
 }

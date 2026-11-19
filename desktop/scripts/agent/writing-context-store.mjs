@@ -3,7 +3,8 @@ import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {atomicJson,optionalJson} from '../../../scripts/editorial-sync.mjs';
 import {publicationDirectory,siteForWorkspace} from '../../../scripts/site-config.mjs';
-import {emptyWritingContext,migrateSourcesToContext,validateWritingContext,publicContextView,contextSummary,sourceCitations} from './writing-context.mjs';
+import {emptyWritingContext,migrateSourcesToContext,validateWritingContext,publicContextView,contextSummary,sourceCitations,toolReadEvidence} from './writing-context.mjs';
+import {withFileLock} from '../../../scripts/editorial-lock.mjs';
 import {listConnectors,browseConnector,resolveRssMount,searchRssMount,readRssArticle,resolveWebMount,readPublicPage,webSearchCandidate,knownUrlCandidate,importLocalFile,loadImportedFile,resolveFileMount,searchFileChapters,readFileFragment,resolveGithubMount,readGithubFile,fileEvidence,loadSignals,resolveSignalsMount,resolveExistingMount,readExistingWork} from './resources/index.mjs';
 import {cachePath,validateGithubPath} from './resources/github.mjs';
 import {parseMountSpec} from './resources/mount-spec.mjs';
@@ -303,6 +304,24 @@ export async function readMount(store,task,mountId,locator={},params={}){
  else throw Error('未知资料来源');
  const saved=await saveWritingContext(store,task,current);
  return {context:publicContextView(saved),evidence};
+}
+
+// Records what article_read or page_read returned to this article's agent.
+// Reading the same text again adds nothing, and a full record list is left as
+// it is rather than made unreadable: such a read then shows up as a source gap.
+export async function recordToolRead(store,task,{tool,input,result,runId}){
+ if(!task.notebook)return null;
+ const read=toolReadEvidence(tool,input,result);if(!read)return null;
+ return withFileLock(liveContextPath(store,task.id)+'.lock',async()=>{
+  const current=await loadWritingContext(store,task),digest=hash(read.text);
+  const same=current.evidence.find(e=>e.via===read.via&&e.hash===digest&&JSON.stringify(e.locator)===JSON.stringify(read.locator));
+  if(same)return same;
+  if(current.evidence.length>=400)return null;
+  const item={id:randomUUID(),via:read.via,locator:read.locator,text:read.text.slice(0,20000),hash:digest,truncated:read.truncated||read.text.length>20000,readAt:new Date().toISOString(),...(runId?{runId}:{})};
+  current.evidence.push(item);
+  const saved=await saveWritingContext(store,task,current);
+  return saved.evidence.find(e=>e.id===item.id);
+ });
 }
 
 export async function citeEvidence(store,task,{evidenceId,blockId,label=''},params={}){

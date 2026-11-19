@@ -90,8 +90,10 @@ impl ServerHandler for Bridge {
         request: CallToolRequestParams,
         _: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        let name = request.name.clone();
+        let arguments = Value::Object(request.arguments.unwrap_or_default());
         let result = async {
-            if self.get_tool(&request.name).is_none() {
+            if self.get_tool(&name).is_none() {
                 anyhow::bail!("Unknown tool");
             }
             let mut stream = scholay_local_ipc::connect(&self.socket)
@@ -99,8 +101,7 @@ impl ServerHandler for Bridge {
                 .map_err(|_| {
                     anyhow::anyhow!("Open RSSD and enable Agent access in Settings.")
                 })?;
-            let message =
-                json!({"method":request.name,"params":request.arguments.unwrap_or_default()});
+            let message = json!({"method":name,"params":arguments.clone()});
             stream.write_all(format!("{message}\n").as_bytes()).await?;
             let mut line = String::new();
             let mut reader = BufReader::new(stream.take(4 * 1024 * 1024 + 1));
@@ -119,6 +120,11 @@ impl ServerHandler for Bridge {
             Ok::<_, anyhow::Error>(value["result"].clone())
         }
         .await;
+        if let Ok(value) = &result {
+            if matches!(&*name, "article_read" | "page_read") {
+                record_read(&name, &arguments, value).await;
+            }
+        }
         let result = match result {
             Ok(value) => {
                 let mut r = CallToolResult::success(vec![ContentBlock::text(value.to_string())]);
@@ -128,6 +134,51 @@ impl ServerHandler for Bridge {
             Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
         };
         Ok(result.into())
+    }
+}
+/// Hands a successful article or page read to the desktop writing task that
+/// started this server, so the task can tell which sources were actually read.
+/// The task passes its private bridge address and token only when it is a
+/// writing task; without them nothing is sent. A failed hand-off never changes
+/// the tool's result: the read simply has no record, and completion lists the
+/// source as unread.
+async fn record_read(tool: &str, arguments: &Value, result: &Value) {
+    let (Ok(address), Ok(token)) = (
+        std::env::var("SCHOLAY_AGENT_BRIDGE"),
+        std::env::var("SCHOLAY_AGENT_BRIDGE_TOKEN"),
+    ) else {
+        return;
+    };
+    let Some(port) = address
+        .strip_prefix("http://127.0.0.1:")
+        .and_then(|port| port.parse::<u16>().ok())
+    else {
+        return;
+    };
+    if token.is_empty() || token.contains(['\r', '\n']) {
+        return;
+    }
+    let body = json!({"tool":tool,"arguments":arguments,"result":result}).to_string();
+    let request = format!(
+        "POST /read HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let send = async {
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port)).await?;
+        stream.write_all(request.as_bytes()).await?;
+        let mut status = String::new();
+        BufReader::new(stream).read_line(&mut status).await?;
+        anyhow::ensure!(
+            status.split_whitespace().nth(1) == Some("200"),
+            "bridge answered {}",
+            status.trim()
+        );
+        Ok::<_, anyhow::Error>(())
+    };
+    match tokio::time::timeout(std::time::Duration::from_secs(10), send).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => eprintln!("scholay-mcp: read record not saved: {e}"),
+        Err(_) => eprintln!("scholay-mcp: read record not saved: bridge timed out"),
     }
 }
 #[tokio::main]
