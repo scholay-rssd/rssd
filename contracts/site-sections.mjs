@@ -17,12 +17,21 @@ export const SITE_SECTIONS={
     {
       "id": "briefings",
       "name": "学界犀闻",
-      "defaultMode": "xiwen"
+      "defaultMode": "xiwen",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     },
     {
       "id": "observations",
       "name": "学者观察",
-      "defaultMode": "observation"
+      "defaultMode": "observation",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "resources",
@@ -57,7 +66,11 @@ export const SITE_SECTIONS={
     {
       "id": "tutorials",
       "name": "使用教程",
-      "defaultMode": "documentation"
+      "defaultMode": "documentation",
+      "workTypes": [
+        "article"
+      ],
+      "articleCards": true
     },
     {
       "id": "development",
@@ -72,90 +85,162 @@ export const SITE_SECTIONS={
     {
       "id": "input-skins",
       "name": "外观设计",
-      "defaultMode": "design"
+      "defaultMode": "design",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     }
   ],
   "piggytuck": [
     {
       "id": "works",
       "name": "作品系列",
-      "defaultMode": "design"
+      "defaultMode": "design",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     },
     {
       "id": "design-news",
       "name": "设计资讯",
-      "defaultMode": "xiwen"
+      "defaultMode": "xiwen",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "icons",
       "name": "精美图标",
-      "defaultMode": "design"
+      "defaultMode": "design",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     },
     {
       "id": "web-design",
       "name": "网页设计",
-      "defaultMode": "design"
+      "defaultMode": "design",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     }
   ],
   "personal": [
     {
       "id": "works",
       "name": "作品系列",
-      "defaultMode": "design"
+      "defaultMode": "design",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     },
     {
       "id": "product-news",
       "name": "产品资讯",
-      "defaultMode": "xiwen"
+      "defaultMode": "xiwen",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     },
     {
       "id": "reflections",
       "name": "产品随想",
-      "defaultMode": "essay"
+      "defaultMode": "essay",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "academic-notes",
       "name": "学术札记",
-      "defaultMode": "observation"
+      "defaultMode": "observation",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     }
   ],
   "pets": [
     {
       "id": "pet-news",
       "name": "宠物资讯",
-      "defaultMode": "xiwen"
+      "defaultMode": "xiwen",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     },
     {
       "id": "daily-cat",
       "name": "每日一猫",
-      "defaultMode": "encyclopedia"
+      "defaultMode": "encyclopedia",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "daily-dog",
       "name": "每日一狗",
-      "defaultMode": "encyclopedia"
+      "defaultMode": "encyclopedia",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "exotic-pets",
       "name": "异宠大全",
-      "defaultMode": "encyclopedia"
+      "defaultMode": "encyclopedia",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     }
   ],
   "legis": [
     {
       "id": "frontiers",
       "name": "法律前沿",
-      "defaultMode": "xiwen"
+      "defaultMode": "xiwen",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     },
     {
       "id": "cases",
       "name": "法律案例",
-      "defaultMode": "observation"
+      "defaultMode": "observation",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "ip",
       "name": "知识产权",
-      "defaultMode": "encyclopedia"
+      "defaultMode": "encyclopedia",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "regulations",
@@ -167,12 +252,22 @@ export const SITE_SECTIONS={
     {
       "id": "methods",
       "name": "方法百科",
-      "defaultMode": "encyclopedia"
+      "defaultMode": "encyclopedia",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "statistics",
       "name": "统计之美",
-      "defaultMode": "encyclopedia"
+      "defaultMode": "encyclopedia",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "experiments",
@@ -182,7 +277,11 @@ export const SITE_SECTIONS={
     {
       "id": "frontiers",
       "name": "方法前沿",
-      "defaultMode": "xiwen"
+      "defaultMode": "xiwen",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     }
   ],
   "enter": [
@@ -194,7 +293,12 @@ export const SITE_SECTIONS={
     {
       "id": "software",
       "name": "软件网站",
-      "defaultMode": "opensource"
+      "defaultMode": "opensource",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "search",
@@ -211,12 +315,22 @@ export const SITE_SECTIONS={
     {
       "id": "classics",
       "name": "国学经典",
-      "defaultMode": "encyclopedia"
+      "defaultMode": "encyclopedia",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "interpretations",
       "name": "易家之言",
-      "defaultMode": "essay"
+      "defaultMode": "essay",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "applications",
@@ -238,12 +352,21 @@ export const SITE_SECTIONS={
     {
       "id": "models",
       "name": "模型前沿",
-      "defaultMode": "observation"
+      "defaultMode": "observation",
+      "workTypes": [
+        "article",
+        "note"
+      ],
+      "articleCards": true
     },
     {
       "id": "offers",
       "name": "福利羊毛",
-      "defaultMode": "xiwen"
+      "defaultMode": "xiwen",
+      "workTypes": [
+        "article",
+        "note"
+      ]
     },
     {
       "id": "certificates",

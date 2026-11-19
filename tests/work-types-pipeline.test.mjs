@@ -61,7 +61,8 @@ test('the receiver maps types, revisions, note links and card sets into the site
 test('a receiver builds the note page and the card page, and refuses a note where the section takes none',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'rssd-work-types-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const policy={'daily-cat':{workTypes:['article','note'],articleCards:true}};
- const site={...profiles.find(s=>s.id==='pets'),origin:'http://127.0.0.1:9',languages:['zh-CN','en'],sections:SITE_SECTIONS.pets.map(s=>({...s,...policy[s.id]}))};
+ // This test sets each section's settings itself: daily-dog takes no notes here.
+ const site={...profiles.find(s=>s.id==='pets'),origin:'http://127.0.0.1:9',languages:['zh-CN','en'],sections:SITE_SECTIONS.pets.map(({workTypes,articleCards,...s})=>({...s,...policy[s.id]}))};
  const token='fixture-site-credential-not-real-1234567890',headers={authorization:'Bearer '+token};
  const receiver=await createReceiver({config:{home:join(dir,'state'),source:ROOT,sites:[{site,publicRoot:join(dir,'public'),tokenHash:p.hash(token)}]},build:options=>buildAndActivate({...options,verify:async()=>{}})});
  t.after(()=>receiver.app.close());

@@ -25,7 +25,8 @@ test('notes get a gallery page, articles a linked card page, and the feed says w
  const assets=[{path:picture,fromPublished:true}],noteAssets=[...assets,{path:second,fromPublished:true}];
  const pets=profiles.find(site=>site.id==='pets');
  const policy={'daily-cat':{workTypes:['article','note'],articleCards:true},'daily-dog':{workTypes:['article','note']}};
- const site={...pets,sections:SITE_SECTIONS.pets.map(section=>({...section,...policy[section.id]}))};
+ // This test sets each section's settings itself instead of using the bundled ones.
+ const site={...pets,sections:SITE_SECTIONS.pets.map(({workTypes,articleCards,...section})=>({...section,...policy[section.id]}))};
  const cards=revision=>({revision,pages:[{src:picture,width:1,height:1},{src:picture,width:1,height:1}]});
  const article=(id,sectionId,extra={})=>({id,title:'长文 '+id,sectionId,date:'2026-11-18',summary:'长文摘要',markdown:`# 长文 ${id}\n\n第一段正文。\n\n![配图](${picture})\n\n第二段正文。`,assets,...extra});
  const news=[
@@ -90,7 +91,7 @@ test('notes get a gallery page, articles a linked card page, and the feed says w
  assert.equal(record('maine-coon').revision,2);
 });
 
-test('a site without notes or card settings builds its pages and feed as before',async t=>{
+test('a site with no notes and no card sets builds its pages and feed as before, whatever its sections allow',async t=>{
  const root=await mkdtemp(join(tmpdir(),'note-pages-plain-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const site={...profiles.find(s=>s.id==='pets')};
  const snapshot={news:[{id:'plain-article',title:'普通长文',sectionId:'daily-cat',date:'2026-11-18',summary:'摘要',markdown:'# 普通长文\n\n正文。'}],data:{year:[],history:[]},openSource:{items:[]},permalinks:{}};

@@ -129,6 +129,17 @@ test('every bundled section setting passes the strict check',()=>{
   assert.doesNotThrow(()=>sectionWorkPolicy(section,{strict:true}),siteId+'/'+section.id);
 });
 
+test('every site takes notes and gives long articles a card page somewhere, and keeps long articles the default',()=>{
+ // The owner's settings of 2026-11-19: notes and card pages on every site, chosen per section.
+ for(const [siteId,sections] of Object.entries(SITE_SECTIONS)){
+  const policies=sections.filter(section=>section.enabled!==false).map(section=>sectionWorkPolicy(section,{strict:true}));
+  assert.ok(policies.some(policy=>policy.workTypes.includes('note')),siteId+' takes notes');
+  assert.ok(policies.some(policy=>policy.articleCards),siteId+' has card pages');
+  // Works saved before types existed state none and take the default, so they must stay long articles.
+  assert.ok(policies.every(policy=>policy.defaultType==='article'),siteId+' keeps long articles the default');
+ }
+});
+
 test('the site publishes a note where its section takes notes and stops where it does not',()=>{
  const pets=profiles.find(site=>site.id==='pets');
  const site={...pets,sections:[{id:'daily-cat',name:'每日一猫',workTypes:['article','note']},{id:'daily-dog',name:'每日一狗'}]};
