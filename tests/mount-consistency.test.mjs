@@ -6,7 +6,7 @@ import {readFileSync,readdirSync,existsSync} from 'node:fs';
 import {CONNECTORS} from '../desktop/scripts/agent/resources/index.mjs';
 import {parseMountSpec} from '../desktop/scripts/agent/resources/mount-spec.mjs';
 import {WRITING_RULE_SKILL_IDS,WRITING_DOMAIN_IDS} from '../contracts/writing-defaults.mjs';
-import {ANNOTATION_FORM,ANNOTATION_FAMILIES} from '../contracts/annotation-forms.mjs';
+import {ANNOTATION_FAMILIES} from '../contracts/annotation-forms.mjs';
 import {profiles} from '../scripts/site-config.mjs';
 import {writableSectionsForSite} from '../contracts/site-sections.mjs';
 
@@ -46,10 +46,9 @@ test('every writing rule skill the catalog names exists, is named after its fold
   assert.ok(fields,id+' starts with a header');assert.equal(fields.name,id,id+' is named after its folder');assert.ok(fields.description,id+' has a description');
   assert.match(text,/\nmetadata:\n\s+version: \S+/,id+' has a version');
  }
- // A writing family has its rule skill and its annotation questions; a domain has its rule skill.
+ // A writing family has its rule skill, and so has a domain. The annotation form is the same for every family.
  for(const family of ANNOTATION_FAMILIES){
   assert.ok(folders.includes('rssd-writing-'+family),'family '+family+' has a rule skill');
-  assert.ok(ANNOTATION_FORM.sections.some(section=>section.appliesTo.families?.includes(family)),'family '+family+' has annotation questions');
  }
  for(const domain of WRITING_DOMAIN_IDS)assert.ok(folders.includes('rssd-domain-'+domain),'domain '+domain+' has a rule skill');
 });
