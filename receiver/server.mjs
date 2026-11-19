@@ -14,6 +14,7 @@ import {withFileLock} from '../scripts/editorial-lock.mjs';
 import {validateSite} from '../scripts/site-config.mjs';
 import {sectionsForSite} from '../contracts/site-sections.mjs';
 import p from '../contracts/rssd-v1.cjs';
+import {WORK_TYPES_CAPABILITY} from '../contracts/rssd-publication.cjs';
 
 async function loadBindingKeys(file,publicRoot){
   if(file===undefined)return Object.create(null);
@@ -53,7 +54,7 @@ export async function createReceiver({config,build=buildAndActivate}) {
     if(!entry||!timingSafeEqual(Buffer.from(entry.tokenHash),Buffer.from(p.hash(token))))p.fail('Invalid site credential',401,'unauthorized');
     req.rssdSite=entry;
   });
-  app.get('/api/rssd-receiver/v1/sites/:siteId/status',async req=>({...req.rssdSite.store.status(),accepting:req.rssdSite.accepting,baselineSha256:req.rssdSite.baselineSha256}));
+  app.get('/api/rssd-receiver/v1/sites/:siteId/status',async req=>({...req.rssdSite.store.status(),accepting:req.rssdSite.accepting,baselineSha256:req.rssdSite.baselineSha256,capabilities:[WORK_TYPES_CAPABILITY]}));
   app.get('/api/rssd-receiver/v1/sites/:siteId/heads/:workId/:locale',async req=>req.rssdSite.store.head(req.params.workId,req.params.locale));
   app.post('/api/rssd-receiver/v1/sites/:siteId/submissions',async req=>{if(!req.rssdSite.accepting)p.fail('Site intake is paused for handoff',409,'site_paused');return req.rssdSite.store.accept(req.body);});
   app.get('/api/rssd-receiver/v1/sites/:siteId/submissions/:id',async req=>req.rssdSite.store.receipt(req.params.id));
