@@ -90,6 +90,28 @@ The pack is kept outside this repository. Only each persona's ID and name are
 read. `--check` lists the sections that name a persona and whether the ID and
 name match the pack.
 
+### Persona voice
+
+A section may state a voice instead of a persona byline: how a new work gets the
+persona that writes it, and whether that persona's founder or the site signs.
+The design is `docs/persona-voice.md`. The Center decides when a demand is
+claimed and hands this device the one persona its claim froze; `center work`
+then writes with it. Where the section lets the writer choose, the agent is
+first shown the candidates' summaries and names one. A work is not submitted
+while its persona is undecided. Nothing needs configuring on the device.
+
+A pool topic may name its persona or ask for none with `voice`:
+`{"persona":"P0001"}` or `"none"`.
+
+```
+rssd center personas-export --library /private/persona-library --out /private/personas.json
+```
+
+`personas-export` writes the file the owner uploads to the Center's persona
+library. It runs the persona library's own compiler from the directory you name,
+so name only your own checkout. It needs no Center connection. The file holds
+persona content and is private: keep it out of every repository.
+
 Runtime releases are immutable. `rssd update /path/to/new/extracted-artifact
 --manifest-sha256 <hash>` verifies the candidate and refuses activation while
 any production command holds a lease. After work stops, rerun the update.

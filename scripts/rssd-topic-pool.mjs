@@ -9,7 +9,7 @@ import {sectionWorkPolicy} from '../contracts/work-types.mjs';
 import {sectionsForSite} from '../contracts/site-sections.mjs';
 
 export const MAX_POOL_BATCH=1000;
-const KEYS=['title','brief','workType','topicKey','lead','priority','requiredLocales','adaptedFrom'];
+const KEYS=['title','brief','workType','topicKey','lead','priority','requiredLocales','adaptedFrom','voice'];
 
 /** What a section takes, from the site profiles: {workTypes, defaultType, articleCards}. */
 export function poolSectionPolicy(profiles,workspaceId,sectionId){
@@ -32,7 +32,7 @@ export function poolDemand(topic,{workspaceId,sectionId,policy,requiredLocales})
  const id='pool-'+protocol.hash([workspaceId,sectionId,normalizeTitle(topic.title)]).slice(0,40);
  return protocol.demand({id,workspaceId,sectionId,kind:'write',title:topic.title.trim(),brief:topic.brief.trim(),requiredLocales:topic.requiredLocales||requiredLocales,
   priority:topic.priority??0,...(topic.workType!=null?{workType:topic.workType}:{}),...(topic.adaptedFrom!=null?{adaptedFrom:topic.adaptedFrom}:{}),
-  ...(topic.topicKey!=null?{topicKey:topic.topicKey}:{}),...(topic.lead!=null?{lead:topic.lead}:{})});
+  ...(topic.topicKey!=null?{topicKey:topic.topicKey}:{}),...(topic.lead!=null?{lead:topic.lead}:{}),...(topic.voice!=null?{voice:topic.voice}:{})});
 }
 
 const sameDemand=(row,demand)=>{try{return protocol.canonical(protocol.demand(row.payload))===protocol.canonical(demand);}catch{return false;}};

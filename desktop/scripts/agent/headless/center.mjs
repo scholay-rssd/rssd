@@ -1,4 +1,4 @@
-import {readFile} from 'node:fs/promises';
+import {readFile,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {saveCenterConnection,loadCenterConnection,CenterOutbox} from '../../../../scripts/rssd-center-client.mjs';
@@ -28,8 +28,17 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
     const tokenFile=flag('--token-file');if(!args[0]||!tokenFile)throw Error('Usage: center connect <https://center> --token-file <private-file>');
     const result=await saveCenterConnection(home,{origin:args[0],token:(await readFile(tokenFile,'utf8')).trim()});emit(result);return result;
   }
+  if(command==='personas-export'){
+    // The upload file for the Center's persona library, compiled by the persona library's own code. It needs
+    // no Center connection. The file is private: keep it out of every repository.
+    const library=flag('--library'),out=flag('--out');if(!library||!out)throw Error('Usage: center personas-export --library <persona-library-directory> --out <private-file.json>');
+    const {personaUpload}=await import('../../../../scripts/rssd-persona-library.mjs');
+    const upload=await personaUpload(resolve(library));
+    await writeFile(resolve(out),JSON.stringify(upload,null,1)+'\n',{mode:0o600});
+    const result={file:resolve(out),personas:upload.personas.map(({snapshot,founderName})=>({id:snapshot.preset.id,revision:snapshot.preset.revision,founder:founderName}))};emit(result);return result;
+  }
   if(!command||command==='help'||command==='--help'){
-    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id] [--section id] [--states a,b] [--type article|note] [--since iso] [--search text] [--limit n] [--offset n] [--total]','withdraw --id demandId','personas --pack persona-pack.json [--check]','pool-leads [--platform id] [--query text] [--limit n]','pool-add --workspace id --section id --file topics.json [--locales zh-CN,en] [--dry-run]','store-en --work workId [--revision n]','enqueue-translate --work workId [--revision n]','claim --workspace id [--section id] [--id demandId] [--store-only]','submit <packet.json> [--store-only]','recover [requestId] [--retry]','retry-website --workspace id --request-key key --job-id id','work --agent id --workspace id [--section id] [--id demandId] [--once] [--resume] [--store-only]']});return;
+    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id] [--section id] [--states a,b] [--type article|note] [--since iso] [--search text] [--limit n] [--offset n] [--total]','withdraw --id demandId','personas --pack persona-pack.json [--check]','personas-export --library dir --out file.json','pool-leads [--platform id] [--query text] [--limit n]','pool-add --workspace id --section id --file topics.json [--locales zh-CN,en] [--dry-run]','store-en --work workId [--revision n]','enqueue-translate --work workId [--revision n]','claim --workspace id [--section id] [--id demandId] [--store-only]','submit <packet.json> [--store-only]','recover [requestId] [--retry]','retry-website --workspace id --request-key key --job-id id','work --agent id --workspace id [--section id] [--id demandId] [--once] [--resume] [--store-only]']});return;
   }
   const {client,identity}=await loadCenterConnection(home),outbox=new CenterOutbox({directory:join(home,'outbox'),client});
   if(command==='status'){const entries=await outbox.list();const result={origin:client.origin,identity,outbox:entries.map(e=>({requestId:e.requestId,workId:e.packet.workId,state:e.state,error:e.error,receipt:e.receipt}))};emit(result);return result;}
