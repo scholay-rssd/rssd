@@ -3,6 +3,7 @@ import {join,dirname} from 'node:path';
 import {digest,sourceKey} from '../../admin/model.mjs';
 import {asEditorialRecord} from '../../scripts/editorial-record.mjs';
 import {articleLocale,sourceContentSha256} from '../../contracts/language-editions.mjs';
+import {validateCardSet,validateWorkTags} from '../../contracts/work-types.mjs';
 import {sourceHasher} from './source-hash-v1.mjs';
 import {renderArticleParts,mathStyles} from './article-math.mjs';
 import {renderRssFeed} from './rss-feed.mjs';
@@ -110,6 +111,12 @@ export async function renderLanguagePages({job,target,previousRoot,site,now,mani
   await write(route.slice(1)+'index.html',english);paths.set(route,seo.page(route,english).lastmod);
   if(sourceRoute){const chinese=addLanguageUi(template,{site,zh:sourceRoute,en:route,locale:'zh-CN'});await write(file,chinese);paths.set(sourceRoute,seo.page(sourceRoute,chinese).lastmod);}
   records.push({id:data.id,...(original?{sourceArticleId:original.id,sourceUrl:site.origin+sourceRoute}:{}),route,url:site.origin+route,locale:'en',title:data.title,summary:data.summary,date:data.date,category:data.category,bodyMarkdown:data.markdown,translationOf:data.translationOf,contentSha256:sourceContentSha256(data),stale:unknown||sourceMissing||data.translationSourceStatus==='independent'?null:stale,...(data.translationSourceStatus==='verified'?{sourceHashVersion:data.translationSourceHashVersion}:{}),sourceVersionState:versionState});
+  // An English edition has its own revision, card set and #tags; its type and note links are the work's, which the
+  // article pages take from the Chinese source. A note's edition has no card set.
+  const last=records.at(-1),tags=validateWorkTags(data.tags);
+  if(Number.isSafeInteger(data.revision)&&data.revision>0)last.revision=data.revision;
+  if(data.cards&&(original?.workType||data.workType)!=='note')last.cards=validateCardSet(data.cards,{type:'article'});
+  if(tags)last.tags=tags;
   sectionNames.set(data.id,sectionName);feedCategories.set(data.id,names?.sections?.[data.sectionId]||'Articles');
  }
  const home=await readFile(join(target,custom?'journal/index.html':'index.html'),'utf8'),brand=englishBrand(site,names);

@@ -26,6 +26,9 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
  const workId=record=>String(record.id).replace(/^news:/,'');
  const works=content.records.filter(record=>record.type==='article'||record.type==='note'),byWorkId=new Map(works.map(record=>[workId(record),record]));
  const adaptations=adaptationIndex(works.map(record=>({articleId:workId(record),type:record.type,revision:record.revision,adaptedFrom:record.adaptedFrom})));
+ // A work's page in a language: its English edition when it has one, otherwise its Chinese page.
+ const englishOf=new Map(english.filter(record=>record.sourceArticleId).map(record=>[record.sourceArticleId,record]));
+ const pageIn=(articleId,en)=>(en&&englishOf.get(articleId))||byWorkId.get(articleId);
  const exists=async file=>{try{await access(join(target,file));return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}};
  for(const record of [...content.records,...english]){
   const route=record.route;if(!route?.startsWith('/')||!Object.hasOwn(manifest.hashes,route.slice(1)+'index.html'))continue;
@@ -73,10 +76,13 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   // Links between the article page and the card page, and both ways between an article and its rewritten notes.
   const links=[];
   if(cardsPath)links.push(cardsLink({route:cardsPath,cards,en}));
-  if(locale==='zh-CN'&&type==='article')for(const note of adaptations.notesOf.get(workId(record))||[]){const work=byWorkId.get(note.articleId);if(work)links.push(`<a href="${esc(work.route)}">图文笔记《${esc(work.title)}》</a>`);}
-  if(locale==='zh-CN'&&type==='note'&&record.adaptedFrom){
-   const original=byWorkId.get(record.adaptedFrom.articleId);
-   if(original?.type==='article')links.push(`<a href="${esc(original.route)}">改写自《${esc(original.title)}》</a>${Number.isSafeInteger(original.revision)&&original.revision>record.adaptedFrom.revision?'<span class="rssd-outdated">原文已更新</span>':''}`);
+  // The links between an article and its rewritten notes belong to the work, so an English page takes them from its
+  // Chinese source and points at the English editions where they exist.
+  if(type==='article'&&source)for(const note of adaptations.notesOf.get(workId(source))||[]){const page=pageIn(note.articleId,en);if(page)links.push(`<a href="${esc(page.route)}">${en?`Picture note: ${esc(page.title)}`:`图文笔记《${esc(page.title)}》`}</a>`);}
+  const from=type==='note'?source?.adaptedFrom:null,rewrittenFrom=from&&byWorkId.get(from.articleId);
+  if(rewrittenFrom?.type==='article'){
+   const page=pageIn(from.articleId,en),outdated=Number.isSafeInteger(rewrittenFrom.revision)&&rewrittenFrom.revision>from.revision;
+   links.push(`<a href="${esc(page.route)}">${en?`Rewritten from ${esc(page.title)}`:`改写自《${esc(page.title)}》`}</a>${outdated?`<span class="rssd-outdated">${en?'The article has been updated':'原文已更新'}</span>`:''}`);
   }
   const linkRow=workLinks(links),usesNote=Boolean(pictures||links.length);
   // A page in another language names the site, its section and its default author in that language.
