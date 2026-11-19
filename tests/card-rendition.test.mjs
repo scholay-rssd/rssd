@@ -190,3 +190,27 @@ test('a large set asks for media status once and uploads only missing images a f
   await assert.rejects(uploadCardRendition(input), /Upload refused/);
   assert(uploaded.length - before < 11, 'a failed upload stops the remaining ones');
 });
+
+test('a note gets no card set: a Center that keeps work types is asked before any image is uploaded', async t => {
+  const options = await fixture(t), prepared = await prepareCardRendition(options);
+  let type = 'note', uploads = 0, submissions = 0, reads = [];
+  const client = {request: async (path, {method = 'GET', body} = {}) => {
+    if (method === 'GET') {
+      if (path.endsWith('/site')) return {capabilities: ['card-renditions-v1', 'work-types-v1']};
+      if (path.includes('/renditions/source?')) return options.source;
+      if (path.includes('/cloud/')) { reads.push(path); return {articleId: 'synthetic-article', locale: 'en', data: {id: 'synthetic-article', locale: 'en', ...(type ? {workType: type} : {})}}; }
+      throw Object.assign(Error('Missing'), {status: 404});
+    }
+    if (path === '/media/missing') return {workspaceId: body.workspaceId, missing: []};
+    if (path === '/media') { uploads++; throw Error('unexpected upload'); }
+    submissions++;
+    return {id: 'rendition-' + p.hash(body), workspaceId: body.workspaceId};
+  }};
+  const input = {file: prepared.file, directory: options.directory, client};
+  await assert.rejects(uploadCardRendition(input), /A note has no card set/);
+  assert.equal(uploads + submissions, 0);
+  // The English edition is read in its own language.
+  assert.equal(reads[0], '/editorial/research/cloud/synthetic-article?locale=en&media=referenced');
+  for (type of ['article', undefined]) assert.equal((await uploadCardRendition(input)).workspaceId, 'research');
+  assert.equal(submissions, 2);
+});

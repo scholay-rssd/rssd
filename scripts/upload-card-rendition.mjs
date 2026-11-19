@@ -67,6 +67,12 @@ export async function uploadCardRendition({file, directory, client}) {
   if (edition.workspaceId !== workspaceId || edition.articleId !== value.source.articleId || edition.siteId !== value.source.siteId ||
       edition.workId !== value.workId || edition.locale !== value.locale || edition.revision !== value.source.revision ||
       edition.hash !== value.source.editionHash) throw Error('Source edition identity or hash mismatch');
+  // One card set per language edition, made from that edition's own revision; a note gets none, because its
+  // pictures are its content. Only a Center that keeps work types can say what the work is.
+  if (site.capabilities.includes('work-types-v1')) {
+    const work = await client.request('/editorial/' + encodeURIComponent(workspaceId) + '/cloud/' + encodeURIComponent(value.source.articleId) + '?' + new URLSearchParams({locale: value.locale, media: 'referenced'}));
+    if (work?.data?.workType === 'note') throw Error('A note has no card set: its pictures are its content');
+  }
   const ids = new Set([value.coverMediaId, ...(value.mediaIds || []), ...value.pages.map(page => page.mediaId)].filter(Boolean));
   for (const mediaId of ids) p.id(mediaId);
   const identified = (remote, mediaId) => {
