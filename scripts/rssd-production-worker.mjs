@@ -326,7 +326,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
             const issues=writingDefaults.deliveryIssues(output.metadata?.notebook,effective);if(issues.length)throw Object.assign(Error(issues.join('；')),{code:'writing_delivery_incomplete'});
           }
           // New packets only: a saved packet keeps its exact bytes and request hash.
-          output=withEditionByline(output,{source,site:siteByline(profiles,claim.workspaceId,claim.sectionId)});
+          output=withEditionByline(output,{source,site:siteByline(profiles,claim.workspaceId,claim.sectionId),persona:claim.payload.policy?.persona});
           packet=protocol.submission({requestId:randomUUID(),workId,workspaceId:claim.workspaceId,sectionId:claim.sectionId,
             demandId:claim.id,claimToken:claim.claimToken,baseRevisions:{[locale]:context.baseRevisions[locale]||0},
             editions:[{...output,locale,translationOf}]});

@@ -29,12 +29,42 @@ export async function centerCommand(argv,{emit=value=>console.log(JSON.stringify
     const result=await saveCenterConnection(home,{origin:args[0],token:(await readFile(tokenFile,'utf8')).trim()});emit(result);return result;
   }
   if(!command||command==='help'||command==='--help'){
-    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id]','store-en --work workId [--revision n]','enqueue-translate --work workId [--revision n]','claim --workspace id [--section id] [--id demandId] [--store-only]','submit <packet.json> [--store-only]','recover [requestId] [--retry]','retry-website --workspace id --request-key key --job-id id','work --agent id --workspace id [--section id] [--id demandId] [--once] [--resume] [--store-only]']});return;
+    emit({commands:['login <origin> [--name device-name]','connect <origin> --token-file <file>','status','registry','demands [--workspace id] [--section id] [--states a,b] [--type article|note] [--since iso] [--search text] [--limit n] [--offset n] [--total]','withdraw --id demandId','personas --pack persona-pack.json [--check]','pool-leads [--platform id] [--query text] [--limit n]','pool-add --workspace id --section id --file topics.json [--locales zh-CN,en] [--dry-run]','store-en --work workId [--revision n]','enqueue-translate --work workId [--revision n]','claim --workspace id [--section id] [--id demandId] [--store-only]','submit <packet.json> [--store-only]','recover [requestId] [--retry]','retry-website --workspace id --request-key key --job-id id','work --agent id --workspace id [--section id] [--id demandId] [--once] [--resume] [--store-only]']});return;
   }
   const {client,identity}=await loadCenterConnection(home),outbox=new CenterOutbox({directory:join(home,'outbox'),client});
   if(command==='status'){const entries=await outbox.list();const result={origin:client.origin,identity,outbox:entries.map(e=>({requestId:e.requestId,workId:e.packet.workId,state:e.state,error:e.error,receipt:e.receipt}))};emit(result);return result;}
   if(command==='registry'){const result=await client.registry();emit(result);return result;}
-  if(command==='demands'){const result=await client.demands({workspaceId:flag('--workspace')});emit(result);return result;}
+  if(command==='demands'){
+    // Without the new flags this lists a workspace's demands as before. --total returns {items,total,limit,offset}.
+    const number=name=>flag(name)===undefined?undefined:Number(flag(name));
+    const result=await client.demands({workspaceId:flag('--workspace'),sectionId:flag('--section'),states:flag('--states'),workType:flag('--type'),updatedSince:flag('--since'),search:flag('--search'),limit:number('--limit'),offset:number('--offset'),...(args.includes('--total')?{withTotal:true}:{})});
+    emit(result);return result;
+  }
+  if(command==='withdraw'){
+    const id=flag('--id');if(!id)throw Error('Usage: center withdraw --id <queued demandId>');
+    const result=await client.changeDemand(id,{action:'cancel'});emit(result);return result;
+  }
+  if(command==='personas'){
+    // The roster of a persona pack (ID and name only) and, with --check, the Center's section bindings against it.
+    const pack=flag('--pack');if(!pack)throw Error('Usage: center personas --pack <persona-pack.json> [--check]');
+    const {readPersonaRoster,checkPersonaBindings}=await import('../../../../scripts/rssd-persona-roster.mjs');
+    const roster=await readPersonaRoster(resolve(pack));
+    const result=args.includes('--check')?{roster,bindings:checkPersonaBindings(await client.registry(),roster)}:{roster};emit(result);return result;
+  }
+  if(command==='pool-leads'){
+    // Hot-board terms as topic leads. They suggest topics; they are not sources.
+    const {fetchSignalLeads}=await import('../../../../scripts/rssd-topic-leads.mjs');
+    const limit=flag('--limit');
+    const result=await fetchSignalLeads({platformId:flag('--platform'),query:flag('--query'),...(limit===undefined?{}:{limit:Number(limit)})});emit(result);return result;
+  }
+  if(command==='pool-add'){
+    const workspaceId=flag('--workspace'),sectionId=flag('--section'),file=flag('--file');
+    if(!workspaceId||!sectionId||!file)throw Error('Usage: center pool-add --workspace <id> --section <id> --file <topics.json> [--locales zh-CN,en] [--dry-run]');
+    const [{fillTopicPool,poolSectionPolicy,poolSummary},{profiles}]=await Promise.all([import('../../../../scripts/rssd-topic-pool.mjs'),import('../../../../scripts/site-config.mjs')]);
+    const data=JSON.parse(await readFile(resolve(file),'utf8')),topics=Array.isArray(data)?data:data?.topics,locales=flag('--locales');
+    const results=await fillTopicPool({client,workspaceId,sectionId,topics,policy:poolSectionPolicy(profiles,workspaceId,sectionId),dryRun:args.includes('--dry-run'),...(locales?{requiredLocales:locales.split(',').map(x=>x.trim()).filter(Boolean)}:{})});
+    const result={workspaceId,sectionId,summary:poolSummary(results),results};emit(result);return result;
+  }
   if(command==='enqueue-translate'){
     if(args.includes('--store-only'))throw Error('enqueue-translate may publish; use center store-en for one existing work stored as English only');
     const workIds=values('--work');if(workIds.length!==1)throw Error('Usage: center enqueue-translate --work <workId> [--revision n]');

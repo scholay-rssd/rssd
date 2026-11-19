@@ -249,7 +249,9 @@ export async function dispatchScheduledSlot({plan,configs=[],profiles=[],connect
  const owned=await locked(ctx,async state=>{const e=state.entries.find(x=>x.slot.id===slot.id);return Boolean(e?.lease?.token===token&&millis(clock())<millis(e.lease.until));});
  if(!owned)return {state:'lease_lost',id:slot.id};
  if(signal?.aborted)return defer('cancelled');
- let receipt;try{receipt=await enqueue(demand,{slot,signal});}catch{return defer('submission_uncertain');}
+ // Center refuses a topic that repeats a work or an open demand of the section and stores nothing. That
+ // answer is final for this demand, so the slot stops instead of resubmitting it until it expires.
+ let receipt;try{receipt=await enqueue(demand,{slot,signal});}catch(error){return error?.status===409&&error.code==='topic_repeat'?finish('blocked','topic_repeat'):defer('submission_uncertain');}
  return validReceipt(receipt,demand)?finish('demand_created','submitted'):finish('blocked','receipt_mismatch');
 }
 

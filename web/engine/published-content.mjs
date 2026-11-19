@@ -1,4 +1,5 @@
 import {sectionsForSite,validateSectionId} from '../../contracts/site-sections.mjs';
+import {sectionWorkPolicy,workTypeOf,validateAdaptedFrom,validateCardSet,validateWorkTags} from '../../contracts/work-types.mjs';
 import {sourceKey,permalink} from '../../admin/model.mjs';
 import {validatePublishedContent,CONTENT_VERSION} from '../../contracts/published-content.mjs';
 import {markdownImageDetails} from '../../scripts/article-format.mjs';
@@ -16,10 +17,19 @@ export function adaptPublishedSnapshot(snapshot,site){
   let collection=section?collections.find(c=>c.id===section.id):collections.find(c=>c.name===label);
   if(section&&!collection){collection={...section,route:`/archive/${section.id}/`};collections.push(collection);}
   if(!collection){collection={id:`extra-${collections.length+1}`,name:label,route:'/archive/'};collections.push(collection);}
-  const id=sourceKey(x.kind,x),type=['year','history'].includes(x.kind)?'event':x.kind==='openSource'?'resource':'article';
+  // The section decides which types it takes; a type it does not take stops the build instead of being changed.
+  const id=sourceKey(x.kind,x),type=workTypeOf({kind:x.kind,workType:x.workType},sectionWorkPolicy(section,{strict:true}));
   const record={id,type,title:x.title,route:snapshot.permalinks?.[id]||permalink(x.kind,x),collectionId:collection.id,...(sectionId?{sectionId}:{}),summary:x.summary||x.factSummary||'',bodyMarkdown:x.markdown||`# ${x.title}\n\n${x.summary||x.factSummary||''}\n\n${x.body||x.historicalSignificance||x.value||''}`,sources:(x.sources||[{label:x.sourceName||'原始来源',url:x.sourceUrl||x.url}]).filter(s=>/^https?:\/\//.test(s.url||'')).map(s=>({label:s.label||'原始来源',url:s.url})),publication:{date:x.date||null,author:x.author||site.author},legacy:{kind:x.kind}};
   const media=markdownImageDetails(record.bodyMarkdown).filter(({src})=>/^https?:\/\//.test(src)||/^\/article-media\/[a-f0-9]{64}\.(png|jpg|webp)$/.test(src)).map(({src,alt})=>({id:id+':image:'+createHash('sha256').update(src).digest('hex').slice(0,16),src,alt:alt||x.title}));
   if(media.length)record.media=media;
+  // Read when the site server sends them: the work's revision, its own #tags, the article a note was rewritten
+  // from, and an article's card set. Each is checked by the work types contract.
+  if(x.kind==='news'){
+   if(Number.isSafeInteger(x.revision)&&x.revision>0)record.revision=x.revision;
+   const tags=validateWorkTags(x.tags);if(tags)record.tags=tags;
+   const adaptedFrom=validateAdaptedFrom(x.adaptedFrom,{type,articleId:x.id});if(adaptedFrom)record.adaptedFrom=adaptedFrom;
+   const cards=validateCardSet(x.cards,{type});if(cards)record.cards=cards;
+  }
   const views=articleViewsFromMarkdown(record.bodyMarkdown);if(views)record.views=views;
   if(type==='event')record.event=x.kind==='history'?{mode:'historical',year:x.year,monthDay:x.dateKey}:{mode:x.recurrence?.frequency==='yearly'?'annual':'scheduled',start:x.start,...(x.end?{end:x.end}:{}),...(x.dateBasis?{dateBasis:x.dateBasis}:{}),recurrence:x.recurrence||null};
   return record;

@@ -1,5 +1,5 @@
 export type SectionWritingMode='essay'|'documentation'|'design'|'encyclopedia'|'xiwen'|'observation'|'opensource'|'calendar'|'history';
-export type SiteSection={id:string;name:string;defaultMode?:SectionWritingMode;order?:number;enabled?:boolean;writable?:boolean;aliases?:string[]};
+export type SiteSection={id:string;name:string;defaultMode?:SectionWritingMode;order?:number;enabled?:boolean;writable?:boolean;aliases?:string[];workTypes?:('article'|'note')[];articleCards?:boolean};
 export type SectionCatalog={version:1;revision:string;sections:SiteSection[];syncedAt?:string;status?:'ready'|'cached'|'offline'|'unavailable';error?:string};
 export type SectionSite={id:string;sectionCatalog?:SectionCatalog;sections?:SiteSection[]};
 export const SITE_SECTIONS:Record<string,SiteSection[]>;

@@ -1,0 +1,56 @@
+/* Note pages and card pages. A note's pictures sit in a gallery beside its short text (above it on phones); a
+   card page holds an article's card set in the same gallery; a row of links joins a work's pages. Colours come
+   from the article template, so each site and column keeps its own. The selectors outrank the template's own
+   body article.rssd-article.rssd-article rules. */
+body article.rssd-article.rssd-article.rssd-note-article{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,1fr);align-items:start;max-width:1180px;padding:0}
+.rssd-note-article>.rssd-note-media{--media-pad:18px;position:sticky;top:16px;padding:var(--media-pad)}
+.rssd-note-article>.rssd-note-text{min-width:0;padding:34px 44px 44px 26px}
+body article.rssd-article.rssd-article.rssd-note-article h1{font-size:30px;line-height:1.4}
+body article.rssd-article.rssd-article.rssd-note-article .rssd-article-heading{margin-bottom:24px}
+body article.rssd-article.rssd-article.rssd-cards-article{max-width:620px}
+body article.rssd-article.rssd-article.rssd-cards-article .rssd-article-heading{margin-bottom:22px}
+
+.rssd-note-media{position:relative;min-width:0}
+.rssd-note-track{display:flex;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:10px}
+.rssd-note-track::-webkit-scrollbar{display:none}
+.rssd-note-track:focus-visible{outline:2px solid var(--read-accent);outline-offset:3px}
+body article.rssd-article.rssd-article figure.rssd-note-slide{flex:0 0 100%;min-width:0;margin:0;scroll-snap-align:start;scroll-snap-stop:always}
+.rssd-note-frame{display:flex;align-items:center;justify-content:center;width:100%;aspect-ratio:var(--ar,1);max-height:calc(100svh - 190px);overflow:hidden;border-radius:10px;background:var(--read-soft)}
+body article.rssd-article.rssd-article .rssd-note-frame img{display:block;width:100%;height:100%;max-width:none;max-height:none;margin:0;object-fit:contain;border-radius:0}
+body article.rssd-article.rssd-article .rssd-note-slide figcaption{margin:10px 4px 0;font-size:11px;line-height:1.6;color:var(--read-muted);text-align:left}
+body article.rssd-article.rssd-article .rssd-note-slide figcaption a{color:inherit;text-decoration-color:var(--read-line)}
+.rssd-note-count{position:absolute;top:calc(var(--media-pad,0px) + 12px);right:calc(var(--media-pad,0px) + 12px);padding:4px 10px;border-radius:999px;background:rgba(20,16,12,.55);color:#fff;font-size:12px;line-height:1.4;letter-spacing:.04em;pointer-events:none}
+.rssd-note-count b{font-weight:700}
+.rssd-note-controls{display:flex;justify-content:center;align-items:center;gap:14px;margin-top:12px}
+.rssd-note-controls button{display:inline-grid;place-items:center;width:34px;height:34px;padding:0 0 3px;border:1px solid var(--read-line);border-radius:50%;background:var(--read-paper);color:var(--read-ink);font:400 22px/1 system-ui,sans-serif;cursor:pointer}
+.rssd-note-controls button:hover:not(:disabled){border-color:var(--read-accent);color:var(--read-accent)}
+.rssd-note-controls button:disabled{opacity:.35;cursor:default}
+.rssd-note-controls button:focus-visible{outline:2px solid var(--read-accent);outline-offset:2px}
+.rssd-note-dots{display:flex;gap:6px}
+.rssd-note-dots i{width:6px;height:6px;border-radius:50%;background:var(--read-line);transition:width .2s ease,background .2s ease}
+.rssd-note-dots i.on{width:18px;border-radius:3px;background:var(--read-accent)}
+
+/* Links between a work's pages, and to and from the notes rewritten from an article. */
+body article.rssd-article.rssd-article p.rssd-work-links{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin:0 0 28px;font-size:14px;line-height:1.6}
+body article.rssd-article.rssd-article .rssd-work-links a{display:inline-flex;align-items:center;gap:8px;color:var(--read-accent);text-decoration:none}
+body article.rssd-article.rssd-article .rssd-work-links a:hover span,body article.rssd-article.rssd-article .rssd-work-links a:hover{text-decoration:underline;text-underline-offset:4px}
+body article.rssd-article.rssd-article .rssd-cards-link{padding:4px 12px 4px 4px;border:1px solid var(--read-line);border-radius:8px;background:var(--read-soft)}
+body article.rssd-article.rssd-article .rssd-cards-link img{width:36px;height:48px;margin:0;object-fit:cover;border-radius:4px}
+.rssd-work-links .rssd-outdated{color:var(--read-muted);font-size:12px}
+
+@media(max-width:900px){
+ body article.rssd-article.rssd-article.rssd-note-article{grid-template-columns:1fr;max-width:760px}
+ .rssd-note-article>.rssd-note-media{position:relative;top:auto}
+ .rssd-note-frame{max-height:75svh}
+ .rssd-note-article>.rssd-note-text{padding:16px 32px 40px}
+}
+@media(max-width:650px){
+ .rssd-note-article>.rssd-note-media{--media-pad:0px}
+ .rssd-note-track,.rssd-note-frame{border-radius:0}
+ body article.rssd-article.rssd-article .rssd-note-slide figcaption{margin:8px 16px 0}
+ .rssd-note-controls{margin-top:8px}
+ .rssd-note-controls button{display:none}
+ .rssd-note-article>.rssd-note-text{padding:18px 18px 32px}
+ body article.rssd-article.rssd-article.rssd-note-article h1{font-size:24px}
+}
+@media(prefers-reduced-motion:reduce){.rssd-note-dots i{transition:none}}

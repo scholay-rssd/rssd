@@ -2,7 +2,7 @@ import {readFile,writeFile,mkdir,rename,readlink,access,readdir,lstat,chmod} fro
 import {join,dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import p from '../contracts/rssd-v1.cjs';
-import {contentKey,operation,visible} from '../contracts/rssd-publication.cjs';
+import {contentKey,operation,visible,packetMedia} from '../contracts/rssd-publication.cjs';
 import {buildSiteRelease} from '../web/engine/render-site.mjs';
 import {activateRelease} from '../admin/worker.mjs';
 import {verifyLive} from '../admin/release-verification.mjs';
@@ -30,7 +30,13 @@ export function snapshotForPackets(packets,site,baseline={},previousPackets=[]) 
     const c=packet.content,id=ids.get(contentKey(packet)),section=site.sections.find(s=>s.id===packet.sectionId);
     const data={id,title:c.title,markdown:c.bodyMarkdown,summary:c.summary,locale:packet.locale,sectionId:packet.sectionId,
       category:c.metadata.category||section?.name||site.columns[1],author:c.metadata.author||site.author,date:c.metadata.date||'1970-01-01',
-      sources:c.sources.map(s=>({label:s.title||'Source',url:s.url})),assets:[]};
+      sources:c.sources.map(s=>({label:s.title||'Source',url:s.url})),assets:[],revision:packet.revision};
+    // A work's type and, for a note, the work it was rewritten from: that work's Chinese edition on this site.
+    if(c.metadata.workType)data.workType=c.metadata.workType;
+    if(c.metadata.tags)data.tags=[...c.metadata.tags];
+    if(c.metadata.adaptedFrom){const source=contentKey({workId:c.metadata.adaptedFrom.workId,locale:'zh-CN'});data.adaptedFrom={articleId:identity[source]?.id||'rssd-'+source.slice(0,32),revision:c.metadata.adaptedFrom.revision};}
+    // An article's card set: its pages are site media placed with the release.
+    if(packet.cards)data.cards={revision:packet.cards.revision,pages:packet.cards.pages.map(page=>({src:page.path,width:page.width,height:page.height})),...(packet.cards.cover?{cover:{src:packet.cards.cover.path}}:{})};
     return {packet,data};
   });
   for(const {packet,data} of entries){
@@ -99,7 +105,7 @@ export async function buildAndActivate({job,site,source,base,baseline,media,bind
   const buildId=randomUUID(),release='admin-'+buildId,stage=join(base,'releases','.building-'+buildId),target=join(base,'releases',release);
   await mkdir(stage,{recursive:true});
   const mediaHashes={},mediaByteHashes={};
-  for(const asset of new Map(job.packets.flatMap(p=>(p.assets||[]).map(a=>[a.path,a]))).values()){
+  for(const asset of new Map(job.packets.flatMap(p=>packetMedia(p).map(a=>[a.path,a]))).values()){
     if(!media)throw Error('Publication media store is unavailable');const bytes=await media.bytes(asset),path=asset.path.slice(1);
     await mkdir(dirname(join(stage,path)),{recursive:true});await writeFile(join(stage,path),bytes);mediaHashes[path]=digest(bytes);mediaByteHashes[path]=byteHash(bytes);
   }

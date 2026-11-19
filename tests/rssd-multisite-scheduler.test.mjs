@@ -259,3 +259,12 @@ test('corrupted saved slot scope or timestamp cannot be dispatched',async t=>{
  const h=await fixture(t);await captureScheduleTick(h.args);const corrupted=await h.state();corrupted.entries[0].slot.scheduledAt='2026-11-02T00:01:00.000Z';await writeFile(join(h.args.home,'multisite-scheduler.json'),JSON.stringify(corrupted));
  await assert.rejects(dispatchScheduledSlot(h.args),/identity changed/);assert.equal(h.calls.enqueue,0);
 });
+test('a demand Center refuses as a repeated topic blocks its slot instead of being resubmitted',async t=>{
+ const f=await fixture(t,[{...config('one','space-one'),maxPerDay:1}]);await captureScheduleTick(f.args);let posts=0;
+ f.args.enqueue=async()=>{posts++;throw Object.assign(Error('This topic repeats the work w1: same-subject'),{status:409,code:'topic_repeat'});};
+ const first=await dispatchScheduledSlot(f.args);assert.equal(first.state,'blocked');assert.equal(first.reason,'topic_repeat');assert.equal(posts,1);
+ const saved=(await f.state()).entries.find(e=>e.slot.id===first.id);assert.equal(saved.status,'blocked');assert.equal(saved.reason,'topic_repeat');assert.ok(saved.demand);
+ // Any other failure of the request is still uncertain and is retried with the same demand.
+ const g=await fixture(t,[{...config('one','space-one'),maxPerDay:1}]);await captureScheduleTick(g.args);g.args.enqueue=async()=>{throw Object.assign(Error('conflict'),{status:409,code:'identity_conflict'});};
+ const other=await dispatchScheduledSlot(g.args);assert.equal(other.state,'pending');assert.equal(other.reason,'submission_uncertain');
+});

@@ -5,6 +5,7 @@ import {validateNavigation} from '../contracts/site-navigation.mjs';
 import {refreshSiteBrand} from '../contracts/site-branding.mjs';
 import {createHash} from 'node:crypto';
 import {sectionsForSite,activeSectionsForSite,validateSectionCatalog} from '../contracts/site-sections.mjs';
+import {sectionWorkPolicy} from '../contracts/work-types.mjs';
 import {siteWithCachedSections} from './site-section-catalog.mjs';
 
 export const profiles=JSON.parse(readFileSync(new URL('../sites/profiles.json',import.meta.url),'utf8'));
@@ -18,6 +19,8 @@ export function validateSite(input){
   input=refreshSiteBrand(input);
   if(input?.sectionCatalog)validateSectionCatalog(input.sectionCatalog);
   if(input?.sections!==undefined)validateSectionCatalog({version:1,revision:'configured',sections:input.sections});
+  // A configured section's work types and card page setting are the owner's: check them strictly here.
+  if(Array.isArray(input?.sections))for(const section of input.sections)try{sectionWorkPolicy(section,{strict:true});}catch(error){throw Error('栏目 '+section.id+' 的作品设置无效：'+error.message);}
   if(!input||input.version!==1||!/^[a-z][a-z0-9-]{1,48}$/.test(input.id||'')||!/^[a-z][a-z0-9-]{1,48}$/.test(input.spaceId||''))throw Error('站点配置版本或编号无效');
   for(const key of ['name','domain','description','author','timezone'])if(typeof input[key]!=='string'||!input[key].trim()||input[key].length>500)throw Error('站点配置缺少 '+key);
   for(const key of ['columns','yearCategories','sourceCategories'])if(!Array.isArray(input[key])||!input[key].length||input[key].some(x=>typeof x!=='string'||!x.trim()||x.length>80||/[\\/\x00-\x1f]/.test(x))||new Set(input[key]).size!==input[key].length)throw Error('站点栏目配置无效');

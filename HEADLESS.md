@@ -46,6 +46,49 @@ limit scope and `--resume` to resume this device's blocked claim. A quota failur
 the task and generated result; it does not switch subscriptions or reassign
 the claim. `center recover` queries the original submission before retrying.
 
+### Topic pool
+
+Topics can be queued ahead of time and wait to be claimed. A pool topic is a
+title and a brief; whoever claims it does the sourcing. These commands need a
+Center that includes the demand pool change (scholay-rssd/rssd-center#33).
+
+```
+rssd center pool-leads --platform douyin --query 猫 --limit 30
+rssd center pool-add --workspace pets --section daily-cat --file topics.json --dry-run
+rssd center pool-add --workspace pets --section daily-cat --file topics.json
+rssd center demands --workspace pets --section daily-cat --states queued --total
+rssd center withdraw --id <queued demandId>
+```
+
+`topics.json` is an array (or `{"topics":[…]}`) of
+`{title, brief, workType?, topicKey?, lead?, priority?}`. `pool-add` prints one
+result per topic: `created`, `existing` (queued before), `repeat` (the Center
+says which work or open demand it repeats), `conflict`, or `invalid` (not
+sent). Sending the same file again creates nothing new. A work type must be
+one the section takes.
+
+`pool-leads` lists hot-board terms the Center has collected. A lead suggests a
+topic; it is not a fact or a source. Copy a lead into a topic's `lead` field
+to record what prompted it.
+
+### Persona byline
+
+The owner may set, per section in the Center, the persona that signs its new
+works: an ID and the name printed as the byline. A claim freezes it with the
+other section rules, and the writer signs a new work with that name. A
+translation or update keeps the byline of the edition it came from. Update
+every writing device before binding a section: the Center refuses a new work
+of a signed section that carries another byline.
+
+```
+rssd center personas --pack /private/persona-pack.json
+rssd center personas --pack /private/persona-pack.json --check
+```
+
+The pack is kept outside this repository. Only each persona's ID and name are
+read. `--check` lists the sections that name a persona and whether the ID and
+name match the pack.
+
 Runtime releases are immutable. `rssd update /path/to/new/extracted-artifact
 --manifest-sha256 <hash>` verifies the candidate and refuses activation while
 any production command holds a lease. After work stops, rerun the update.
