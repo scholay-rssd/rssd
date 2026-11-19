@@ -9,6 +9,8 @@ await writeFile(new URL('rssd-v1.cjs',target),"module.exports=require('./protoco
 await writeFile(new URL('publication.cjs',target),await readFile(new URL('../contracts/rssd-publication.cjs',import.meta.url)));
 await writeFile(new URL('rssd-media.cjs',target),await readFile(new URL('../contracts/rssd-media.cjs',import.meta.url)));
 await writeFile(new URL('rssd-record.cjs',target),await readFile(new URL('../contracts/rssd-record.cjs',import.meta.url)));
-const files={};for(const path of ['contracts/rssd-v1.cjs','contracts/rssd-publication.cjs','contracts/rssd-media.cjs','contracts/rssd-record.cjs'])files[path]=createHash('sha256').update(await readFile(new URL('../'+path,import.meta.url))).digest('hex');
+// Center decides a repeated topic with the same module the devices use.
+await writeFile(new URL('topic-repeat.mjs',target),await readFile(new URL('../contracts/topic-repeat.mjs',import.meta.url)));
+const files={};for(const path of ['contracts/rssd-v1.cjs','contracts/rssd-publication.cjs','contracts/rssd-media.cjs','contracts/rssd-record.cjs','contracts/topic-repeat.mjs'])files[path]=createHash('sha256').update(await readFile(new URL('../'+path,import.meta.url))).digest('hex');
 await writeFile(new URL('protocol.source.json',target),JSON.stringify({version:1,repository:'scholay-rssd/rssd',path:'contracts/rssd-v1.cjs',sha256:files['contracts/rssd-v1.cjs'],files,license:'MIT'},null,2)+'\n');
 console.log('RSSD protocol v1 synchronized with a source fingerprint');
