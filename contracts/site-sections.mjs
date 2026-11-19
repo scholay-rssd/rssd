@@ -281,7 +281,8 @@ export const SITE_SECTIONS={
       "workTypes": [
         "article",
         "note"
-      ]
+      ],
+      "articleCards": true
     }
   ],
   "enter": [
