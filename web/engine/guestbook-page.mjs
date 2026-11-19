@@ -8,11 +8,43 @@ import {addLanguageNavigation} from './language-navigation.mjs';
 
 const esc=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+export const GUESTBOOK_ROUTE='/guestbook/';
+export const GUESTBOOK_TITLE='留言板';
+export const guestbookDescription=site=>'公开留言、问题反馈与合作线索。'+(site.description||'');
+
+// The form and the message wall for a page inside the site's own shell (header, navigation, footer and
+// stylesheets). The markup comes from the standalone template, so app.js finds the same elements.
+export async function guestbookBody(){
+ const template=await readFile(new URL('../guestbook/index.html',import.meta.url),'utf8');
+ const part=pattern=>{const match=template.match(pattern);if(!match)throw Error('Guestbook template changed');return match[1];};
+ const header=part(/<header>([\s\S]*?)<\/header>/).replace(/<a id="home"[^>]*>[\s\S]*?<\/a>/,'');
+ return `<article class="guestbook"><section class="hero compact">${header}</section><div class="columns">${part(/<div class="columns">([\s\S]*?)<\/div><footer>/)}</div><p class="guestbook-footnote">${part(/<footer>([\s\S]*?)<\/footer>/)}</p></article>`;
+}
+// The guestbook is served under a policy that allows only the site's own scripts and stylesheets, so the
+// shell's inline style and scripts (structured data, analytics) are left out. The theme's accent, which the
+// shell sets inline, travels as data-accent and app.js applies it. The page stays out of search indexes.
+export function guestbookShell(html){
+ let accent='';
+ html=html.replace(/<style>:root\{--accent:([^;}]+);--blog-accent:[^}]*\}<\/style>/,(_,value)=>{accent=value;return '';})
+  .replace(/<style\b[^>]*>[\s\S]*?<\/style>/g,'').replace(/<script\b(?![^>]*\bsrc=)[^>]*>[\s\S]*?<\/script>/g,'')
+  .replace(/<meta name="robots" content="[^"]*">/,'<meta name="robots" content="noindex,follow">')
+  .replace('</head>','<link rel="stylesheet" href="/guestbook/style.css"><script src="/guestbook/app.js" defer></script></head>');
+ return accent?html.replace(/<body\b/,`<body data-accent="${accent.replace(/[^#a-zA-Z0-9(),. %-]/g,'')}"`):html;
+}
+
 export async function attachGuestbook({target,site,manifest}){
  if(!site.services?.guestbook?.enabled)return manifest;
  const config=guestbookConfig(site),directory=join(target,'guestbook');await mkdir(directory,{recursive:true});
+ // A theme that renders the guestbook inside its own shell has written the page already; it takes the
+ // component stylesheet, which uses the site's colour tokens.
+ if(Object.hasOwn(manifest.hashes,'guestbook/index.html')){
+  for(const [file,bytes] of [['style.css',await readFile(new URL('../guestbook/site.css',import.meta.url))],['app.js',await readFile(new URL('../guestbook/app.js',import.meta.url))],['config.json',JSON.stringify(config)]]){
+   await writeFile(join(directory,file),bytes);manifest.hashes['guestbook/'+file]=digest(bytes);
+  }
+  manifest.guestbook={version:1,static:true};return manifest;
+ }
  let html=await readFile(new URL('../guestbook/index.html',import.meta.url),'utf8');
- const title='留言板 · '+site.name,description='公开留言、问题反馈与合作线索。'+(site.description||'');
+ const title=GUESTBOOK_TITLE+' · '+site.name,description=guestbookDescription(site);
  html=addSocialMetadata(html,{site,route:'/guestbook/',title,description});
  // Every site serves this same template and its messages load by script, so
  // search engines saw ten near-identical pages with no canonical. Keep it out
