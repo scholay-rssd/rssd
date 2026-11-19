@@ -51,6 +51,7 @@ Obsidian 里看不看得到。
 | 篇幅 | 本地调整文件的 `bodyLength`；Center 需求没有这一项 | 只留调整的哈希 | 看不到 |
 | 本地写作偏好 | 本地调整文件的 `instructions` | 只留调整的哈希 | 看不到 |
 | 标题模板、正文模板、品牌资料 | 桌面端挂载选择器，存在稿件的 `titleTemplate`、`mounts.templates`、`mounts.brands` | Center 写作流程交的稿件里没有 | 看不到 |
+| 品牌挂载（例如用 Scholay 科研助手实操） | 跟着单子走：需求简介的“品牌”一段，见 [pool-orders.md](./pool-orders.md)；不绑定栏目 | 没有单独的字段，只体现在正文里 | 看不到 |
 | 摘要、日期、分类 | 成稿时写 | `summary`、`metadata.date`、`metadata.category` | 可见、可改 |
 | 话题标签 | 成稿时写 | `metadata.tags`，写了才记 | 看不到（待合并：rssd-obsidian#26 加 `rssd-tags`） |
 | 日历、历史的结构化字段 | 成稿时写，见第五节 | `metadata.record.fields` | 看不到 |
