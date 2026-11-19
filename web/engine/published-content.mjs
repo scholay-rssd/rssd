@@ -1,10 +1,21 @@
-import {sectionsForSite,validateSectionId} from '../../contracts/site-sections.mjs';
+import {SITE_SECTIONS,sectionsForSite,validateSectionId} from '../../contracts/site-sections.mjs';
 import {sectionWorkPolicy,workTypeOf,validateAdaptedFrom,validateCardSet,validateWorkTags} from '../../contracts/work-types.mjs';
 import {sourceKey,permalink} from '../../admin/model.mjs';
 import {validatePublishedContent,CONTENT_VERSION} from '../../contracts/published-content.mjs';
 import {markdownImageDetails} from '../../scripts/article-format.mjs';
 import {createHash} from 'node:crypto';
 import {articleViewsFromMarkdown} from '../../scripts/article-metadata.mjs';
+
+/**
+ * The section whose work settings (`workTypes`, `articleCards`) apply on the site. A synchronized catalog, as the
+ * Center migration wrote into each receiver's configuration, lists sections without these settings; such a section
+ * takes them from what the protocol declares for the site. A section list the site gives itself is used as it is.
+ */
+export function workSettingsSection(site,sectionId){
+ const listed=sectionsForSite(site).find(s=>s.id===sectionId);
+ if(!site?.sectionCatalog||!listed||listed.workTypes!==undefined||listed.articleCards!==undefined)return listed;
+ return SITE_SECTIONS[site.id]?.find(s=>s.id===sectionId)??listed;
+}
 
 // Legacy names and positional columns are confined to this compatibility
 // adapter. The Theme interface uses stable collection IDs and semantic types.
@@ -18,7 +29,7 @@ export function adaptPublishedSnapshot(snapshot,site){
   if(section&&!collection){collection={...section,route:`/archive/${section.id}/`};collections.push(collection);}
   if(!collection){collection={id:`extra-${collections.length+1}`,name:label,route:'/archive/'};collections.push(collection);}
   // The section decides which types it takes; a type it does not take stops the build instead of being changed.
-  const id=sourceKey(x.kind,x),type=workTypeOf({kind:x.kind,workType:x.workType},sectionWorkPolicy(section,{strict:true}));
+  const id=sourceKey(x.kind,x),type=workTypeOf({kind:x.kind,workType:x.workType},sectionWorkPolicy(workSettingsSection(site,sectionId),{strict:true}));
   const record={id,type,title:x.title,route:snapshot.permalinks?.[id]||permalink(x.kind,x),collectionId:collection.id,...(sectionId?{sectionId}:{}),summary:x.summary||x.factSummary||'',bodyMarkdown:x.markdown||`# ${x.title}\n\n${x.summary||x.factSummary||''}\n\n${x.body||x.historicalSignificance||x.value||''}`,sources:(x.sources||[{label:x.sourceName||'原始来源',url:x.sourceUrl||x.url}]).filter(s=>/^https?:\/\//.test(s.url||'')).map(s=>({label:s.label||'原始来源',url:s.url})),publication:{date:x.date||null,author:x.author||site.author},legacy:{kind:x.kind}};
   const media=markdownImageDetails(record.bodyMarkdown).filter(({src})=>/^https?:\/\//.test(src)||/^\/article-media\/[a-f0-9]{64}\.(png|jpg|webp)$/.test(src)).map(({src,alt})=>({id:id+':image:'+createHash('sha256').update(src).digest('hex').slice(0,16),src,alt:alt||x.title}));
   if(media.length)record.media=media;

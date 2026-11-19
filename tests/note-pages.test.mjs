@@ -144,3 +144,24 @@ test('English editions get their own card page and link to the English editions 
  const english=records.find(record=>record.id===englishArticle.id);
  assert.deepEqual([english.revision,english.cards.pages.map(p=>p.src),english.tags],[2,[second],['Maine Coon']]);
 });
+
+test('a site whose synchronized section catalog omits work settings still takes them from what the site declares',async t=>{
+ // Live receivers carry the catalog the Center migration wrote: section names and order, no workTypes or articleCards.
+ const root=await mkdtemp(join(tmpdir(),'note-pages-catalog-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const previous=join(root,'previous'),target=join(root,'site');
+ const picture='/article-media/'+createHash('sha256').update(PNG).digest('hex')+'.png';
+ await mkdir(join(previous,'article-media'),{recursive:true});await writeFile(join(previous,picture.slice(1)),PNG);
+ const pets=profiles.find(site=>site.id==='pets'),assets=[{path:picture,fromPublished:true}];
+ const catalog={version:1,revision:'center-migration-20261105',sections:SITE_SECTIONS.pets.map(({workTypes,articleCards,...section},order)=>({...section,order,enabled:section.enabled!==false,writable:section.writable!==false}))};
+ assert.ok(catalog.sections.every(section=>section.workTypes===undefined&&section.articleCards===undefined));
+ const site={...pets,sectionCatalog:catalog};
+ const news=[
+  {id:'tabby',title:'虎斑猫',sectionId:'daily-cat',date:'2026-11-18',summary:'长文',revision:1,cards:{revision:1,pages:[{src:picture,width:1,height:1}]},markdown:`# 虎斑猫\n\n正文。\n\n![配图](${picture})`,assets},
+  {id:'tabby-note',title:'虎斑猫三张图',sectionId:'daily-cat',date:'2026-11-19',summary:'笔记',workType:'note',markdown:`# 虎斑猫三张图\n\n![图](${picture})\n\n短文。`,assets},
+ ];
+ const manifest=await buildSiteRelease({site,source:ROOT,target,previousRoot:previous,job:{id:'catalog-policy',snapshot:{news,data:{year:[],history:[]},openSource:{items:[]},permalinks:{}},snapshot_hash:'catalog-policy'}});
+ assert.equal(manifest.browserExports.notes,1);assert.equal(manifest.browserExports.cardPages,1);
+ const content=JSON.parse(await readFile(join(target,'published-content.json'),'utf8'));
+ assert.equal(content.records.find(r=>r.id==='news:tabby-note').type,'note');
+ assert.match(await readFile(join(target,'news/tabby-cards/index.html').replace('tabby-cards','tabby/cards'),'utf8'),/rssd-cards-article/);
+});

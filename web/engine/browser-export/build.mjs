@@ -14,6 +14,7 @@ import {notePictures,noteRatio,noteSlides,cardSlides,galleryHtml,cardsLink,workL
 import {sectionsForSite} from '../../../contracts/site-sections.mjs';
 import {sectionWorkPolicy,articleCardState,workPages,cardsRoute,adaptationIndex} from '../../../contracts/work-types.mjs';
 import {localeNames,localeSection,localeAuthor} from '../language-pack.mjs';
+import {workSettingsSection} from '../published-content.mjs';
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const key=route=>createHash('sha256').update(route).digest('hex').slice(0,24);
 const base='/assets/rssd-export/v1/';
@@ -63,7 +64,7 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   const split=type==='note'?notePictures(rendered.body):null,pictures=split?.pictures.length?split.pictures:null;
   const gallery=pictures?galleryHtml(noteSlides(pictures),{ratio:await noteRatio(target,pictures),en}):'';
   // A long article gets its card page while a card set for its current revision is on the site, every card of it.
-  const policy=sectionWorkPolicy(sections.find(s=>s.id===(source?.sectionId||record.sectionId)));
+  const policy=sectionWorkPolicy(workSettingsSection(site,source?.sectionId||record.sectionId));
   let cards=type==='article'?record.cards:undefined;
   if(cards){
    const cardState=articleCardState({type,policy,revision:record.revision??cards.revision,sets:[{revision:cards.revision??record.revision}]});
