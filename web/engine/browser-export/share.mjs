@@ -10,7 +10,7 @@ if(root){
  document.addEventListener('pointerdown',e=>{if(!panel.hidden&&!root.contains(e.target)){panel.hidden=true;toggle.setAttribute('aria-expanded','false');}});
  if(location.hash==='#share')show(true);
  const url=root.dataset.url,title=root.dataset.title;
- const channels={weibo:['https://service.weibo.com/share/share.php',{url,title}],qq:['https://connect.qq.com/widget/shareqq/index.html',{url,title}],qzone:['https://sns.qzone.qq.com/cgi-bin/qzshare/cgi_qzshare_onekey',{url,title}]};
+ const channels={weibo:['https://service.weibo.com/share/share.php',{url,title}]};
  for(const a of root.querySelectorAll('[data-channel]')){const [base,args]=channels[a.dataset.channel];a.href=base+'?'+new URLSearchParams(args);}
  root.querySelector('[data-action=native]').hidden=!navigator.share;
  root.addEventListener('click',async event=>{

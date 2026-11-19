@@ -12,7 +12,7 @@ export function shareShell(model){
 <header><strong>${say('分享','Share')}</strong><button type="button" data-action="close" aria-label="${say('关闭分享','Close sharing')}">${icon('close')}</button></header>
 <div class="rssd-share-actions"><button type="button" data-action="copy-link">${icon('link')}${say('复制链接','Copy link')}</button><button type="button" data-action="native" hidden>${icon('share')}${say('系统分享','Share…')}</button><button type="button" data-action="poster">${icon('poster')}${say('生成海报','Make a poster')}</button></div>
 <figure class="rssd-share-poster" hidden><img alt="${say('分享海报','Share poster')}"><figcaption>${say('手机上长按图片保存或发送','On a phone, press and hold the picture to save or send it')}</figcaption><button type="button" data-action="save-poster">${icon('download')}${say('保存图片','Save picture')}</button></figure>
-<nav class="rssd-share-social" aria-label="${say('分享到','Share to')}"><a data-channel="weibo" target="_blank" rel="noopener noreferrer">微博</a><a data-channel="qq" target="_blank" rel="noopener noreferrer">QQ</a><a data-channel="qzone" target="_blank" rel="noopener noreferrer">QQ 空间</a></nav>
+<nav class="rssd-share-social" aria-label="${say('分享到','Share to')}"><a data-channel="weibo" target="_blank" rel="noopener noreferrer">微博</a></nav>
 <p class="rssd-share-status" role="status" aria-live="polite"></p>
 </section></aside>`;
 }
