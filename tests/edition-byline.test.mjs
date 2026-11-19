@@ -40,3 +40,19 @@ test('with neither a source nor a site value the field is left out',()=>{
   assert.deepEqual(none.metadata,{date:'2026-11-12'});
   assert.deepEqual(withEditionByline({title:'T'},{}).metadata,{});
 });
+
+test('a persona named by the frozen policy signs a new work; a translation keeps what it came from',()=>{
+  const site={author:'研究方法',category:'统计之美'},persona={id:'M01',name:'Kiya',anything:'else'};
+  const edition={title:'T',metadata:{author:'Codex',category:'AI',persona:{id:'M99',name:'Forged'},notebook:{version:2}}};
+  const fresh=withEditionByline(edition,{site,persona});
+  assert.deepEqual(fresh.metadata,{author:'Kiya',category:'统计之美',persona:{id:'M01'},notebook:{version:2}});
+  // The second language of the same work follows its first edition.
+  const second=withEditionByline(edition,{site,persona:{id:'M02',name:'Gorge'},source:{payload:{metadata:fresh.metadata}}});
+  assert.equal(second.metadata.author,'Kiya');assert.deepEqual(second.metadata.persona,{id:'M01'});
+  // An earlier article signed by the site keeps its byline and gains no persona.
+  const old=withEditionByline(edition,{site,persona,source:{payload:{metadata:{author:'研究方法',category:'方法百科'}}}});
+  assert.equal(old.metadata.author,'研究方法');assert.equal('persona' in old.metadata,false);
+  // Without a persona the agent's own claim to one is dropped, and an incomplete persona is no persona.
+  assert.equal('persona' in withEditionByline(edition,{site}).metadata,false);
+  for(const partial of [{id:'M01'},{name:'Kiya'},{id:'M01',name:'  '},null])assert.equal(withEditionByline(edition,{site,persona:partial}).metadata.author,'研究方法');
+});
