@@ -105,3 +105,42 @@ test('a site with no notes and no card sets builds its pages and feed as before,
  assert.equal(index.mixed,undefined);
  assert.doesNotMatch(await readFile(join(root,'site/archive/daily-cat/index.html'),'utf8'),/feed-type/);
 });
+
+test('English editions get their own card page and link to the English editions of rewritten notes',async t=>{
+ const {editionArticleId,sourceContentSha256}=await import('../contracts/language-editions.mjs');
+ const root=await mkdtemp(join(tmpdir(),'note-pages-en-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const previous=join(root,'previous'),target=join(root,'site');
+ const media=bytes=>'/article-media/'+createHash('sha256').update(bytes).digest('hex')+'.png';
+ const picture=media(PNG),second=media(PNG2);
+ await mkdir(join(previous,'article-media'),{recursive:true});await writeFile(join(previous,picture.slice(1)),PNG);await writeFile(join(previous,second.slice(1)),PNG2);
+ const pets=profiles.find(site=>site.id==='pets');
+ const site={...pets,languages:['zh-CN','en'],sections:SITE_SECTIONS.pets.map(({workTypes,articleCards,...section})=>section.id==='daily-cat'?{...section,workTypes:['article','note'],articleCards:true}:section)};
+ const article={id:'maine-coon',title:'缅因猫',sectionId:'daily-cat',date:'2026-11-18',summary:'长文摘要',markdown:`# 缅因猫\n\n第一段正文。\n\n![配图](${picture})\n\n第二段正文。`,assets:[{path:picture,fromPublished:true}],revision:2,cards:{revision:2,pages:[{src:picture,width:1,height:1}]}};
+ const note={id:'maine-coon-signs',title:'缅因猫的 5 个特征',sectionId:'daily-cat',date:'2026-11-19',summary:'一眼认出缅因猫',workType:'note',adaptedFrom:{articleId:'maine-coon',revision:1},
+  markdown:`# 缅因猫的 5 个特征\n\n![第一张](${picture})\n\n![第二张](${second})\n\n耳尖簇毛、胸前领毛、大脚掌。`,assets:[{path:picture,fromPublished:true},{path:second,fromPublished:true}]};
+ const edition=(source,fields)=>({id:editionArticleId(source.id,'en'),locale:'en',sectionId:source.sectionId,date:source.date,category:'每日一猫',author:pets.author,assets:[],translationOf:{articleId:source.id,revision:source.revision||1,sha256:sourceContentSha256(source)},...fields});
+ // One card set per language: the English article has its own, made from its own revision.
+ const englishArticle=edition(article,{title:'Maine Coon',summary:'The long article.',markdown:'# Maine Coon\n\nFirst paragraph.\n\nSecond paragraph.',revision:2,cards:{revision:2,pages:[{src:second,width:1,height:1}]},tags:['Maine Coon']});
+ const englishNote=edition(note,{title:'Five signs of a Maine Coon',summary:'Spot one at a glance.',markdown:`# Five signs of a Maine Coon\n\n![First](${picture})\n\n![Second](${second})\n\nEar tufts and a ruff.`});
+ const snapshot={news:[article,note,englishArticle,englishNote],data:{year:[],history:[]},openSource:{items:[]},
+  permalinks:{'news:maine-coon':'/news/maine-coon/','news:maine-coon-signs':'/news/maine-coon-signs/',['news:'+englishArticle.id]:'/en/news/maine-coon/',['news:'+englishNote.id]:'/en/news/maine-coon-signs/'}};
+ const manifest=await buildSiteRelease({site,source:ROOT,target,previousRoot:previous,job:{id:'note-pages-en',snapshot,snapshot_hash:'note-pages-en'}});
+ assert.equal(manifest.browserExports.cardPages,2);
+ const page=route=>readFile(join(target,route.slice(1),'index.html'),'utf8');
+ const englishPage=await page('/en/news/maine-coon/');
+ assert.match(englishPage,/<a class="rssd-cards-link" href="\/en\/news\/maine-coon\/cards\/">[^]*?<span>Cards · 1<\/span><\/a>/);
+ assert.match(englishPage,/<a href="\/en\/news\/maine-coon-signs\/">Picture note: Five signs of a Maine Coon<\/a>/);
+ const englishCards=await page('/en/news/maine-coon/cards/');
+ assert.equal((englishCards.match(/<figure class="rssd-note-slide"/g)||[]).length,1);
+ assert.match(englishCards,new RegExp(`<img src="${second}" alt="Card 1 of 1"`));
+ assert.match(englishCards,/<a class="back" href="\/en\/news\/maine-coon\/">← Read the article<\/a>/);
+ const englishNotePage=await page('/en/news/maine-coon-signs/');
+ assert.match(englishNotePage,/<article class="rssd-article rssd-note-article"/);
+ assert.match(englishNotePage,/<a href="\/en\/news\/maine-coon\/">Rewritten from Maine Coon<\/a><span class="rssd-outdated">The article has been updated<\/span>/);
+ // The Chinese pages keep their own card set and links.
+ assert.match(await page('/news/maine-coon/cards/'),new RegExp(`<img src="${picture}" alt="第 1 张，共 1 张"`));
+ assert.match(await page('/news/maine-coon/'),/<a href="\/news\/maine-coon-signs\/">图文笔记《缅因猫的 5 个特征》<\/a>/);
+ const records=JSON.parse(await readFile(join(target,'en/published-content.json'),'utf8')).records;
+ const english=records.find(record=>record.id===englishArticle.id);
+ assert.deepEqual([english.revision,english.cards.pages.map(p=>p.src),english.tags],[2,[second],['Maine Coon']]);
+});
