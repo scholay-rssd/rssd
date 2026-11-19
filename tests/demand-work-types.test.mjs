@@ -27,3 +27,11 @@ test('a demand refuses an unknown type, a source article without a note, and a t
  assert.throws(()=>protocol.demand({...base,kind:'translate',source:{workId:'work-1',locale:'zh-CN',revision:1},workType:'note'}),/Only a write demand/);
  assert.throws(()=>protocol.demand({...base,topicKey:'x'.repeat(201)}),/topicKey/);
 });
+test('a write demand may record the lead that prompted its topic',()=>{
+ const lead={provider:'tikhub',platformId:'douyin',term:'猫咪换毛季',observedAt:'2026-11-19T09:00:00+08:00',url:'https://www.douyin.com/hot/1',rank:3};
+ assert.deepEqual(protocol.demand({...base,lead}).lead,{provider:'tikhub',platformId:'douyin',term:'猫咪换毛季',observedAt:'2026-11-19T01:00:00.000Z',url:'https://www.douyin.com/hot/1'});
+ assert.deepEqual(protocol.demand({...base,lead:{provider:'editor',term:'读者来信',observedAt:'2026-11-19'}}).lead,{provider:'editor',term:'读者来信',observedAt:'2026-11-19T00:00:00.000Z'});
+ assert.throws(()=>protocol.demand({...base,lead:{provider:'tikhub',term:'x',observedAt:'soon'}}),/lead.observedAt/);
+ assert.throws(()=>protocol.demand({...base,lead:{provider:'tikhub',term:'x',observedAt:'2026-11-19',url:'javascript:alert(1)'}}),/lead.url/);
+ assert.throws(()=>protocol.demand({...base,kind:'update',source:{workId:'work-1',locale:'zh-CN',revision:1},lead:{provider:'tikhub',term:'x',observedAt:'2026-11-19'}}),/Only a write demand records a lead/);
+});
