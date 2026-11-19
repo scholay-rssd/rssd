@@ -124,6 +124,17 @@
 
 ## 四、新增挂载项的步骤
 
+每类挂载项要改的地方不止一处。`tests/mount-consistency.test.mjs` 会在漏改时失败并指出缺的是哪一处：
+
+| 新增的东西 | 要改的地方 |
+| --- | --- |
+| 取材来源 | `resources/` 下的模块；`index.mjs` 的名单和浏览分支；`mount-spec.mjs` 的命令行解析；`writing-context-store.mjs` 的解析分支 |
+| 应用连接 | `desktop/src/connections/catalog.json` 的条目；`adapters.rs` 的 `Adapter::from_id` 和请求逻辑 |
+| 栏目类型（写作族） | `writing-column-families.json` 的映射；`contracts/writing-skills/rssd-writing-<类型>/SKILL.md`；`writing-defaults.mjs` 的栏目要素；`annotation-forms.json` 里该类型的题 |
+| 站点领域 | `contracts/writing-skills/rssd-domain-<站点>/SKILL.md`；`writing-defaults.mjs` 的 `WRITING_DOMAIN_IDS` |
+| 作者工作区技能 | 工作区模板 `.agents/skills/<名字>/SKILL.md`，文件头的 `name` 与文件夹同名 |
+| 可写栏目 | 主题仓库 `export/templates/<站点>/<栏目>.json` |
+
 1. 确定角色。一个挂载项只有一种角色；如果它既给线索又给证据，拆成两项。
 2. 查上面的清单，放进同角色的现有位置。只有现有位置都不适用时才新增宿主。
 3. 在本页清单中登记，并写明以下各项：
@@ -153,7 +164,7 @@
 
 ## 六、已知缺口
 
-- 没有一份机器可读的挂载总表。本页是人工维护的清单。
+- 没有一份机器可读的挂载总表。本页是人工维护的清单，各处登记是否一致由 `tests/mount-consistency.test.mjs` 检查。
 - 规则、声音、版式、界面四种角色没有统一的角色字段。
 - 第一节的优先级顺序是约定，代码里没有一处统一执行它。
 - 线索只记在需求上。写单篇时挂载的线索不进入稿件的私有写作记录。
