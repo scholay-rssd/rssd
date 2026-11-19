@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import p from '../contracts/rssd-v1.cjs';
 import media from '../contracts/rssd-media.cjs';
-import {publication,packetMedia,contentKey,CHOSEN_WORK_TYPES as PACKET_TYPES,MAX_WORK_TAGS as PACKET_TAGS,MAX_TAG_LENGTH as PACKET_TAG_LENGTH,WORK_TYPES_CAPABILITY} from '../contracts/rssd-publication.cjs';
+import {publication,packetMedia,contentKey,CHOSEN_WORK_TYPES as PACKET_TYPES,MAX_WORK_TAGS as PACKET_TAGS,MAX_TAG_LENGTH as PACKET_TAG_LENGTH,WORK_TYPES_CAPABILITY,CARD_UPDATES_CAPABILITY} from '../contracts/rssd-publication.cjs';
 import {CHOSEN_WORK_TYPES,MAX_WORK_TAGS,MAX_TAG_LENGTH} from '../contracts/work-types.mjs';
 import {SITE_SECTIONS} from '../contracts/site-sections.mjs';
 import {snapshotForPackets,buildAndActivate} from '../receiver/build.mjs';
@@ -92,6 +92,45 @@ test('a receiver builds the note page and the card page, and refuses a note wher
  assert.equal(refused.state,'failed');
  assert.match(refused.error,/does not take notes/);
  await assert.rejects(access(join(current,'news/dog-note/index.html')));
+});
+
+test('a card set made after publishing reaches the live revision without a new revision',async t=>{
+ const dir=await mkdtemp(join(tmpdir(),'rssd-card-updates-'));t.after(()=>rm(dir,{recursive:true,force:true}));
+ const site={...profiles.find(s=>s.id==='pets'),origin:'http://127.0.0.1:9',sections:SITE_SECTIONS.pets.map(({workTypes,articleCards,...s})=>s.id==='daily-cat'?{...s,workTypes:['article','note'],articleCards:true}:s)};
+ const token='fixture-site-credential-not-real-1234567890',headers={authorization:'Bearer '+token};
+ const receiver=await createReceiver({config:{home:join(dir,'state'),source:ROOT,sites:[{site,publicRoot:join(dir,'public'),tokenHash:p.hash(token)}]},build:options=>buildAndActivate({...options,verify:async()=>{}})});
+ t.after(()=>receiver.app.close());
+ const api='/api/rssd-receiver/v1/sites/pets';
+ assert.ok((await receiver.app.inject({url:api+'/status',headers})).json().capabilities.includes(CARD_UPDATES_CAPABILITY));
+ for(const {bytes,manifest} of pictures)assert.equal((await receiver.app.inject({method:'POST',url:api+'/media/'+manifest.sha256,headers,payload:{...manifest,data:bytes.toString('base64')}})).statusCode,200);
+ const send=packet=>receiver.app.inject({method:'POST',url:api+'/submissions',headers,payload:packet});
+ const run=async packet=>{const sent=await send(packet);assert.equal(sent.statusCode,200,sent.body);await receiver.tick();return (await receiver.app.inject({url:api+'/submissions/'+packet.requestId,headers})).json();};
+ const current=join(dir,'public','current'),cardPage=join(current,'news/maine-coon/cards/index.html');
+ // Published without cards: no card page.
+ const {cards,...plain}=article;
+ assert.equal((await run(plain)).state,'success');
+ await assert.rejects(access(cardPage));
+ // The card set follows as a `cards` update of the same revision, carrying the live content unchanged.
+ const update={...plain,requestId:'cards-1',operation:'cards',operationSequence:2,expectedOperationSequence:1,expectedRevision:1,cards};
+ const refused=async (packet,status,pattern)=>{const sent=await send(packet);assert.equal(sent.statusCode,status,sent.body);assert.match(sent.body,pattern);};
+ await refused({...update,requestId:'cards-no-set',cards:undefined},400,/needs a card set/);
+ await refused({...update,requestId:'cards-edited',content:{...plain.content,title:'缅因猫（改）'}},409,/live content unchanged/);
+ await refused({...update,requestId:'cards-stale',expectedOperationSequence:0,operationSequence:1},409,/changed before action/);
+ const accepted=await run(update);
+ assert.equal(accepted.state,'success');
+ assert.equal(accepted.operation,'cards');
+ assert.equal(accepted.operationSequence,2);
+ assert.equal((await readFile(cardPage,'utf8')).match(/<figure class="rssd-note-slide"/g).length,2);
+ assert.match(await readFile(join(current,'news/maine-coon/index.html'),'utf8'),/rssd-cards-link/);
+ // The live packet is the update, as the Center reads it back; the head keeps the revision.
+ assert.equal(p.hash(JSON.parse(await readFile(join(current,'rssd-content',contentKey(plain)+'.json'),'utf8'))),p.hash(publication(update)));
+ const head=(await receiver.app.inject({url:api+'/heads/maine-coon/zh-CN',headers})).json();
+ assert.deepEqual([head.revision,head.operation,head.operationSequence],[1,'cards',2]);
+ // A hidden edition takes no card update until it is restored.
+ const withdraw={...base,requestId:'withdraw-1',workId:'maine-coon',route:plain.route,operation:'withdraw',operationSequence:3,expectedOperationSequence:2,expectedRevision:1};
+ // The receiver records a withdrawal when it accepts it; this test does not need its build.
+ assert.equal((await send(withdraw)).statusCode,200);
+ await refused({...update,requestId:'cards-hidden',operationSequence:4,expectedOperationSequence:3},409,/Restore the hidden edition/);
 });
 
 test('the site server keeps a stated work type and note link, and fingerprints old articles as before',()=>{
