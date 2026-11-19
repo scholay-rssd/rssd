@@ -7,8 +7,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {TaskStore} from '../desktop/scripts/agent/task-store.mjs';
 import {openNotebook,exportNotebook,checkNotebook} from '../desktop/scripts/agent/notebook-store.mjs';
 import {randomUUID} from 'node:crypto';
-import {emptyWritingContext,migrateSourcesToContext,validateWritingContext,publicContextView,sourceEvidenceLinks} from '../desktop/scripts/agent/writing-context.mjs';
-import {loadWritingContext,saveWritingContext,mountResource,unmountResource,adjustMountScope,searchMount,readMount,citeEvidence,freezeWritingContext,restoreBoundContext,assertContextScope,exportContextPath,applyMountList} from '../desktop/scripts/agent/writing-context-store.mjs';
+import {emptyWritingContext,migrateSourcesToContext,validateWritingContext,publicContextView,sourceEvidenceLinks,toolReadEvidence} from '../desktop/scripts/agent/writing-context.mjs';
+import {recordToolRead,loadWritingContext,saveWritingContext,mountResource,unmountResource,adjustMountScope,searchMount,readMount,citeEvidence,freezeWritingContext,restoreBoundContext,assertContextScope,exportContextPath,applyMountList} from '../desktop/scripts/agent/writing-context-store.mjs';
 import {parseMountSpec,parseProduceMounts,parseBriefMounts} from '../desktop/scripts/agent/resources/mount-spec.mjs';
 import {parseDocument,sliceDocument} from '../desktop/scripts/agent/resources/parse-document.mjs';
 import {zip} from '../desktop/scripts/agent/resources/zip.mjs';
@@ -357,4 +357,36 @@ test('export records cited reads and leaves unread sources as private to-dos wit
  assert.equal(again.notebook.blockNotes.body.notes.verification,note);
  const resaved=JSON.parse(await readFile(exportContextPath(root,task.articleId),'utf8'));
  assert.deepEqual(resaved.citations.map(c=>c.label),['注1','source:read']);
+});
+
+test('library reads become read records only when they returned text',()=>{
+ assert.deepEqual(toolReadEvidence('article_read',{article_id:9},{articleId:9,status:'cleaned',title:'论文',sourceUrl:'https://example.org/a',publishedAt:'2026-01-02',sourceKind:'cleaned',offset:0,complete:false,blocks:[{markdown:'## 方法'},{text:'正文'}]}),
+  {via:'article_read',locator:{articleId:9,url:'https://example.org/a',title:'论文',publishedAt:'2026-01-02',sourceKind:'cleaned',offset:0},text:'## 方法\n\n正文',truncated:true});
+ assert.equal(toolReadEvidence('article_read',{article_id:9},{articleId:9,status:'not_cleaned',hint:'尚无正文'}),null);
+ assert.deepEqual(toolReadEvidence('page_read',{url:'https://example.org/p?x=1'},{status:'captured',requestedUrl:'https://example.org/p?x=1',document:{sourceUrl:'https://example.org/p',title:'页面',sourceKind:'browser_dom'},text:'页面正文',dateBasis:'not_provided',complete:true}),
+  {via:'page_read',locator:{url:'https://example.org/p',title:'页面',publishedAt:undefined,dateBasis:'not_provided',sourceKind:'browser_dom'},text:'页面正文',truncated:false});
+ assert.equal(toolReadEvidence('page_read',{url:'https://example.org/p'},{status:'blocked',text:'x'}),null);
+ assert.equal(toolReadEvidence('feed_read',{},{status:'captured',text:'x'}),null);
+ assert.throws(()=>validateWritingContext({...emptyWritingContext('article-x','academic'),evidence:[{id:'e',via:'draft_read',locator:{},text:'x',hash:'h',readAt:'now'}]}),/已读证据格式无效/);
+ assert.throws(()=>validateWritingContext({...emptyWritingContext('article-x','academic'),evidence:[{id:'e',locator:{},text:'x',hash:'h',readAt:'now'}]}),/上下文字段无效/);
+});
+
+test('recorded library reads back the sources they read, once each',async t=>{
+ const {store,task}=await fixture(t,{notebook:{...blank(),sectionId:'observations',blocks:[cites('body',['rss','page','other'])],sources:[source('rss','https://moved.example.org/a',{acquiredVia:'rss',rssId:'9'}),source('page','https://example.org/p/'),source('other','https://example.org/other')]}});
+ const article={articleId:9,status:'cached',sourceUrl:'https://example.org/a',markdown:'读到的正文',complete:true};
+ const first=await recordToolRead(store,task,{tool:'article_read',input:{article_id:9},result:article,runId:'run-1'});
+ assert.equal(first.via,'article_read');assert.equal(first.runId,'run-1');
+ assert.equal((await recordToolRead(store,task,{tool:'article_read',input:{article_id:9},result:article})).id,first.id);
+ assert.equal(await recordToolRead(store,task,{tool:'article_read',input:{article_id:9},result:{articleId:9,status:'not_cleaned'}}),null);
+ await recordToolRead(store,task,{tool:'page_read',input:{url:'https://example.org/p'},result:{status:'captured',document:{sourceUrl:'https://example.org/p'},text:'页面正文',complete:true}});
+ const context=await loadWritingContext(store,task);
+ assert.equal(context.evidence.length,2);assert.equal(context.mounts.length,3);
+ const {links,gaps}=sourceEvidenceLinks((await store.get(task.id)).notebook,context);
+ assert.deepEqual(links.map(l=>l.sourceId),['rss','page']);
+ assert.deepEqual(gaps.map(g=>g.sourceId),['other']);
+ const done=await exportNotebook(store,task.id,(await store.get(task.id)).revision);
+ assert.match(done.notebook.blockNotes.body.notes.verification,/来源other」/);
+ assert.doesNotMatch(done.notebook.blockNotes.body.notes.verification,/来源rss」|来源page」/);
+ const plain=await store.create({mode:'observation',skill:'unskilled'});
+ assert.equal(await recordToolRead(store,plain,{tool:'article_read',input:{article_id:9},result:article}),null);
 });

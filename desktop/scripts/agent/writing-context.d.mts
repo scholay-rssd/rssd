@@ -2,6 +2,7 @@ export const WRITING_CONTEXT_SCHEMA:1;
 export const CONNECTOR_IDS:readonly['rss','web','file','github','signals','existing'];
 export const MOUNT_ROLES:readonly['evidence','background','lead','style'];
 export const MOUNT_STATES:readonly['parsing','ready','partial','failed','needs_ocr','unavailable'];
+export const TOOL_READS:readonly['article_read','page_read'];
 export type ConnectorId='rss'|'web'|'file'|'github'|'signals'|'existing';
 export type MountRole='evidence'|'background'|'lead'|'style';
 export type MountState='parsing'|'ready'|'partial'|'failed'|'needs_ocr'|'unavailable';
@@ -12,7 +13,8 @@ export type WritingResource={id:string;kind:ResourceKind;title:string;locator:Re
 export type ResourceVersion={id:string;resourceId:string;immutable:true;createdAt:string;contentHash:string;label:string;snapshot:Record<string,unknown>;gaps?:string[]};
 export type ArticleMount={id:string;resourceId:string;versionId:string;enabled:boolean;role:MountRole;state:MountState;scope:Record<string,unknown>;blockIds?:string[];note?:string;error?:string};
 export type ContextCandidate={id:string;kind:ResourceKind;title:string;summary:string;locator:ResourceLocator;acquiredVia:string;createdAt:string};
-export type ReadEvidence={id:string;mountId:string;versionId:string;runId?:string;locator:ResourceLocator;text:string;hash:string;truncated:boolean;gap?:string;readAt:string};
+export type ToolRead='article_read'|'page_read';
+export type ReadEvidence={id:string;mountId:string;versionId:string;via?:ToolRead;runId?:string;locator:ResourceLocator;text:string;hash:string;truncated:boolean;gap?:string;readAt:string};
 export type ContextCitation={id:string;blockId:string;evidenceId:string;label:string};
 export type WritingContext={
   schemaVersion:1;
@@ -42,3 +44,4 @@ export type SourceEvidenceGap={sourceId:string;title:string;url:string;blockIds:
 export function sourceEvidenceLinks(notebook:unknown,context:WritingContext):{links:SourceEvidenceLink[];gaps:SourceEvidenceGap[]};
 export function sourceGapNote(gap:SourceEvidenceGap):string;
 export function sourceCitations(context:WritingContext,links:SourceEvidenceLink[]):ContextCitation[];
+export function toolReadEvidence(tool:string,input:unknown,result:unknown):{via:ToolRead;locator:ResourceLocator;text:string;truncated:boolean}|null;

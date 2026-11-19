@@ -13,6 +13,7 @@ import {homedir} from 'node:os';
 import {configuredWorkspace} from '../../../scripts/editorial-location.mjs';
 import {atomicJson,optionalJson} from '../../../scripts/editorial-sync.mjs';
 import {tools,createAgentTools} from './tools.mjs';
+import {recordToolRead} from './writing-context-store.mjs';
 import {assertRunScope,scopedTools,configurationRestoration,Conversations,newEntry,sessionConfiguration,attachmentBlocks,settleHistory} from './session-state.mjs';
 import {TaskStore,taskInstructions} from './task-store.mjs';
 import {stat} from 'node:fs/promises';
@@ -49,7 +50,16 @@ const server=createServer(async(req,res)=>{
   const reply=(code,value)=>{res.writeHead(code,{'content-type':'application/json'});res.end(JSON.stringify(value));};
   if(req.method!=='POST'||req.headers.authorization!=='Bearer '+token||req.headers.origin)return reply(403,{error:'Unauthorized'});
   let toolEntry,finish;
-  try{let bytes=0,parts=[];for await(const part of req){bytes+=part.length;if(bytes>1000000)throw Error('Tool request too large');parts.push(part);}const data=JSON.parse(Buffer.concat(parts).toString());
+  try{let bytes=0,parts=[];// A read record carries the library's whole reply, which may be up to 4 MB.
+    const limit=req.url==='/read'?5000000:1000000;for await(const part of req){bytes+=part.length;if(bytes>limit)throw Error('Tool request too large');parts.push(part);}const data=JSON.parse(Buffer.concat(parts).toString());
+    // The RSS library server reports each article_read/page_read it answered
+    // for this task's agent, so completion can match citations to real reads.
+    if(req.url==='/read'){
+      if(!taskId||!busy||!acceptingTools||!currentTurn)return reply(409,{error:'当前没有执行中的写作任务'});
+      const evidence=await recordToolRead(taskStore,await taskStore.get(taskId),{tool:data.tool,input:data.arguments,result:data.result,runId:currentTurn.id});
+      if(evidence)emit({type:'task_changed'});
+      return reply(200,{recorded:!!evidence});
+    }
     if(req.url==='/tools')return reply(200,taskId?scopedTools(tools,taskId,(await taskStore.get(taskId)).mode,!!(await taskStore.get(taskId)).notebook):tools);
     if(req.url!=='/call')return reply(404,{error:'Unknown route'});
     if(!busy||!acceptingTools)throw Error('当前没有执行中的智能体任务');
@@ -153,7 +163,7 @@ async function connect({fresh=false,restore}={}){
       capabilities=initialized.agentCapabilities||{};
     }
     const mcpServers=[{name:'scholay-workbench',command:process.execPath,args:[join(directory,'mcp.mjs')],env:[{name:'SCHOLAY_AGENT_BRIDGE',value:address},{name:'SCHOLAY_AGENT_BRIDGE_TOKEN',value:token}]}];
-    const rss=process.argv[2],socket=process.argv[3]||join(homedir(),'Library/Application Support/com.thomas.papr/agent.sock');if(rss&&existsSync(rss))mcpServers.push({name:'scholay-rss',command:rss,args:['--socket',socket],env:[]});
+    const rss=process.argv[2],socket=process.argv[3]||join(homedir(),'Library/Application Support/com.thomas.papr/agent.sock');if(rss&&existsSync(rss))mcpServers.push({name:'scholay-rss',command:rss,args:['--socket',socket],env:taskId?[{name:'SCHOLAY_AGENT_BRIDGE',value:address},{name:'SCHOLAY_AGENT_BRIDGE_TOKEN',value:token}]:[]});
     if(fresh){sessionId=null;history=[];configuration={modes:null,models:null,configOptions:[]};connected=false;}
     // Cursor does not persist an empty conversation; there is nothing to resume.
     if(!history.some(message=>message.role==='user'))sessionId=null;

@@ -25,16 +25,33 @@ test('notebook generation fills its scoped image and reports a missing callback 
  assert.match(states.get(task.id).status,/图片尚未填入/);assert.equal((await call('task_get',{taskId:task.id})).notebook.blocks[0].text,path);
 });
 
-async function fixture(t){
+async function fixture(t,{args=[]}={}){
  const root=await mkdtemp(join(tmpdir(),'scholay-lifecycle-'));await mkdir(join(root,'articles'));await mkdir(join(root,'_ops/inventory'),{recursive:true});
  await writeFile(join(root,'_ops/inventory/article-index.json'),JSON.stringify({articles:{},annexColumns:[]}));
- const child=spawn(process.execPath,[resolve('desktop/scripts/agent/bridge.mjs')],{env:{...process.env,SCHOLAY_EDITORIAL_ROOT:root,NODE_OPTIONS:'--import='+pathToFileURL(resolve('tests/fixtures/agent/preload.mjs')).href},stdio:['pipe','pipe','pipe']});
+ const child=spawn(process.execPath,[resolve('desktop/scripts/agent/bridge.mjs'),...args],{env:{...process.env,SCHOLAY_EDITORIAL_ROOT:root,NODE_OPTIONS:'--import='+pathToFileURL(resolve('tests/fixtures/agent/preload.mjs')).href},stdio:['pipe','pipe','pipe']});
  let sequence=0;const pending=new Map(),states=new Map(),events=[];
  createInterface({input:child.stdout}).on('line',line=>{const v=JSON.parse(line);if(v.event){events.push(v.event);if(v.event.type==='task_state')states.set(v.event.taskId,v.event.state);return;}const item=pending.get(v.id);if(item){pending.delete(v.id);clearTimeout(item.timer);v.error?item.reject(Error(v.error)):item.resolve(v.result);}});
  const call=(method,params={})=>new Promise((resolve,reject)=>{const id=++sequence,timer=setTimeout(()=>reject(Error('bridge timeout: '+method)),12000);pending.set(id,{resolve,reject,timer});child.stdin.write(JSON.stringify({id,method,params})+'\n');});
  t.after(async()=>{await call('task_shutdown').catch(()=>{});child.stdin.end();await new Promise(r=>child.once('exit',r));await rm(root,{recursive:true,force:true});});
  return {root,call,states,events};
 }
+test('a writing task records what the library returned to its agent',async t=>{
+ // Any existing file stands in for the scholay-mcp binary; the fixture agent
+ // does not start it, it posts to the bridge the worker configured for it.
+ const {call,states,events}=await fixture(t,{args:[process.execPath,'fixture-agent.sock']});
+ let task=await call('task_create',{mode:'observation',skill:'unskilled'});
+ task=await call('notebook_open',{taskId:task.id});
+ await call('prompt',{taskId:task.id,text:'read:record'});
+ await until(()=>events.some(e=>e.taskId===task.id&&e.type==='message'&&/Read record/.test(e.message.text||'')||e.taskId===task.id&&e.type==='chunk'&&/Read record/.test(e.text||'')));
+ await until(()=>states.get(task.id)?.busy===false);
+ const {context}=await call('context_get',{taskId:task.id});
+ assert.equal(context.evidence.length,1);
+ const [read]=context.evidence;
+ assert.equal(read.via,'article_read');assert.equal(read.mountId,'');assert.equal(read.text,'读到的正文');
+ assert.deepEqual(read.locator,{articleId:4,url:'https://example.org/a',title:'原文'});
+ assert.equal(context.mounts.length,0);
+});
+
 async function until(fn){const end=Date.now()+12000;while(Date.now()<end){const value=await fn();if(value)return value;await new Promise(r=>setTimeout(r,25));}throw Error('condition timed out');}
 
 test('three isolated workers run, additional tasks queue, cancelled queue never starts, and stop settles tools',async t=>{
