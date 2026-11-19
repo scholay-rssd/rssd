@@ -1,35 +1,52 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ANNOTATION_FORM,ANNOTATION_FAMILIES,annotationSectionsFor,annotationItemsFor,validateAnnotationAnswers,validateAnnotationForm,MAX_ANNOTATION_NOTE} from '../contracts/annotation-forms.mjs';
+import {ANNOTATION_FORM,annotationSectionsFor,annotationItemsFor,annotationProfile,validateAnnotationAnswers,validateAnnotationForm,MAX_ANNOTATION_NOTE} from '../contracts/annotation-forms.mjs';
 
 const answer=item=>({value:item.type==='scale'?4:item.type==='check'?true:item.options[0].id});
 const sheet=items=>Object.fromEntries(items.map(item=>[item.id,answer(item)]));
 
-test('the form is valid, and every writing family has its own questions',()=>{
- assert.equal(ANNOTATION_FORM.schemaVersion,1);assert.equal(ANNOTATION_FORM.version,'1');
- const named=new Set(ANNOTATION_FORM.sections.flatMap(section=>section.appliesTo.families||[]));
- assert.deepEqual([...named].sort(),ANNOTATION_FAMILIES);
+test('the form is valid: one set of dimensions for every article and note, each with a scale and its signs',()=>{
+ assert.equal(ANNOTATION_FORM.schemaVersion,1);assert.match(ANNOTATION_FORM.version,/^(draft-)?\d+$/);
+ const dimensions=ANNOTATION_FORM.sections.filter(section=>section.id!=='overall');
+ assert.deepEqual(dimensions.map(section=>section.id),['staging','rhythm','inflation','structure','residue','substance','stance','voice']);
+ for(const section of ANNOTATION_FORM.sections){
+  assert.deepEqual(section.appliesTo,{workTypes:['article','note']},section.id+' applies to every work');
+  assert.ok(section.traces,section.id+' says where its results point');
+ }
+ for(const section of dimensions){
+  assert.equal(section.items.filter(item=>item.type==='scale').length,1,section.id+' has one scale');
+  const checks=section.items.filter(item=>item.type==='check');
+  assert.ok(checks.length>=2&&checks.every(item=>['tell','good'].includes(item.polarity)),section.id+' has signs, each saying which answer is the bad one');
+ }
+ // The question about the weakest dimension offers exactly the dimensions, and none.
+ const worst=ANNOTATION_FORM.sections.at(-1).items.find(item=>item.id==='overall-worst').options.map(option=>option.id);
+ assert.deepEqual(worst,[...dimensions.map(section=>section.id),'none']);
  assert.throws(()=>{ANNOTATION_FORM.sections.push({});},TypeError,'the form is frozen');
 });
-test('a work gets the sections that apply to it, in order',()=>{
- const ids=work=>annotationSectionsFor(ANNOTATION_FORM,work).map(section=>section.id);
- assert.deepEqual(ids({workType:'article',family:'animal'}),['article-facts','article-answer','article-prose','article-images','article-overall','family-animal']);
- assert.deepEqual(ids({workType:'article',family:'legal',cards:true}),['article-facts','article-answer','article-prose','article-images','article-overall','article-cards','family-legal']);
- assert.deepEqual(ids({workType:'article'}),['article-facts','article-answer','article-prose','article-images','article-overall']);
- assert.deepEqual(ids({workType:'note',family:'animal',cards:true}),['note-common']);
- assert.deepEqual(ids({workType:'note',adapted:true}),['note-common','note-adapted']);
+test('every work gets the same sections, in order, whatever its type, family or card page',()=>{
+ const ids=work=>annotationSectionsFor(ANNOTATION_FORM,work).map(section=>section.id),all=ANNOTATION_FORM.sections.map(section=>section.id);
+ for(const work of [{workType:'article'},{workType:'article',family:'animal',cards:true},{workType:'note'},{workType:'note',adapted:true}])assert.deepEqual(ids(work),all);
  assert.throws(()=>annotationSectionsFor(ANNOTATION_FORM,{workType:'event'}),{code:'invalid_annotation'});
- // Short enough to finish: an article with cards and family questions stays under 25 items.
- for(const family of ANNOTATION_FAMILIES)assert.ok(annotationItemsFor(ANNOTATION_FORM,{workType:'article',family,cards:true}).length<=25,family);
+ assert.ok(annotationItemsFor(ANNOTATION_FORM,{workType:'article'}).length<=40);
+});
+test('a profile gives each dimension its scale and how many of its signs point to machine writing',()=>{
+ const work={workType:'note'},items=annotationItemsFor(ANNOTATION_FORM,work);
+ const human=Object.fromEntries(items.map(item=>[item.id,{value:item.type==='scale'?5:item.type==='check'?item.polarity==='good':item.options.at(-1).id}]));
+ const machine=Object.fromEntries(items.map(item=>[item.id,{value:item.type==='scale'?1:item.type==='check'?item.polarity!=='good':item.options[0].id}]));
+ const best=annotationProfile(ANNOTATION_FORM,work,human),worst=annotationProfile(ANNOTATION_FORM,work,machine);
+ for(const section of ANNOTATION_FORM.sections){
+  assert.equal(best[section.id].scale,5);assert.equal(best[section.id].tells,0);
+  assert.equal(worst[section.id].scale,1);assert.equal(worst[section.id].tells,worst[section.id].checks);
+ }
+ assert.deepEqual(annotationProfile(ANNOTATION_FORM,work,{'staging-direct':{value:4},'staging-runup':{value:true}}),{staging:{scale:4,tells:1,checks:1}});
+ assert.deepEqual(annotationProfile(ANNOTATION_FORM,work,{}),{});
 });
 test('an answer sheet must answer every item that applies, and nothing else',()=>{
  const work={workType:'article',family:'animal'},items=annotationItemsFor(ANNOTATION_FORM,work),full=sheet(items);
  assert.deepEqual(validateAnnotationAnswers(ANNOTATION_FORM,work,full),full);
- const optional=items.find(item=>item.optional),{[optional.id]:_skipped,...withoutOptional}=full;
- assert.equal(optional.id in validateAnnotationAnswers(ANNOTATION_FORM,work,withoutOptional),false);
  const required=items.find(item=>!item.optional),{[required.id]:_missing,...incomplete}=full;
  assert.throws(()=>validateAnnotationAnswers(ANNOTATION_FORM,work,incomplete),/Missing answer/);
- assert.throws(()=>validateAnnotationAnswers(ANNOTATION_FORM,work,{...full,'legal-jurisdiction':{value:true}}),/no item legal-jurisdiction/);
+ assert.throws(()=>validateAnnotationAnswers(ANNOTATION_FORM,work,{...full,'no-such-item':{value:true}}),/no item no-such-item/);
  assert.throws(()=>validateAnnotationAnswers(ANNOTATION_FORM,work,[]),{code:'invalid_annotation'});
 });
 test('each kind of item takes only its own kind of answer, and a note only where allowed',()=>{
@@ -49,6 +66,6 @@ test('a malformed form is refused',()=>{
  assert.equal(validateAnnotationForm(base()).sections.length,1);
  const broken=[d=>{d.schemaVersion=2;},d=>{d.sections=[];},d=>{d.sections.push(d.sections[0]);},d=>{d.sections[0].appliesTo.workTypes=['video'];},d=>{d.sections[0].appliesTo.families=['nope'];},
   d=>{d.sections[0].appliesTo.cards=false;},d=>{d.sections[0].items[0].anchors={1:'a',5:'c'};},d=>{d.sections[0].items[0].type='essay';},d=>{d.sections[0].items[0].options=[];},
-  d=>{d.sections[0].items.push({id:'q',type:'check',text:'again'});},d=>{d.sections[0].items.push({id:'c',type:'choice',text:'C',options:[{id:'only',label:'one'}]});},d=>{d.sections[0].items[0].weight=2;}];
+  d=>{d.sections[0].items.push({id:'q',type:'check',text:'again'});},d=>{d.sections[0].items.push({id:'c',type:'choice',text:'C',options:[{id:'only',label:'one'}]});},d=>{d.sections[0].items[0].polarity='tell';},d=>{d.sections[0].items.push({id:'k',type:'check',text:'K',polarity:'bad'});},d=>{d.sections[0].traces='';},d=>{d.sections[0].items[0].weight=2;}];
  for(const mutate of broken){const document=base();mutate(document);assert.throws(()=>validateAnnotationForm(document,{families:['animal']}),{code:'invalid_annotation'},mutate.toString());}
 });
