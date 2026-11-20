@@ -36,6 +36,12 @@ the receiver gracefully before switching its code symlink. Keep its SQLite files
 and media. Restart, verify status and restore intake. Retain the current release
 and two verified rollback releases; archive older directories before removal.
 
+An English continuation of a migrated work can retain a retired section only
+when the baseline's Chinese work identity resolves to the original record and
+that record identifies the section under the migration rules. This does not add
+the section to the production registry or allow new works in it. Keep the baseline
+identity map and its original records together; titles are not identity evidence.
+
 ## Publication actions
 
 The existing authenticated `submissions` endpoint also accepts `withdraw`,
