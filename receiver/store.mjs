@@ -5,9 +5,24 @@ import p from '../contracts/rssd-v1.cjs';
 import {publication,contentKey,operation,visible} from '../contracts/rssd-publication.cjs';
 import {preflightAcademicNews} from './academic-preflight.mjs';
 
+function legacySections(baseline,site){
+  const sections=new Map();
+  for(const [key,item] of Object.entries(baseline.rssdIdentity||{})){
+    if(item.deleted||!['news','year','history','openSource'].includes(item.kind))continue;
+    const records=item.kind==='news'?baseline.news:item.kind==='openSource'?baseline.openSource?.items:baseline.data?.[item.kind];
+    const source=(records||[]).find(row=>item.kind==='openSource'?typeof item.url==='string'&&row.url===item.url:row.id===item.id);
+    if(!source||(source.locale||'zh-CN')!=='zh-CN')continue;
+    // Match the migration's section rule against the exact trusted source
+    // identity. A title, an English request, or an unknown work is not evidence.
+    const sectionId=source.sectionId||site.sections.find(s=>s.name===source.category)?.id||({year:'calendar',history:'history',openSource:'open-source'})[item.kind]||'archive';
+    sections.set(key,sectionId);
+  }
+  return sections;
+}
+
 export class ReceiverStore {
   constructor(file,site) {
-    this.site=site;mkdirSync(dirname(file),{recursive:true});this.db=new DatabaseSync(file);
+    this.site=site;this.legacySections=new Map();mkdirSync(dirname(file),{recursive:true});this.db=new DatabaseSync(file);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, hash TEXT NOT NULL, work_key TEXT NOT NULL, revision INTEGER NOT NULL,
         payload TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'queued', error TEXT, receipt TEXT, created INTEGER NOT NULL);
@@ -30,7 +45,7 @@ export class ReceiverStore {
     }
   }
   close(){this.db.close();}
-  seedLegacyHeads(baseline={}){return this.transaction(()=>{
+  seedLegacyHeads(baseline={}){const result=this.transaction(()=>{
     const identityHash=p.hash(baseline.rssdIdentity||{}),previous=this.db.prepare("SELECT value FROM state WHERE key='legacyIdentityHash'").get();
     if(previous&&previous.value!==identityHash&&this.db.prepare('SELECT count(*) AS n FROM requests').get().n)p.fail('Legacy baseline cannot change after center publication has started',409,'baseline_locked');
     for(const [key,item] of Object.entries(baseline.rssdIdentity||{})){
@@ -46,7 +61,7 @@ export class ReceiverStore {
       if(legacy)this.db.prepare('UPDATE heads SET revision=?,operation=?,content_hash=? WHERE work_key=?').run(item.revision,item.deleted?'delete':'publish',item.contentHash||null,key);
     }
     this.db.prepare("INSERT INTO state VALUES('legacyIdentityHash',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(identityHash);
-  });}
+  });this.legacySections=legacySections(baseline,this.site);return result;}
   status(){return {siteId:this.site.id,workspaceId:this.site.spaceId,requests:this.db.prepare('SELECT state,count(*) AS count FROM requests GROUP BY state').all(),publications:this.db.prepare("SELECT count(*) AS count FROM published WHERE coalesce(json_extract(payload,'$.operation'),'publish') IN ('publish','restore','cards')").get().count,tombstones:this.db.prepare("SELECT count(*) AS count FROM published WHERE json_extract(payload,'$.operation') IN ('withdraw','delete')").get().count,legacyIdentityHash:this.db.prepare("SELECT value FROM state WHERE key='legacyIdentityHash'").get()?.value||null};}
   head(workId,locale){p.id(workId);p.locale(locale);const row=this.db.prepare('SELECT * FROM heads WHERE work_key=?').get(contentKey({workId,locale}));if(!row)p.fail('Publication identity not found',404,'not_found');const request=this.db.prepare('SELECT state FROM requests WHERE id=?').get(row.request_id);return {siteId:this.site.id,workspaceId:this.site.spaceId,workId,locale,revision:row.revision,operationSequence:row.operation_sequence,operation:row.operation,route:row.route,contentHash:row.content_hash,requestId:row.request_id,state:request?.state||'legacy'};}
   transaction(fn){this.db.exec('BEGIN IMMEDIATE');try{const result=fn();this.db.exec('COMMIT');return result;}catch(error){this.db.exec('ROLLBACK');throw error;}}
@@ -58,7 +73,8 @@ export class ReceiverStore {
   }
   accept(input){
     const value=publication(input);if(value.siteId!==this.site.id||value.workspaceId!==this.site.spaceId)p.fail('Site/workspace mismatch',403);
-    if(!this.site.sections.some(s=>s.id===value.sectionId))p.fail('Unknown site section');
+    const continuation=value.locale==='en'&&this.legacySections.get(contentKey({workId:value.workId,locale:'zh-CN'}))===value.sectionId;
+    if(!this.site.sections.some(s=>s.id===value.sectionId)&&!continuation)p.fail('Unknown site section');
     const hash=p.hash(value),key=contentKey(value);
     return this.transaction(()=>{
       const old=this.db.prepare('SELECT hash FROM requests WHERE id=?').get(value.requestId);
