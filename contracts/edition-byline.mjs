@@ -27,7 +27,7 @@ export function siteByline(profiles,workspaceId,sectionId){
  * signs with the site, the site's byline stays and `metadata.persona` is left out. An edition that has a
  * source keeps the source's byline, persona and voice, whatever the claim decided.
  */
-export function withEditionByline(edition,{source,site,persona,voice}={}){
+export function withEditionByline(edition,{source,site,persona,voice,presetRecord=false}={}){
  const prior=source?.payload?.metadata||{},metadata={...(edition?.metadata||{})};
  const wrote=voice?.state==='chosen'&&filled(voice.persona?.id)&&filled(voice.persona?.revision)&&filled(voice.persona?.snapshotHash)?voice.persona:null;
  if(wrote&&voice.byline==='persona'&&filled(wrote.founder?.id)&&filled(wrote.founder?.name))persona=wrote.founder;
@@ -41,7 +41,12 @@ export function withEditionByline(edition,{source,site,persona,voice}={}){
  const from=filled(prior.author)?(filled(prior.persona?.id)?{id:prior.persona.id}:null):signed?{id:signed.id}:null;
  if(from)metadata.persona=from;else delete metadata.persona;
  // Which preset wrote: the source edition's when there is a source, else this claim's.
- const kept=prior.voice,by=source?.payload?(filled(kept?.id)&&filled(kept?.revision)&&filled(kept?.snapshotHash)?kept:null):wrote;
+ const kept=prior.voice;
+ let by=source?.payload?(filled(kept?.id)&&filled(kept?.revision)&&filled(kept?.snapshotHash)?kept:null):wrote;
+ if(presetRecord && by && wrote && voice.method==='kept' && by.id===wrote.id && by.revision===wrote.revision)by=wrote;
  if(by)metadata.voice={id:by.id,revision:by.revision,snapshotHash:by.snapshotHash};else delete metadata.voice;
+ // Current Centers use the preset as the private signing reference as well. Older Centers still validate
+ // the founder ID. English attribution comes from the same author field for both record formats.
+ if(presetRecord && from && by)metadata.persona={id:by.id};
  return {...edition,metadata};
 }
