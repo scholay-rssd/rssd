@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import protocol from '../contracts/rssd-v1.cjs';
-import {PERSONA_SNAPSHOT_SCHEMA,VOICE_MODES,VOICE_BYLINES,CANDIDATE_LIMIT,personaSnapshot,personaEntry,voiceRange,decideVoice,settleVoice,lapseVoice} from '../contracts/persona-voice.mjs';
+import {PERSONA_SNAPSHOT_SCHEMA,VOICE_MODES,VOICE_BYLINES,CANDIDATE_LIMIT,personaSnapshot,writingPersonaSnapshot,personaEntry,voiceRange,decideVoice,settleVoice,lapseVoice} from '../contracts/persona-voice.mjs';
 import {withEditionByline} from '../contracts/edition-byline.mjs';
 
 // A snapshot shaped and hashed the way the persona library compiles one. Every value here is made up.
@@ -40,6 +40,25 @@ test('an entry keeps the reference, the founder who signs and a short summary, a
  for(const name of [undefined,'',' Founder','x'.repeat(81),'a\nb'])assert.throws(()=>personaEntry(snapshot(1),{founderName:name}),{code:'invalid_persona'});
 });
 
+test('RSSD verifies the source before producing an ID-only, independently verifiable writing copy',()=>{
+ const {snapshotHash,...source}=snapshot(1);
+ source.publicProfile={chineseScreenName:'笔名甲',englishScreenName:'Alias (A)',abbreviation:'AL'};
+ source.behavior.core='按笔名甲的方式解释。';
+ source.behavior.strengths=['AL explains CALM and Alias (A) checks evidence.'];
+ source.developerInstructions='Public name: 笔名甲 / Alias (A).\nWrite as 笔名甲. Keep citations.';
+ const original={...source,snapshotHash:createHash('sha256').update(JSON.stringify(sorted(source))).digest('hex')};
+ const copy=writingPersonaSnapshot(Object.freeze(original));
+ assert.equal(copy.developerInstructions,'Write as P0001. Keep citations.');
+ assert.deepEqual(copy.behavior.strengths,['P0001 explains CALM and P0001 checks evidence.']);
+ assert.equal(copy.behavior.core,'按P0001的方式解释。');
+ assert.deepEqual(Object.values(copy.publicProfile),Array(3).fill('P0001'));
+ assert.deepEqual(copy.preset,original.preset);
+ assert.notEqual(copy.snapshotHash,original.snapshotHash);
+ assert.deepEqual(personaSnapshot(copy),copy);
+ assert.deepEqual(writingPersonaSnapshot(copy),copy);
+ assert.throws(()=>writingPersonaSnapshot({...original,developerInstructions:'Edited.'}),{code:'persona_hash_mismatch'});
+});
+
 test('the protocol accepts a section voice and an order voice, and keeps the two lists equal',()=>{
  assert.deepEqual(protocol.VOICE_MODES,VOICE_MODES);assert.deepEqual(protocol.VOICE_BYLINES,VOICE_BYLINES);
  const policy=voice=>protocol.policy({targets:[],voice}).voice;
@@ -58,6 +77,12 @@ test('the protocol accepts a section voice and an order voice, and keeps the two
  assert.throws(()=>protocol.demand({...demand,voice:{}}),/voice.persona/);
  assert.throws(()=>protocol.demand({...demand,kind:'translate',source:{workId:'x',locale:'zh-CN',revision:1},voice:'none'}),/Only a write demand/);
  assert.throws(()=>protocol.demand({...demand,workType:'note',adaptedFrom:{workId:'x',revision:1},voice:{persona:'P0002'}}),/keeps the persona/);
+ for(const invalid of ['Author','M01','P01','p0001','笔名']){
+  for(const setting of [{mode:'fixed',persona:invalid},{mode:'choose',range:[invalid]},{mode:'balanced',fallback:invalid}])
+   assert.throws(()=>policy(setting),protocol.ProtocolError);
+  assert.throws(()=>protocol.demand({...demand,voice:{persona:invalid}}),protocol.ProtocolError);
+ }
+ assert.equal(policy({mode:'fixed',persona:'P10000'}).persona,'P10000');
 });
 
 test('a work with a source keeps the source\'s voice, even one that is retired or outside the range',()=>{
@@ -136,6 +161,10 @@ test('the byline: the founder signs, or the site does; the preset that wrote sta
  const signed=decideVoice({voice:{mode:'fixed',persona:'P0002',byline:'persona'},library:lib});
  const a=withEditionByline(edition,{site,voice:signed}).metadata;
  assert.deepEqual(a,{author:'Founder2',category:'统计之美',persona:{id:'M02'},voice:{id:'P0002',revision:'p0002.v1',snapshotHash:lib[1].snapshotHash},notebook:{version:2}});
+ const current=withEditionByline(edition,{site,voice:signed,presetRecord:true}).metadata;
+ assert.deepEqual(current,{...a,persona:{id:'P0002'}});
+ const inherited=withEditionByline(edition,{site,voice:{...signed,method:'kept'},presetRecord:true,source:{payload:{metadata:{...a,voice:{...a.voice,snapshotHash:H('f')}}}}}).metadata;
+ assert.deepEqual(inherited,current);
  const unsigned=withEditionByline(edition,{site,voice:{...signed,byline:'site'}}).metadata;
  assert.deepEqual([unsigned.author,'persona' in unsigned,unsigned.voice.id],['研究方法',false,'P0002']);
  // A voice decision replaces a persona byline even when it chose nobody.
