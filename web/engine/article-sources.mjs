@@ -7,7 +7,9 @@ export function publicArticleSources(sources){
   if(typeof source?.url!=='string'||/[\\\x00-\x20]/.test(source.url))continue;
   let url;try{url=new URL(source.url);}catch{continue;}
   if(!['http:','https:'].includes(url.protocol)||url.username||url.password||seen.has(url.href))continue;
-  seen.add(url.href);result.push({label:typeof source.label==='string'&&source.label.trim()?source.label:url.href,url:url.href});
+  // Use the canonical URL for deduplication but retain the author's spelling:
+  // adding a trailing slash here can make a link already in Markdown look absent.
+  seen.add(url.href);result.push({label:typeof source.label==='string'&&source.label.trim()?source.label:source.url,url:source.url});
  }
  return result;
 }
