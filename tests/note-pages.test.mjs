@@ -58,10 +58,12 @@ test('notes get a gallery page, articles a linked card page, and the feed says w
  assert.match(page,/<a href="\/news\/maine-coon-signs\/">图文笔记《缅因猫的 5 个特征》<\/a>/);
  assert.match(page,/<div class="article-body">[^]*?<img[^>]+article-media/);
 
- // The card page: the article's own address as canonical, the set in a gallery, no share panel, a way back.
+ // The card page: its own address as canonical but kept out of the index (the article carries the text), the set
+ // in a gallery, no share panel, a way back.
  const cardPage=await readFile(join(target,'news/maine-coon/cards/index.html'),'utf8');
  assert.match(cardPage,/<title>卡片版 · /);
- assert.match(cardPage,new RegExp(`<link rel="canonical" href="${pets.origin.replace(/[.]/g,'\\.')}/news/maine-coon/">`));
+ assert.match(cardPage,new RegExp(`<link rel="canonical" href="${pets.origin.replace(/[.]/g,'\\.')}/news/maine-coon/cards/">`));
+ assert.match(cardPage,/<meta name="robots" content="noindex,follow">/);assert.doesNotMatch(cardPage,/<meta property="og:url" content="[^"]*\/news\/maine-coon\/">/);
  assert.match(cardPage,/<a class="back" href="\/news\/maine-coon\/">← 阅读全文<\/a>/);
  assert.equal((cardPage.match(/<figure class="rssd-note-slide"/g)||[]).length,2);
  assert.match(cardPage,/alt="第 2 张，共 2 张"/);
