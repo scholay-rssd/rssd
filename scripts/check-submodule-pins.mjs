@@ -27,7 +27,7 @@ const git = (args, cwd) => run('git', args, {
 const succeeds = (args, cwd) => git(args, cwd).then(() => true, () => false);
 const lastLine = (error) => String(error.stderr || error.message).trim().split('\n').pop();
 
-async function readGitmodules(root, rev) {
+export async function readGitmodules(root, rev) {
   if (!(await succeeds(['cat-file', '-e', `${rev}:.gitmodules`], root))) return new Map();
   const {stdout} = await git(['config', '--blob', `${rev}:.gitmodules`, '-z', '--get-regexp', '^submodule\\..*\\.(path|url)$'], root)
     .catch((error) => (error.code === 1 ? {stdout: ''} : Promise.reject(error)));
@@ -41,7 +41,7 @@ async function readGitmodules(root, rev) {
   return new Map([...byName.values()].filter((entry) => entry.path).map((entry) => [entry.path, entry]));
 }
 
-async function readPins(root, rev) {
+export async function readPins(root, rev) {
   const {stdout} = await git(['ls-tree', '-r', '-z', '--full-tree', rev], root);
   return stdout.split('\0').filter((line) => line.startsWith('160000 ')).map((line) => {
     const [meta, path] = line.split('\t');

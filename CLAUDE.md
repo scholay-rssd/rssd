@@ -49,8 +49,13 @@ rssd 是总仓库，另有五个子模块，各自是独立的公开仓库：
 
 3. **`contracts/` 是各端共用的协议。** 改协议的 PR 只改协议和它直接需要的测试，先合并；
    其他线再 rebase。谁改了协议，谁负责把下游的测试修好。
-4. **子模块指针。** 只移动指针的 PR 由集成线统一做，一次把各个指针移到对应子仓库 main 的最新提交。
-   功能 PR 如果依赖子仓库的新提交，可以顺带移动指针，但只能指向子仓库 main 上已合并的提交，
+4. **子模块指针。** 只移动指针的事由 `Move submodule pins` 工作流自动做（每 20 分钟一次，
+   也可以在 Actions 里手动运行）：它把各个指针移到对应子仓库 main 的最新提交，提交到
+   `bot/move-pins` 分支，在这个提交上跑四项必需检查，全部通过后直接快进推到 main，不开 PR。
+   提交说明里列出每个指针跨过的子仓库 PR。检查失败时工作流报错，并且不重试同一组指针，
+   要先修好子仓库 main。这类提交推到 main 时不会再触发 main 上的工作流；receiver 包在
+   `bot/move-pins` 上那次 `Web receiver package` 运行里，产物名里带着同一个提交号。
+   会话不用再开只移动指针的 PR。功能 PR 如果依赖子仓库的新提交，可以顺带移动指针，但只能指向子仓库 main 上已合并的提交，
    并在 PR 描述里写明。rebase 时指针冲突，取两边里较新的那个 main 提交：
    `git update-index --cacheinfo 160000,<sha>,<路径>`。
    CI 会检查这一条：`submodule-pins` 工作流在指向 main 的 PR 和 main 的推送上运行
@@ -63,7 +68,7 @@ rssd 是总仓库，另有五个子模块，各自是独立的公开仓库：
    git -c submodule.center.url=https://github.com/scholay-rssd/rssd-center.git submodule update --depth 1 -- center
    ```
 
-6. **合并顺序：** 协议 PR → 子仓库 PR → 依赖它们的总仓库 PR → 只移动指针的 PR。
+6. **合并顺序：** 协议 PR → 子仓库 PR → 依赖它们的总仓库 PR，指针随后由工作流自动移动。
    每个 PR 合并前都由 CI 跑全量测试，见下文"必需检查与自动合并"。
 7. **部署与发版同一时间只由一个会话做。** 包括 Center 镜像切换、站点服务器任务、
    Obsidian 插件签名发版。线上运行的提交不一定在 main 上：部署前先查清线上实际运行的提交，
