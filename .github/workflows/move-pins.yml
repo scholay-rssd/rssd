@@ -78,13 +78,15 @@ jobs:
           for attempt in $(seq 1 100); do
             sleep 30
             state=$(latest | awk -v want=" $REQUIRED " 'index(want, " " $1 " ")')
-            failed=$(echo "$state" | awk '$2 == "completed" && $3 != "success"')
+            # Judge by the conclusion: GitHub has left a finished check marked
+            # in_progress with its conclusion and completion time already set.
+            failed=$(echo "$state" | awk '$3 != "null" && $3 != "success"')
             if [ -n "$failed" ]; then
               echo "::error::Required checks failed on $SHA; fix the submodule main, the next change there starts a new attempt"
               echo "$failed"
               exit 1
             fi
-            passed=$(echo "$state" | awk '$2 == "completed" && $3 == "success"' | wc -l)
+            passed=$(echo "$state" | awk '$3 == "success"' | wc -l)
             echo "attempt $attempt: $passed of 4 passed"
             [ "$passed" -eq 4 ] && exit 0
           done
