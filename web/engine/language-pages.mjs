@@ -7,6 +7,7 @@ import {validateCardSet,validateWorkTags} from '../../contracts/work-types.mjs';
 import {sourceHasher} from './source-hash-v1.mjs';
 import {renderArticleParts,mathStyles} from './article-math.mjs';
 import {renderRssFeed} from './rss-feed.mjs';
+import {publicArticleSources} from './article-sources.mjs';
 import {createSeoState,sitemapXml} from '../../scripts/seo-state.mjs';
 import {byteHash} from './theme-homepage.mjs';
 import {addSocialMetadata} from './social-metadata.mjs';
@@ -110,7 +111,7 @@ export async function renderLanguagePages({job,target,previousRoot,site,now,mani
   const english=EnglishShell(template,{site,names,title:data.title,summary:data.summary,route,body,sourceRoute,directory}).replace(/href="\/en\/">(Articles|← All articles)/g,`href="${directory}">$1`);
   await write(route.slice(1)+'index.html',english);paths.set(route,seo.page(route,english).lastmod);
   if(sourceRoute){const chinese=addLanguageUi(template,{site,zh:sourceRoute,en:route,locale:'zh-CN'});await write(file,chinese);paths.set(sourceRoute,seo.page(sourceRoute,chinese).lastmod);}
-  records.push({id:data.id,...(original?{sourceArticleId:original.id,sourceUrl:site.origin+sourceRoute}:{}),route,url:site.origin+route,locale:'en',title:data.title,summary:data.summary,date:data.date,category:data.category,bodyMarkdown:data.markdown,translationOf:data.translationOf,contentSha256:sourceContentSha256(data),stale:unknown||sourceMissing||data.translationSourceStatus==='independent'?null:stale,...(data.translationSourceStatus==='verified'?{sourceHashVersion:data.translationSourceHashVersion}:{}),sourceVersionState:versionState});
+  records.push({id:data.id,...(original?{sourceArticleId:original.id,sourceUrl:site.origin+sourceRoute}:{}),route,url:site.origin+route,locale:'en',title:data.title,summary:data.summary,date:data.date,category:data.category,bodyMarkdown:data.markdown,sources:publicArticleSources(data.sources),translationOf:data.translationOf,contentSha256:sourceContentSha256(data),stale:unknown||sourceMissing||data.translationSourceStatus==='independent'?null:stale,...(data.translationSourceStatus==='verified'?{sourceHashVersion:data.translationSourceHashVersion}:{}),sourceVersionState:versionState});
   // An English edition has its own revision, card set and #tags; its type and note links are the work's, which the
   // article pages take from the Chinese source. A note's edition has no card set.
   const last=records.at(-1),tags=validateWorkTags(data.tags);
@@ -136,7 +137,7 @@ export async function renderLanguagePages({job,target,previousRoot,site,now,mani
  await write('language-editions.json',JSON.stringify({version:1,siteId:site.id,languages:['zh-CN','en'],editions:records.map(({bodyMarkdown,...r})=>r)}));
  // Without a pack the feed keeps its earlier single category.
  const feed=records.map(r=>({...r,category:names?feedCategories.get(r.id):'Research articles',markdown:r.bodyMarkdown}));
- await write('en/content-feed.xml',renderRssFeed({...site,name:brand.name,description:brand.slogan},feed,{feedPath:'/en/content-feed.xml',language:'en'}));
+ await write('en/content-feed.xml',renderRssFeed({...site,name:brand.name,description:brand.slogan},feed,{feedPath:'/en/content-feed.xml',language:'en',includeSources:true}));
  // Add a normal sitemap, not an index nested inside another sitemap index.
  const englishEntries=[...paths].filter(([p])=>p.startsWith('/en/')).map(([route,lastmod])=>({loc:site.origin+route,lastmod}));
  await write('sitemap-en.xml',sitemapXml(englishEntries));

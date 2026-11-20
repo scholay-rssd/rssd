@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {digest} from '../../../admin/model.mjs';
 import {byteHash} from '../theme-homepage.mjs';
 import {renderArticleParts} from '../article-math.mjs';
+import {articleSourcePanel} from '../article-sources.mjs';
 import {exportTemplate} from '../../themes/export/registry.mjs';
 import {headingAnchors} from '../../themes/structures.mjs';
 import {courseLabels} from '../../themes/academic/archive-pages.mjs';
@@ -46,11 +47,10 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   for(;;){const heading=markdown.match(/^# ([^\n]+)\n+/);if(!heading||heading[1].trim()!==record.title.trim())break;markdown=markdown.slice(heading[0].length);}
   const rendered=renderArticleParts(markdown,{site});
   if(site.id!=='scholay-today')rendered.body=headingAnchors(rendered.body).body;
-  const sources=(record.sources||[]).filter(s=>!markdown.includes(s.url));
   const articlePath=route.slice(1)+'index.html';let article=await readFile(join(target,articlePath),'utf8');
   const preservedFacts=article.match(/<dl class="record-facts">[\s\S]*?<\/dl>/)?.[0];
   const event=record.event, facts=preservedFacts||(event?`<dl class="record-facts">${Object.entries(event).filter(([key,value])=>['year','monthDay','start','end'].includes(key)&&value!=null).map(([key,value])=>`<div><dt>${esc(({year:'年份',monthDay:'日期',start:'开始',end:'结束'})[key])}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>`:'');
-  const sourcePanel=(sources.length?`<h2>${en?'Sources':'资料来源'}</h2><ul>${sources.map(s=>`<li><a href="${esc(s.url)}">${esc(s.label||s.url)}</a></li>`).join('')}</ul>`:'');
+  const sourcePanel=articleSourcePanel(record.sources,markdown,locale);
   const endnotes=rendered.endnotes?`<div class="article-body article-endnotes">${rendered.endnotes}</div>`:'';
   const course=record.course?`<p class="rssd-byline">${courseLabels(record.course)}</p>`:'';
   // The #tags row sits inside the article, under the body.

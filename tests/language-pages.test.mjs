@@ -35,7 +35,7 @@ for(const siteId of ['metho','scholay-today'])test(siteId+' renders independent 
  const dir=await mkdtemp(join(tmpdir(),'today-language-pages-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const site={...profiles.find(x=>x.id===siteId),languages:['zh-CN','en']};
  const chinese={id:'test-original-source',title:'中文原稿',summary:'样本为 120 人。',markdown:'# 中文原稿\n\n样本为 120 人。\n\n![原图](https://example.org/image.webp)\n\n[来源](https://example.org/paper)',date:'2026-10-22',category:site.columns[0],author:site.author,assets:[]};
- const english={...chinese,id:editionArticleId(chinese.id,'en'),locale:'en',translationOf:{articleId:chinese.id,revision:1,sha256:sourceContentSha256(chinese)},title:'The English article',summary:'The sample includes 120 people.',markdown:'# The English article\n\nThe sample includes 120 people.\n\n![Original illustration](https://example.org/image.webp)\n\n[Source](https://example.org/paper)'};
+ const english={...chinese,id:editionArticleId(chinese.id,'en'),locale:'en',translationOf:{articleId:chinese.id,revision:1,sha256:sourceContentSha256(chinese)},title:'The English article',summary:'The sample includes 120 people.',markdown:'# The English article\n\nThe sample includes 120 people.\n\n![Original illustration](https://example.org/image.webp)\n\n[Source](https://example.org/paper)',sources:[{label:'Already in text',url:'https://example.org/paper'},{label:'Official & verified',url:'https://example.org/official?ref=one&lang=en'},{label:'Duplicate',url:'https://example.org/official?ref=one&lang=en'},{label:'Unsafe',url:'javascript:alert(1)'},{label:'Private',url:'https://user:secret@example.org/source'}]};
  const year={id:'verified-year',title:'会议记录',category:site.yearCategories[0],tags:[],start:'2026-12-01',end:null,dateBasis:'官网日期',summary:'会议摘要',body:'',sourceName:'主办方',sourceUrl:'https://example.org/event',provenance:'已核验官网'};
  const history={id:'verified-history',title:'历史记录',dateKey:'01-01',year:2000,domain:'科学史',eventType:'论文发表',importance:'A',factSummary:'历史摘要',historicalSignificance:'意义',sources:[{label:'来源',url:'https://example.org/history'}],preciseToDay:true};
  const resource={title:'开放工具',date:'2026-10-01',category:site.sourceCategories[0],summary:'工具摘要',value:'研究价值',url:'https://example.org/project',relatedUrl:'',status:'公开收录'};
@@ -62,10 +62,13 @@ for(const siteId of ['metho','scholay-today'])test(siteId+' renders independent 
  assert.match(en,/<meta name="twitter:title" content="The English article">/);
  assert.match(en,/<meta name="twitter:description" content="The sample includes 120 people\.">/);
  assert.match(en,/<meta property="og:image" content="https:\/\/example.org\/image.webp">/);
+ assert.match(en,/<h2>Sources<\/h2><ul><li><a href="https:\/\/example.org\/official\?ref=one&amp;lang=en">Official &amp; verified<\/a><\/li><\/ul>/);
+ assert.equal((en.match(/href="https:\/\/example.org\/paper"/g)||[]).length,1);assert.doesNotMatch(en,/javascript:alert|user:secret|Duplicate/);
  assert.equal((en.match(/property="og:site_name"/g)||[]).length,1);
  const rss=await readFile(join(target,'content-feed.xml'),'utf8');assert(rss.includes('中文原稿'));assert(!rss.includes('The English article'));
  const enRss=await readFile(join(target,'en/content-feed.xml'),'utf8');assert.match(enRss,/<language>en<\/language>/);assert(enRss.includes(site.origin+'/en/news/'+chinese.id+'/'));
- const publicEn=JSON.parse(await readFile(join(target,'en/published-content.json'),'utf8'));assert.equal(publicEn.records.length,1);assert.equal(publicEn.records[0].stale,false);
+ assert.match(enRss,/<a href="https:\/\/example.org\/official\?ref=one&amp;lang=en">Official &amp; verified<\/a>/);assert.equal((enRss.match(/href="https:\/\/example.org\/paper"/g)||[]).length,1);
+ const publicEn=JSON.parse(await readFile(join(target,'en/published-content.json'),'utf8'));assert.equal(publicEn.records.length,1);assert.equal(publicEn.records[0].stale,false);assert.equal(publicEn.records[0].bodyMarkdown,english.markdown);assert.equal(publicEn.records[0].sources.length,2);
  assert.equal(manifest.counts.languageEditions,1);assert(manifest.hashes['sitemap-en.xml']);
  const next=join(dir,'next');await buildSiteRelease({job,target:next,previousRoot:target,source:resolve('.'),site,now:new Date('2026-10-23T00:00:00Z')});
  const second=await readFile(join(next,'en/news/'+chinese.id+'/index.html'),'utf8');

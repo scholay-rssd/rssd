@@ -1,6 +1,7 @@
 import MarkdownIt from 'markdown-it';
 import {createArticleFormatter} from '../../scripts/article-format.mjs';
 import {protectMathMarkdown} from '../../scripts/article-math.mjs';
+import {articleSourcePanel} from './article-sources.mjs';
 // CDATA is still XML: only XML 1.0 characters are valid in either representation.
 const xmlText=value=>String(value??'').replace(/[^\u0009\u000a\u000d\u0020-\ud7ff\ue000-\ufffd\u{10000}-\u{10ffff}]/gu,'');
 const xml=value=>xmlText(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
@@ -29,13 +30,13 @@ function renderBody(markdown,articleUrl,site){
   for(const {token,text} of math.replacements)body=body.replaceAll(token,()=>md.utils.escapeHtml(text));
   return body;
 }
-export function renderRssFeed(site,records,{feedPath='/content-feed.xml',language='zh-CN'}={}){
+export function renderRssFeed(site,records,{feedPath='/content-feed.xml',language='zh-CN',includeSources=false}={}){
   const categoryCounts=new Map();
   const items=[...records].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||a.route.localeCompare(b.route)).filter(record=>{
     const count=categoryCounts.get(record.category)||0;categoryCounts.set(record.category,count+1);return count<20;
   }).map(record=>{
     const url=new URL(record.route,site.origin).href;
-    const body=renderBody(record.markdown||'',url,site);
+    const body=renderBody(record.markdown||'',url,site)+(includeSources?articleSourcePanel(record.sources,record.markdown,language):'');
     const date=record.date&&new Date(record.date+'T00:00:00Z');
     return '<item><title>'+xml(record.title)+'</title><link>'+xml(url)+'</link><guid isPermaLink="true">'+xml(url)+'</guid><description>'+xml(record.summary)+'</description><content:encoded>'+cdata(body)+'</content:encoded>'+(date&&Number.isFinite(+date)?'<pubDate>'+date.toUTCString()+'</pubDate>':'')+(record.category?'<category>'+xml(record.category)+'</category>':'')+'</item>';
   }).join('');
