@@ -30,18 +30,22 @@ export function pageMetadata({title, route, body, description, site}) {
     summary = paragraphs.filter(([, attrs]) => !/\beyebrow\b/.test(attrs))
       .map(([, , text]) => plainText(text)).find(text => text.length >= 12) || site.description;
   }
-  const refineIndex = ['metho', 'enter'].includes(site.id);
   // Historical journal pages repeat the home overview; the newer reading
-  // directory repeats the archive. Keep each alias on its actual source page.
-  const canonicalRoute = refineIndex && route === '/journal/'
+  // directory repeats the archive. Keep each alias on its actual source page,
+  // so search engines are not shown two pages that each claim to be the original.
+  const canonicalRoute = route === '/journal/'
     ? (/\bdata-feed-section=/.test(body) ? '/archive/' : '/') : route;
-  const emptyListing = refineIndex && /^\/(?:archive(?:\/|$)|calendar\/$)/.test(route)
-    && !/<article\b/i.test(body) && /<p\b[^>]*class=["'][^"']*\bempty\b/i.test(body);
+  // A listing with nothing in it, or the listing of a retired section, is the same
+  // template with next to no content on every site; such pages are followed for
+  // their links but kept out of the index, which also keeps them out of the sitemap.
+  const listing = /^\/(?:archive(?:\/|$)|calendar\/$)/.test(route);
+  const emptyListing = listing && !/<article\b/i.test(body) && /<p\b[^>]*class=["'][^"']*\bempty\b/i.test(body);
+  const retiredListing = listing && /\bdata-feed-legacy\b/.test(body);
   return {
     title: documentTitle,
     description: descriptionText(route === '/' ? site.name : heading, summary),
     canonical: site.origin + canonicalRoute,
-    robots: emptyListing ? 'noindex,follow' : 'index,follow,max-image-preview:large',
+    robots: emptyListing || retiredListing ? 'noindex,follow' : 'index,follow,max-image-preview:large',
   };
 }
 

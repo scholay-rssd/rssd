@@ -115,8 +115,9 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   await write(articlePath,article);count++;
   if(pictures)notePages++;else if(links.length)workLinkPages++;
   if(cardsPath){
-   // The card page is the article page with the card set in place of the text: same site header, footer and
-   // canonical address (the article's), no share panel, and a way back to the text at the top and the end.
+   // The card page is the article page with the card set in place of the text: same site header and footer, no
+   // share panel, and a way back to the text at the top and the end. Its pictures are not the article's text, so it
+   // names itself as canonical and stays out of the index (the article carries the text); links are followed.
    const total=cards.pages.length,first=cards.pages[0],ratio=first.width?first.width/first.height:3/4;
    const heading=`<header class="rssd-article-heading"><p class="rssd-kicker">${esc([model.site.name,model.sectionName].filter(Boolean).join(' / '))}</p><h1>${esc(record.title)}</h1><p class="rssd-byline">${en?`Cards · ${total}`:`卡片版 · ${total} 张`}</p></header>`;
    const back=`<nav class="rssd-reading-nav" aria-label="${en?'Article navigation':'文章导航'}"><a class="back" href="${esc(route)}">← ${en?'Read the article':'阅读全文'}</a></nav>`;
@@ -124,6 +125,9 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
    const page=article.replace(/<nav class="rssd-reading-nav"[^>]*>[\s\S]*?<\/nav>/g,'').replace(/<article\b[^>]*>[\s\S]*?<\/article>/,()=>body)
     .replace(/<aside class="rssd-share"[\s\S]*?<\/aside>/g,'').replace(/<script type="module" src="\/assets\/rssd-export\/v1\/(?:share|note).mjs"><\/script>/g,'')
     .replace(/<title>([\s\S]*?)<\/title>/,(_,title)=>`<title>${en?'Cards · ':'卡片版 · '}${title}</title>`)
+    .replace(/<link rel="canonical" href="[^"]*">/,()=>`<link rel="canonical" href="${esc(site.origin+cardsPath)}">`)
+    .replace(/<meta property="og:url" content="[^"]*">/g,()=>`<meta property="og:url" content="${esc(site.origin+cardsPath)}">`)
+    .replace(/<meta name="robots" content="[^"]*">/,()=>'<meta name="robots" content="noindex,follow">')
     .replace('</body>',()=>(total>1?`<script type="module" src="${base}note.mjs"></script>`:'')+'</body>');
    await write(cardsPath.slice(1)+'index.html',page);cardPages++;
   }

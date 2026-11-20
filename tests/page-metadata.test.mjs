@@ -22,7 +22,7 @@ test('headings, repeated event titles and escaped descriptions retain real conte
   assert.equal(Array.from(descriptionText('题目','很'.repeat(300))).length,200);
 });
 
-test('only empty method and portal listings are noindex; filled pages recover automatically',()=>{
+test('empty and retired listings are noindex on every site, filled pages recover, and /journal/ points at its source',()=>{
   const site={id:'metho',name:'研究方法',origin:'https://metho.scholay.com',description:'研究方法与实践'};
   const metadata=(route,body,selected=site)=>pageMetadata({title:'目录',route,body,site:selected});
   assert.equal(metadata('/archive/methods/','<p class="empty">暂无内容</p>').robots,'noindex,follow');
@@ -30,5 +30,10 @@ test('only empty method and portal listings are noindex; filled pages recover au
   assert.equal(metadata('/news/article/','<article><p class="empty">代码示例中的类名</p></article>').robots,'index,follow,max-image-preview:large');
   assert.equal(metadata('/journal/','<section class="hero">首页概览</section>').canonical,site.origin+'/');
   assert.equal(metadata('/journal/','<section data-feed-section="">阅读目录</section>').canonical,site.origin+'/archive/');
-  assert.equal(metadata('/archive/empty/','<p class="empty">暂无内容</p>',{...site,id:'legis'}).robots,'index,follow,max-image-preview:large');
+  // Every site: these pages are the same template with next to no content, which search engines group as duplicates.
+  const legis={...site,id:'legis',origin:'https://legis.wiki'};
+  assert.equal(metadata('/archive/empty/','<p class="empty">暂无内容</p>',legis).robots,'noindex,follow');
+  assert.equal(metadata('/archive/column-3/','<section class="content-feed" data-feed-section="column-3" data-feed-legacy><article>旧文</article></section>',legis).robots,'noindex,follow');
+  assert.equal(metadata('/archive/cases/','<section class="content-feed" data-feed-section="cases"><article>案例</article></section>',legis).robots,'index,follow,max-image-preview:large');
+  assert.equal(metadata('/journal/','<section data-feed-section="">阅读目录</section>',legis).canonical,legis.origin+'/archive/');
 });
