@@ -16,6 +16,7 @@ import {writeCenterJson} from '../../../scripts/rssd-center-client.mjs';
 import defaults from '../../../contracts/writing-defaults-v1.cjs';
 import {NOTEBOOK_V2_FLAT_OUTPUT,normalizeNotebookResult} from '../../../contracts/notebook-output.mjs';
 import {centerRecordContext,outputForRecordKind} from './center-record.mjs';
+import {writingPersonaSnapshot} from '../../../contracts/persona-voice.mjs';
 
 export function redactAcpText(text){
   return String(text||'')
@@ -55,14 +56,15 @@ export function parseCenterEdition(text,context){return notebookEdition(parseCen
 // The persona's part of the prompt. A voice only shapes expression, so it comes after the site's and the
 // section's rules and before the order's own request, which is the more specific of the two.
 export function personaVoiceInstructions(snapshot){
- return '本篇的写作人格（声音）。它只影响怎么表达：语气、节奏、用词和取舍的口吻。它不改变事实、结构、必备要素和上面的任何规则；与规则或来源冲突时以规则和来源为准。下面“选题”和“要求”里写明的具体要求优先于人格。人格是虚构的，不要以它的名义声称真实经历、资历或关系，也不要在正文里提到人格本身。\n'+snapshot.developerInstructions;
+ const voice=writingPersonaSnapshot(snapshot);
+ return '本篇的写作人格（'+voice.preset.id+'）。它只影响怎么表达：语气、节奏、用词和取舍的口吻。它不改变事实、结构、必备要素和上面的任何规则；与规则或来源冲突时以规则和来源为准。下面“选题”和“要求”里写明的具体要求优先于人格。人格是虚构的，不要以它的名义声称真实经历、资历或关系，也不要在正文里提到人格本身。\n'+voice.developerInstructions;
 }
 /** The short first turn where the section lets the writer choose: one candidate by ID with a reason, or none. */
 export function voiceChoicePrompt({claim,candidates}){
  return [
   '动笔之前，先为本篇选定写作人格。只根据选题和下面候选的简介，判断谁的表达方式最适合这个题目；此时不要开始写文章，也不要调用工具。',
   '选题：'+claim.title+'\n要求：'+(claim.payload.brief||''),
-  '候选：\n'+JSON.stringify(candidates.map(c=>({id:c.id,name:c.founder.name,core:c.summary.core,communicationStyle:c.summary.communicationStyle,strengths:c.summary.strengths})),null,1),
+  '候选：\n'+JSON.stringify(candidates.map(c=>({id:c.id,core:c.summary.core,communicationStyle:c.summary.communicationStyle,strengths:c.summary.strengths})),null,1),
   '只输出一个 JSON 对象，不要其他文字：{"personaId":"<候选之一的 id>","reason":"<一句话说明为什么适合这个题目>"}。如果都不合适，输出 {"personaId":null}。',
  ].join('\n\n');
 }

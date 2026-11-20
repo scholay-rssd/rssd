@@ -38,7 +38,7 @@ export function createCenterClient({origin,token,fetcher=fetch,timeoutMs=30000})
     demands:options=>request('/demands?'+query(options)),works:options=>request('/works?'+query(options)),
     work:id=>request('/works/'+encodeURIComponent(protocol.id(id))),
     createDemand:body=>request('/demands',{method:'POST',body}),
-    claim:body=>request('/claims',{method:'POST',body}),activeClaim:()=>request('/claims/current'),
+    claim:body=>request('/claims',{method:'POST',body:{...body,personaRecordVersion:2}}),activeClaim:()=>request('/claims/current'),
     // Settle the persona of a claimed work, or read the settled one back with its snapshot.
     chooseVoice:body=>request('/claims/voice',{method:'POST',body}),
     heartbeat:body=>request('/heartbeat',{method:'POST',body}),

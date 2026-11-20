@@ -3,12 +3,12 @@
 //
 // RSSD takes the library as it is. This module reads the library's preset registry and profiles and the
 // founders' names, and has the library's own compiler turn each preset into its writing snapshot, so the
-// snapshot and its hash are exactly what the library defines. Nothing else of the library is read, and the
-// upload carries no demographics: a snapshot has none. The file is private; it never belongs in a repository.
+// source profile can be traced. RSSD verifies the result and exports a writing copy identified by its P ID.
+// Only the separate founder name signs an edition. The upload file is private.
 import {readFile} from 'node:fs/promises';
 import {join,resolve,sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {personaEntry} from '../contracts/persona-voice.mjs';
+import {personaEntry,writingPersonaSnapshot} from '../contracts/persona-voice.mjs';
 
 export const PERSONA_UPLOAD_SCHEMA='rssd.persona-upload.v1';
 const json=async file=>JSON.parse(await readFile(file,'utf8'));
@@ -37,8 +37,8 @@ export async function personaUpload(libraryDirectory){
    if(founder.id!==founderId||founder.founder!==true||founder.fictional!==true||typeof founder.name!=='string')throw Error(founderId+' is not a fictional founder of the persona library');
    names.set(founderId,founder.name);
   }
-  // A plain copy: the compiler returns frozen data.
-  const snapshot=JSON.parse(JSON.stringify(compilePersonaSnapshot(profile))),founderName=names.get(founderId);
+  const snapshot=writingPersonaSnapshot(compilePersonaSnapshot(profile)),founderName=names.get(founderId);
+  if(snapshot.preset.id!==member.id || snapshot.preset.founder.id!==founderId)throw Error('Preset '+member.id+' and its compiled identity disagree');
   personaEntry(snapshot,{founderName});
   personas.push({snapshot,founderName});
  }

@@ -20,7 +20,7 @@ import {assertBoundSourceCurrent,assertStoreOnlyReceipt,requireStoreOnlyContract
 import {parseCenterMediaRef} from './rssd-center-media-ref.mjs';
 import {recoverPersistedCenterEdition} from './rssd-center-generation-evidence.mjs';
 import {siteByline,withEditionByline} from '../contracts/edition-byline.mjs';
-import {personaSnapshot} from '../contracts/persona-voice.mjs';
+import {personaSnapshot,writingPersonaSnapshot} from '../contracts/persona-voice.mjs';
 import {profiles as siteProfiles} from './site-config.mjs';
 
 const read=async path=>{try{return JSON.parse(await readFile(path,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}};
@@ -176,14 +176,39 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
         if(flushed.state==='accepted')assertStoreOnlyReceipt(flushed.receipt,entry.packet,{workerId:client.workerId});
       }
     }
-    let claim,offline=false;
+    let claim,offline=false,cachedWritingHash;
+    const checkedWritingCopy=(decision,snapshot)=>{
+      const selected=decision?.persona;
+      if(!selected || !snapshot)throw Error('本篇已定人格，但设备没有拿到与认领一致的人格快照，原任务已保留等待核对');
+      const verified=personaSnapshot(snapshot);
+      // Old Centers froze the library hash. Only an offline record saved by this device may use the
+      // writing hash it verified while the original snapshot was available.
+      const matches=verified.snapshotHash===selected.snapshotHash || (offline && verified.snapshotHash===cachedWritingHash);
+      if(!matches || verified.preset.id!==selected.id || verified.preset.revision!==selected.revision)
+        throw Error('本篇已定人格，但设备没有拿到与认领一致的人格快照，原任务已保留等待核对');
+      return writingPersonaSnapshot(verified);
+    };
+    const claimForDisk=value=>{
+      if(!value?.mounts?.voice)return value;
+      const {voice,...other}=value.mounts;
+      try{
+        return {...value,mounts:{...other,voice:checkedWritingCopy(value.payload?.voiceDecision,voice)}};
+      }catch{
+        // Preserve the claim identity for recovery. The original reply is checked before writing.
+        return {...value,mounts:other};
+      }
+    };
+    const saveActive=async value=>{
+      const record=claimForDisk(value),hash=record?.mounts?.voice?.snapshotHash;
+      await save(activeFile,{origin:client.origin,claim:record,...(hash && hash!==record.payload.voiceDecision.persona.snapshotHash?{writingSnapshotHash:hash}:{})});
+    };
     try{claim=await client.activeClaim();}
     catch(error){
       if(error.status>=400&&error.status<500&&![408,429].includes(error.status))throw error;
       const cached=await read(activeFile);if(!cached||cached.origin!==client.origin||!cached.claim)throw error;
-      claim=cached.claim;offline=true;
+      claim=cached.claim;offline=true;cachedWritingHash=cached.writingSnapshotHash;
     }
-    if(claim)await save(activeFile,{origin:client.origin,claim});
+    if(claim)await saveActive(claim);
     if(scoped&&claim){requireScopedClaim(claim,scoped);for(const entry of await outbox.list())if(['pending','needs_attention'].includes(entry.state)&&entry.packet.claimToken!==claim.claimToken)throw Error('待提交稿件不属于当前认领');}
     if(claim?.state==='blocked'){
       if(!resume)return {state:'blocked',demandId:claim.id,message:claim.payload.lastError};
@@ -240,7 +265,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
     if(!claim){await client.heartbeat({state:'idle',agentId});return {state:'idle'};}
     // Save a newly acquired identity before any later validation or network
     // operation, so an ineligible claim can still be released or recovered.
-    await save(activeFile,{origin:client.origin,claim});
+    await saveActive(claim);
     if(claim.payload?.storeOnly===true){
       if(!storeOnly)throw Object.assign(Error('Store-only demand requires --store-only / storeOnly:true'),{code:'store_only_required',status:403});
       await requireStoreOnlyContract(client);
@@ -253,7 +278,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
       throw Error(message);
     }
     const directory=join(home,'jobs',protocol.hash(claim.id+':'+claim.generation));await mkdir(directory,{recursive:true,mode:0o700});
-    const claimFile=join(directory,'claim.json');await save(claimFile,claim);
+    const claimFile=join(directory,'claim.json');await save(claimFile,claimForDisk(claim));
     if(scoped)try{await sourceStage.restore({claim,slot:sourceSlot,directory,signal});}catch(error){
       await client.changeDemand(claim.id,{action:'blocked',claimToken:claim.claimToken,message:String(error.message).slice(0,2000)}).catch(()=>{});
       await client.heartbeat({state:'blocked',agentId,message:String(error.message).slice(0,2000)}).catch(()=>{});
@@ -268,15 +293,15 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
       const decision=claim.payload?.voiceDecision;
       if(!decision||decision.state==='none')return null;
       const checked=(settled,snapshot)=>{
-        if(!snapshot||personaSnapshot(snapshot).snapshotHash!==settled.persona.snapshotHash)throw Error('本篇已定人格，但设备没有拿到与认领一致的人格快照，原任务已保留等待核对');
-        return {decision:settled,snapshot};
+        return {decision:settled,snapshot:checkedWritingCopy(settled,snapshot)};
       };
       if(decision.state==='chosen'&&claim.mounts?.voice)return checked(decision,claim.mounts.voice);
       if(decision.state==='pending'&&answer===undefined)return {decision,snapshot:null};
       const reply=await client.chooseVoice({demandId:claim.id,claimToken:claim.claimToken,...(answer?.personaId?{personaId:answer.personaId,reason:answer.reason}:{})});
+      cachedWritingHash=undefined;
       const {mounts:_,...rest}=claim;
       claim={...rest,payload:{...claim.payload,voiceDecision:reply.voiceDecision},...(reply.mounts?{mounts:reply.mounts}:{})};
-      await save(claimFile,claim);await save(activeFile,{origin:client.origin,claim});
+      await save(claimFile,claimForDisk(claim));await saveActive(claim);
       return reply.voiceDecision.state==='chosen'?checked(reply.voiceDecision,reply.mounts?.voice):null;
     };
     const voice=claim.payload?.voiceDecision?{current:()=>claimVoice(),choose:answer=>claimVoice(answer||{})}:undefined;
@@ -299,7 +324,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
       catch(error){if(error.status&&error.status<500&&![408,429].includes(error.status))throw error;}
       assertBoundSourceCurrent(claim,liveWork,liveSource);
     }
-    await save(activeFile,{origin:client.origin,claim});
+    await saveActive(claim);
     const heartbeat=()=>client.heartbeat({state:'running',agentId,message:claim.title}).catch(()=>{});
     await heartbeat();const timer=setInterval(heartbeat,30000);timer.unref?.();
     try{
@@ -331,7 +356,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
             if(recovered?.edition){output=recovered.edition;if(recovered.repair)onEvent({type:'notebook_repaired',demandId:claim.id,locale,repair:recovered.repair});}
             else{
             let imageInstructions;if(scoped?.imagePlanRequired&&locale==='en'){if(!chinesePacket)throw Error('英文稿缺少原中文稿图片凭据');await attest(chinesePacket,claim);const originalReceipt=await read(join(directory,'zh-CN.image-receipt.json')),originalPlan=await read(join(directory,'zh-CN.image-plan.json'));imageInstructions=imageTranslationInstructions({edition:chinesePacket.editions[0],images:originalReceipt.images,captionVersion:originalPlan?.version});}
-            output=await producer({claim,locale,workId,source,directory,agentId,origin:client.origin,...(voice?{voice}:{}),...(scoped?{expectedModel:scoped.modelId,verifiedSourcePrompt:evidence.prompt,verifiedSourceSnapshotHash:evidence.snapshot.snapshotHash,verifiedSourceSelectionHash:evidence.selectionHash,verifiedSourceBindingHash:evidence.bindingHash}:{}),...(scoped?.imagePlanRequired&&locale==='zh-CN'?{imagePlanRequired:true}:{}),...(imageInstructions?{imageTranslationInstructions:imageInstructions}:{}),...(bibliography?{verifiedBibliographyInstructions:VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS}:{}),signal,onEvent,writingPolicy:context.writingPolicy});
+            output=await producer({claim:claimForDisk(claim),locale,workId,source,directory,agentId,origin:client.origin,...(voice?{voice}:{}),...(scoped?{expectedModel:scoped.modelId,verifiedSourcePrompt:evidence.prompt,verifiedSourceSnapshotHash:evidence.snapshot.snapshotHash,verifiedSourceSelectionHash:evidence.selectionHash,verifiedSourceBindingHash:evidence.bindingHash}:{}),...(scoped?.imagePlanRequired&&locale==='zh-CN'?{imagePlanRequired:true}:{}),...(imageInstructions?{imageTranslationInstructions:imageInstructions}:{}),...(bibliography?{verifiedBibliographyInstructions:VERIFIED_BIBLIOGRAPHY_INSTRUCTIONS}:{}),signal,onEvent,writingPolicy:context.writingPolicy});
             }
             if(requiredModel||scoped)requirePilotEdition(output);
             if(bibliography)output=applyVerifiedBibliography(output,bibliography,locale);
@@ -351,7 +376,8 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
           // A work is never signed or recorded with a persona it was not written with: a decision the
           // producer left pending stops here instead of lapsing to the fallback at the Center.
           if(claim.payload.voiceDecision?.state==='pending')throw Object.assign(Error('本篇的人格尚未选定，稿件已保留，未提交'),{code:'voice_pending'});
-          output=withEditionByline(output,{source,site:siteByline(profiles,claim.workspaceId,claim.sectionId),persona:claim.payload.policy?.persona,...(claim.payload.voiceDecision?{voice:claim.payload.voiceDecision}:{})});
+          output=withEditionByline(output,{source,site:siteByline(profiles,claim.workspaceId,claim.sectionId),persona:claim.payload.policy?.persona,
+            voice:claim.payload.voiceDecision,presetRecord:claim.payload.personaRecordVersion===2});
           packet=protocol.submission({requestId:randomUUID(),workId,workspaceId:claim.workspaceId,sectionId:claim.sectionId,
             demandId:claim.id,claimToken:claim.claimToken,baseRevisions:{[locale]:context.baseRevisions[locale]||0},
             editions:[{...output,locale,translationOf}]});
