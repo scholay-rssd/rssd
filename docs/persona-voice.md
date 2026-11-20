@@ -178,15 +178,17 @@ rssd 只读它已有的两种导出，其他内容不读：
 2. 写作方带着认领凭证调一次接口，报告选了谁和理由。
 3. Center 确认这个人格在候选内，冻结到这条需求上，返回它的快照。之后这一篇不能再换。
 
-接口同时提供 API 和 MCP 两个入口：无人值守的认领流程走 API；交互写作的智能体走 Center 的 MCP
-（rssd-center `rssd/mcp.cjs`）。两个入口背后是同一套检查，规则由 Center 执行。
+无人值守设备通过 API 认领，交互写作的智能体通过 Center 的 MCP 调用 `rssd_claim`。两者使用同一份认领结果。
+当 `payload.voiceDecision.state` 为 `pending` 时，向 `POST /api/rssd/v1/claims/voice` 或 MCP 工具 `rssd_choose_voice` 提交候选的 P 编号和选择理由，使用返回的决定和快照继续写作。
 
-交稿时 Center 分开检查两项，取代现在"署名必须等于栏目人格"的检查：
+带人格决定的新认领会返回 `payload.personaRecordVersion = 2`。选定人格后，取 `voiceDecision.persona` 的 `id`、`revision` 和 `snapshotHash`，原样写入私有字段 `metadata.voice`。再按冻结的署名设置填写下列两项。
 
-- 声音：私有元数据里的人格编号和版本与冻结的一致。
-- 署名：栏目设的是跟随人格，署名等于冻结的那个人格的名字；设的是站点署名，署名等于站点的名字。
+| 栏目署名设置 | 私有的 `metadata.persona` | 对外的 `metadata.author` |
+| --- | --- | --- |
+| 跟随人格 | `{id: persona.id}`，其中 `id` 是 P 编号 | 取 `persona.founder.name` 的英文名 |
+| 跟随站点 | 省略 | 取站点署名 |
 
-栏目的署名设置和人格一样，在认领时冻结。
+决定为 `none` 的新作省略这两项私有人格记录。译文、更新和由原作改写的笔记沿用原作署名。恢复已经认领的任务时，按该任务冻结的记录格式交稿。重试原提交须保留原数据包和请求编号，以便校验回执。
 
 快照在认领时已经随需求下发，写作过程中不需要再连 Center 取人格。
 
