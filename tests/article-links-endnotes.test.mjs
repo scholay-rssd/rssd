@@ -187,6 +187,17 @@ test('citation labels and unavailable-image messages follow the article locale',
  const chinese=renderArticle(text);assert.match(chinese,/aria-label="参考文献 1"/);assert.match(chinese,/\[图片未打包\]/);
 });
 
+test('English Sources lists resolve numbered citations without changing source entries',()=>{
+ const text='The report says so.[1][2] `example[1]`\n\n## Sources\n\n1. Author. [First](https://example.org/a)\n\n2. [Second](https://example.org/b)';
+ for(const html of [renderArticle(text,{locale:'en'}),renderArticleParts(text,{locale:'en'}).body]){
+  assert.match(html,/<a href="https:\/\/example.org\/a" aria-label="Reference 1"[^>]*>\[1\]<\/a>/);
+  assert.match(html,/<a href="https:\/\/example.org\/b" aria-label="Reference 2"[^>]*>\[2\]<\/a>/);
+  assert.match(html,/<code>example\[1\]<\/code>/);
+  assert.match(html,/<a href="https:\/\/example.org\/a" rel="noopener noreferrer">First<\/a>/);
+ }
+ assert.doesNotMatch(renderArticle('Example [1].\n\n## Sources and methods\n\n1. [First](https://example.org/a)',{locale:'en'}),/<sup/);
+});
+
 test('figure description captions retain caption typography',()=>{
  assert.match(renderArticle('![图](https://example.org/a.webp)\n\n图示：记录方式。'),/<p class="article-caption">图示/);
 });

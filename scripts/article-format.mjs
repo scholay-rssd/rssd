@@ -131,7 +131,7 @@ const citationIndex=text=>{
  const tokens=md.parse(text,{}),urls=new Map(),numbers=new Map();let refs=false,number=0;
  for(let i=0;i<tokens.length;i++){
   const t=tokens[i];
-  if(t.type==='heading_open'&&t.level===0)refs=/^(参考文献|参考资料|References)$/i.test(tokens[i+1]?.content||'');
+  if(t.type==='heading_open'&&t.level===0)refs=/^(参考文献|参考资料|References|Sources)$/i.test(tokens[i+1]?.content||'');
   if(!refs)continue;
   if(t.type==='ordered_list_open'&&t.level===0)number=Number(t.attrGet('start')||1)-1;
   if(t.type==='list_item_open'&&t.level===1){number++;numbers.set(number,null);}
@@ -150,7 +150,7 @@ md.core.ruler.push('article_citations',state=>{
  };
  for(let i=0;i<state.tokens.length;i++){
   const t=state.tokens[i];
-  if(t.type==='heading_open'&&t.level===0)refs=/^(参考文献|参考资料|来源|附注|品牌与发布说明|References)$/i.test(state.tokens[i+1]?.content||'');
+  if(t.type==='heading_open'&&t.level===0)refs=/^(参考文献|参考资料|来源|附注|品牌与发布说明|References|Sources)$/i.test(state.tokens[i+1]?.content||'');
   if(refs||t.type!=='inline')continue;
   const result=[],children=t.children||[];let linked=false;
   for(let j=0;j<children.length;j++){
