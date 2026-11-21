@@ -2,37 +2,41 @@ name: Move submodule pins
 # Moves every submodule pin to its submodule's GitHub main (CLAUDE.md rule 4),
 # so nobody opens pin-only pull requests by hand.
 #
-# Pull requests opened with this workflow's token would not start any
-# workflow, so the required checks would never report. Instead the pin commit
-# goes to the bot/move-pins branch, the two workflows that hold the four
-# required checks are dispatched on it, and once all four pass on that very
-# commit it is pushed to main as a fast-forward: branch protection accepts a
-# push whose commit already carries the required checks. If main moved in the
-# meantime the push is refused and the next run starts again from the new main.
-# A commit whose checks failed is not retried: the job fails until a submodule
-# main changes again.
+# The pin commit goes to the bot/move-pins branch and into one pull request,
+# set to merge itself once the four required checks pass. Branch and pull
+# request are made with a token of the rssd-pin-bot GitHub App, not with this
+# workflow's own token: GitHub starts no workflow for a pull request opened
+# with that one, so the required checks would never report.
+# While the pull request is open, a later run only replaces its commit when a
+# submodule main moved again; if every pin already reached its main another way,
+# the pull request is closed. A pull request whose checks failed stays open
+# until a submodule main changes and the next run replaces the commit.
 on:
   schedule:
     - cron: '7,27,47 * * * *'
   workflow_dispatch:
 permissions:
-  contents: write
-  actions: write
+  contents: read
 concurrency:
   group: move-submodule-pins
   cancel-in-progress: false
 jobs:
   move-pins:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ github.token }}
       BRANCH: bot/move-pins
-      REQUIRED: public-boundary secrets-schema public-build linux
     steps:
+      - name: Token of the pin bot app
+        id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.PIN_BOT_APP_ID }}
+          private-key: ${{ secrets.PIN_BOT_PRIVATE_KEY }}
       - uses: actions/checkout@v4
         with:
           ref: main
+          token: ${{ steps.app.outputs.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -41,67 +45,41 @@ jobs:
         run: |
           node scripts/move-submodule-pins.mjs --apply --message "$RUNNER_TEMP/message"
           if [ -f "$RUNNER_TEMP/message" ]; then echo moved=true >> "$GITHUB_OUTPUT"; fi
-      - name: Every new pin is on its submodule's main
+      - name: Close the pull request when nothing is left to move
+        if: ${{ !steps.move.outputs.moved }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh pr close "$pr" --delete-branch --comment "Every pin already reached its submodule's main."
+          fi
+      - name: Commit; every new pin is on its submodule's main
         if: steps.move.outputs.moved
         run: |
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+          git -c user.name='rssd-pin-bot[bot]' -c user.email='359386025+rssd-pin-bot[bot]@users.noreply.github.com' \
             commit -q --no-verify -F "$RUNNER_TEMP/message"
           node scripts/check-submodule-pins.mjs
-      - name: Put the commit on the bot branch, reusing one already checked
+      - name: Open or update the pull request
         if: steps.move.outputs.moved
-        id: commit
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
         run: |
-          main=$(git rev-parse HEAD^)
+          pins() { git ls-tree -r "$1" | awk '$2 == "commit"'; }
+          pr=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           remote=$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)
-          if [ -n "$remote" ] && git fetch -q --depth 2 origin "$remote" \
-            && [ "$(git rev-parse "$remote^{tree}")" = "$(git rev-parse 'HEAD^{tree}')" ] \
-            && [ "$(git rev-parse "$remote^")" = "$main" ]; then
-            echo "Reusing $remote, which already moves the same pins on the same main"
-            echo sha="$remote" >> "$GITHUB_OUTPUT"
+          if [ -n "$pr" ] && [ -n "$remote" ] && git fetch -q --depth 1 origin "$remote" \
+            && [ "$(pins "$remote")" = "$(pins HEAD)" ]; then
+            echo "Pull request #$pr already moves the pins to the same commits"
           else
             git push -q --force origin "HEAD:refs/heads/$BRANCH"
-            echo sha="$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Wait for the required checks on that commit
-        if: steps.move.outputs.moved
-        env:
-          SHA: ${{ steps.commit.outputs.sha }}
-        run: |
-          latest() {
-            gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/check-runs?per_page=100" --jq \
-              '[.check_runs[]] | group_by(.name) | map(max_by(.started_at)) | .[] | "\(.name) \(.status) \(.conclusion)"'
-          }
-          if [ -z "$(latest | awk -v want=" $REQUIRED " 'index(want, " " $1 " ")')" ]; then
-            gh workflow run products.yml --ref "$BRANCH"
-            gh workflow run receiver.yml --ref "$BRANCH"
-          fi
-          for attempt in $(seq 1 100); do
-            sleep 30
-            state=$(latest | awk -v want=" $REQUIRED " 'index(want, " " $1 " ")')
-            # Judge by the conclusion: GitHub has left a finished check marked
-            # in_progress with its conclusion and completion time already set.
-            failed=$(echo "$state" | awk '$3 != "null" && $3 != "success"')
-            if [ -n "$failed" ]; then
-              echo "::error::Required checks failed on $SHA; fix the submodule main, the next change there starts a new attempt"
-              echo "$failed"
-              exit 1
+            title=$(head -n 1 "$RUNNER_TEMP/message")
+            tail -n +3 "$RUNNER_TEMP/message" | sed 's/^  /- /' > "$RUNNER_TEMP/body"
+            printf '\nOpened by the `Move submodule pins` workflow; it merges itself once the required checks pass.\n' >> "$RUNNER_TEMP/body"
+            if [ -n "$pr" ]; then
+              gh pr edit "$pr" --title "$title" --body-file "$RUNNER_TEMP/body"
+            else
+              pr=$(gh pr create --base main --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body" | grep -o '[0-9]*$')
             fi
-            passed=$(echo "$state" | awk '$3 == "success"' | wc -l)
-            echo "attempt $attempt: $passed of 4 passed"
-            [ "$passed" -eq 4 ] && exit 0
-          done
-          echo "::error::Timed out waiting for the required checks on $SHA"
-          exit 1
-      - name: Fast-forward main
-        if: steps.move.outputs.moved
-        env:
-          SHA: ${{ steps.commit.outputs.sha }}
-        run: |
-          if git push origin "$SHA:refs/heads/main"; then
-            git push -q origin --delete "$BRANCH" || true
-          elif [ "$(git ls-remote origin refs/heads/main | cut -f1)" != "$(git rev-parse "$SHA^")" ]; then
-            echo "::warning::main moved while the checks ran; the next run moves the pins again from the new main"
-          else
-            echo "::error::main refused $SHA although it did not move"
-            exit 1
           fi
+          gh pr merge "$pr" --auto --merge
