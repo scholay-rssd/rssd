@@ -6,7 +6,7 @@ const source={repository:'scholay-rssd/rssd',commit:'a'.repeat(40),files:[{path:
 export const fixtureCatalog=()=>buildWritingDefaultsCatalog({source});
 test('the canonical catalog covers every active column without enabling four retired columns',()=>{
  const c=fixtureCatalog();assert.equal(c.workspaces.length,10);assert.equal(c.workspaces.reduce((n,w)=>n+w.sections.length,0),40);
- for(const w of c.workspaces)for(const s of w.sections){const d=resolveWritingDefaults(c,w.workspaceId,s.id);assert.equal(d.mode,s.mode);assert.equal(d.images.minimum,1);assert.equal(d.skills.length,3);assert.equal(d.references.length,1);assert.ok(d.requiredElements.length>=3);}
+ for(const w of c.workspaces)for(const s of w.sections){const d=resolveWritingDefaults(c,w.workspaceId,s.id);assert.equal(d.mode,s.mode);assert.equal(d.images.minimum,d.familyId==='animal'?3:1);assert.equal(d.delivery.captions,true);assert.equal(d.skills.length,3);assert.equal(d.references.length,1);assert.ok(d.requiredElements.length>=3);}
  assert.throws(()=>resolveWritingDefaults(c,'academic','resources'),/没有启用/);
  assert.throws(()=>resolveWritingDefaults(c,'academic'),/没有启用/);
  assert.equal(resolveWritingDefaults(c,'academic','briefings').familyId,'briefing');
@@ -21,8 +21,9 @@ test('online snapshots reject wrong scope, changed policy, altered data and miss
 });
 test('a local scale is applied after and separately from the unchanged online baseline',()=>{
  const d=resolveWritingDefaults(fixtureCatalog(),'pets','daily-cat'),original=JSON.stringify(d);
- const effective=contract.compose(d,{origin:'local',instructions:'本篇集中比较照护环境，采用两张图片。',images:{minimum:2}});
- assert.equal(effective.images.minimum,2);assert.equal(effective.baseline.images.minimum,1);assert.equal(effective.baselineHash,d.hash);assert.equal(JSON.stringify(d),original);
+ const effective=contract.compose(d,{origin:'local',instructions:'本篇集中比较照护环境，采用四张图片。',images:{minimum:4}});
+ assert.equal(effective.images.minimum,4);assert.equal(effective.baseline.images.minimum,3);
+ assert.throws(()=>contract.compose(d,{origin:'local',images:{minimum:2}}),/不能静默/);assert.equal(effective.baselineHash,d.hash);assert.equal(JSON.stringify(d),original);
  assert.ok(effective.instructions.indexOf('当前工作空间')<effective.instructions.indexOf('本篇明确的本地偏好'));
  assert.throws(()=>contract.compose(d,{images:{minimum:-1}}),/调整/);
  assert.throws(()=>contract.compose(d,{origin:'local',images:{minimum:0}}),/不能静默/);
@@ -33,7 +34,32 @@ test('delivery checks distinguish missing images, captions, and a complete image
  assert.equal(contract.deliveryIssues({blocks:[]},d).length,1);
  const image={id:'icon',type:'image',state:'ready',text:'https://example.org/icon.png',alt:'白底并列展示空心圆与实心圆内的对勾图标轮廓'};
  assert.equal(contract.deliveryIssues({blocks:[image]},d).length,1);
- assert.deepEqual(contract.deliveryIssues({blocks:[image,{type:'annotation',role:'caption',targetId:'icon',state:'ready',text:'图标实际样本及来源'}]},d),[]);
+ const caption=text=>({type:'annotation',role:'caption',targetId:'icon',state:'ready',text});
+ assert.deepEqual(contract.deliveryIssues({blocks:[image,caption('图：一组对勾图标。某设计者，[Example](https://example.org/icons/check)')]},d),[]);
+ assert.deepEqual(contract.deliveryIssues({blocks:[image,caption('Figure: A set of check icons. A designer, [Example](https://example.org/icons/check)')]},d),[]);
+ assert.match(contract.deliveryIssues({blocks:[image,caption('图：对勾图标示意。')]},d).join(),/真实对象/);
+ assert.match(contract.deliveryIssues({blocks:[image,caption('图：一组对勾图标。某设计者，[Example](https://example.org/icons/check)，CC BY 4.0')]},d).join(),/只能写一句图题/);
+ assert.match(contract.deliveryIssues({blocks:[image,caption('图：一组对勾图标。某设计者，[Example](https://example.org/icons/check)[1]')]},d).join(),/只能写一句图题/);
+ assert.match(contract.deliveryIssues({blocks:[image,caption('图：一组对勾图标。某设计者，[本站](https://example.org/api/rssd/v1/media/abc/raw)')]},d).join(),/出处页/);
+ assert.match(contract.deliveryIssues({blocks:[image,caption('图标实际样本及来源')]},d).join(),/只能写一句图题/);
+});
+test('an animal section needs three different pictures, and a title-only caption passes only where pictures may be drawn',()=>{
+ const c=fixtureCatalog(),cat=resolveWritingDefaults(c,'pets','daily-cat'),news=resolveWritingDefaults(c,'pets','pet-news');
+ assert.equal(cat.images.minimum,3);assert.equal(cat.images.sourceMode,'actual-object');assert.equal(news.images.minimum,1);
+ const picture=(id,url)=>[{id,type:'image',state:'ready',text:url,alt:'一只坐着的短毛猫，体侧斑纹和大耳朵清晰可见'},{type:'annotation',role:'caption',targetId:id,state:'ready',text:'图：坐着的短毛猫。某摄影者，[Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Cat_('+id+').jpg)'}];
+ assert.deepEqual(contract.deliveryIssues({blocks:[...picture('a','https://example.org/a.jpg'),...picture('b','https://example.org/b.jpg'),...picture('c','https://example.org/c.jpg')]},cat),[]);
+ assert.match(contract.deliveryIssues({blocks:[...picture('a','https://example.org/a.jpg'),...picture('b','https://example.org/b.jpg')]},cat).join(),/少于本栏要求的 3 张/);
+ assert.match(contract.deliveryIssues({blocks:[...picture('a','https://example.org/a.jpg'),...picture('b','https://example.org/a.jpg'),...picture('c','https://example.org/c.jpg')]},cat).join(),/重复使用只算一张/);
+ const drawn=[{id:'d',type:'image',state:'ready',text:'https://example.org/d.png',alt:'示意图：宠物医院就诊流程的四个步骤依次排列'},{type:'annotation',role:'caption',targetId:'d',state:'ready',text:'图：就诊流程示意。'}];
+ assert.deepEqual(contract.deliveryIssues({blocks:drawn},news),[]);
+});
+test('a snapshot frozen under delivery version 1 keeps its earlier checks',()=>{
+ const d=resolveWritingDefaults(fixtureCatalog(),'design','icons'),{hash,...body}=d;
+ const old={...body,delivery:{version:1,format:'notebook-v2-flat',altLength:true}},legacy={...old,hash:contract.hash(old)};
+ const image={id:'icon',type:'image',state:'ready',text:'https://example.org/icon.png',alt:'白底并列展示空心圆与实心圆内的对勾图标轮廓'};
+ assert.deepEqual(contract.deliveryIssues({blocks:[image,{type:'annotation',role:'caption',targetId:'icon',state:'ready',text:'图标实际样本及来源'}]},legacy),[]);
+ const broken={...old,delivery:{version:2,format:'notebook-v2-flat',altLength:true}};
+ assert.throws(()=>contract.snapshot({...broken,hash:contract.hash(broken)}),/交付检查版本/);
 });
 test('a section that takes notes carries the note form, and compose picks it only for a note',()=>{
  const c=fixtureCatalog(),d=resolveWritingDefaults(c,'pets','daily-cat');

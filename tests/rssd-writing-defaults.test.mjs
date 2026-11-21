@@ -22,6 +22,6 @@ test('fresh authoring does not use local rules after a network, provenance or sc
 test('public defaults reading sends no credentials and rejects redirects at the fetch boundary',async()=>{
  let called;
  const client=createWritingDefaultsReader({origin:'https://center.example',fetcher:async(url,options)=>{called={url,options};return Response.json(baseline());}});
- const result=await authoringWritingDefaults({client,workspaceId:'pets',sectionId:'daily-cat',local:{instructions:'本篇只介绍家庭环境',images:{minimum:2}}});
- assert.equal(result.baseline.images.minimum,1);assert.equal(result.images.minimum,2);assert.match(called.url,/public\/v1\/writing-defaults\/pets\/daily-cat$/);assert.equal(called.options.redirect,'error');assert.equal(called.options.headers.Authorization,undefined);
+ const result=await authoringWritingDefaults({client,workspaceId:'pets',sectionId:'daily-cat',local:{instructions:'本篇只介绍家庭环境',images:{minimum:4}}});
+ assert.equal(result.baseline.images.minimum,3);assert.equal(result.images.minimum,4);assert.match(called.url,/public\/v1\/writing-defaults\/pets\/daily-cat$/);assert.equal(called.options.redirect,'error');assert.equal(called.options.headers.Authorization,undefined);
 });
