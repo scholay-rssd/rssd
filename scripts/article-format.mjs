@@ -32,9 +32,9 @@ md.renderer.rules.image=(tokens,i,options,env,self)=>{
   // Keep the default public renderer's URL restrictions, including raw data URLs.
   if(env.imageSources?.has(src)){
     const replacement=env.imageSources.get(src);
-    if(typeof replacement!=='string'||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(replacement))return '<span class="muted">[图片无法预览]</span>';
+    if(typeof replacement!=='string'||!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(replacement))return '<span class="muted">'+(env.locale==='en'?'[Image cannot be previewed]':'[图片无法预览]')+'</span>';
     tokens[i].attrSet('src',replacement);
-  }else if(!/^https?:\/\//i.test(src)&&!/^\/article-media\/[a-f0-9]{64}\.(png|jpg|webp)$/.test(src))return '<span class="muted">[图片未打包]</span>';
+  }else if(!/^https?:\/\//i.test(src)&&!/^\/article-media\/[a-f0-9]{64}\.(png|jpg|webp)$/.test(src))return '<span class="muted">'+(env.locale==='en'?'[Image unavailable]':'[图片未打包]')+'</span>';
   const size=env.imageSizes?.get(src);
   if(size){tokens[i].attrSet('width',String(size.width));tokens[i].attrSet('height',String(size.height));}
   // The first picture is usually the largest paint. Later pictures stay lazy.
@@ -145,7 +145,7 @@ md.core.ruler.push('article_citations',state=>{
  const marker=(number,url)=>{
   const token=(type,tag,nesting,content)=>{const t=new state.Token(type,tag,nesting);if(content)t.content=content;return t;};
   const open=token('sup_open','sup',1);open.attrSet('class','article-citation');
-  const result=[open];if(url){const link=token('link_open','a',1);link.attrSet('href',url);link.attrSet('aria-label','参考文献 '+number);result.push(link);}
+  const result=[open];if(url){const link=token('link_open','a',1);link.attrSet('href',url);link.attrSet('aria-label',(state.env.locale==='en'?'Reference ':'参考文献 ')+number);result.push(link);}
   result.push(token('text','',0,'['+number+']'));if(url)result.push(token('link_close','a',-1));result.push(token('sup_close','sup',-1));return result;
  };
  for(let i=0;i<state.tokens.length;i++){
@@ -163,9 +163,9 @@ md.core.ruler.push('article_citations',state=>{
   t.children=result;
  }
 });
-const renderArticle=(markdown,options={})=>{const {text}=articlePresentation(markdown,options);return md.render(text,{imageSources:options.imageSources,imageSizes:options.imageSizes,articleUrl:options.articleUrl,citations:citationIndex(text)});};
+const renderArticle=(markdown,options={})=>{const {text}=articlePresentation(markdown,options);return md.render(text,{imageSources:options.imageSources,imageSizes:options.imageSizes,articleUrl:options.articleUrl,locale:options.locale,citations:citationIndex(text)});};
 const renderArticleParts=(markdown,options={})=>{
-  const {text,start}=articlePresentation(markdown,options),env={imageSources:options.imageSources,imageSizes:options.imageSizes,citations:citationIndex(text)};
+  const {text,start}=articlePresentation(markdown,options),env={imageSources:options.imageSources,imageSizes:options.imageSizes,locale:options.locale,citations:citationIndex(text)};
   if(start===null)return {body:md.render(text,env),endnotes:''};
   const lines=text.split('\n');
   return {body:md.render(lines.slice(0,start).join('\n'),env),endnotes:md.render(lines.slice(start).join('\n'),env)};

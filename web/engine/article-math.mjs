@@ -11,7 +11,7 @@ export const mathStyles=html=>hasMath(html)?`<link rel="stylesheet" href="${math
 
 // Pre-render at publication time. Visitors need CSS/fonts, never the TeX engine.
 // Each formula gets fresh macros; one author's definitions cannot affect another.
-function formula(tex,display=false){
+function formula(tex,display=false,env={}){
   const original=display?'\\['+tex+'\\]':'\\('+tex+'\\)';
   let output;
   try{
@@ -19,9 +19,9 @@ function formula(tex,display=false){
     output=katex.renderToString(tex,{displayMode:display,output:'htmlAndMathml',
       throwOnError:true,trust:false,strict:'ignore',maxExpand:1000,maxSize:20,macros:{}});
   }catch{
-    output=`<code class="math-error" title="公式暂时无法排版，已保留原式">${escape(original)}</code>`;
+    output=`<code class="math-error" title="${env.locale==='en'?'Formula could not be rendered; the original is preserved':'公式暂时无法排版，已保留原式'}">${escape(original)}</code>`;
   }
-  return `<span class="math-${display?'block':'inline'}"${display?' tabindex="0" role="region" aria-label="数学公式"':''}>${output}</span>`;
+  return `<span class="math-${display?'block':'inline'}"${display?` tabindex="0" role="region" aria-label="${env.locale==='en'?'Mathematical formula':'数学公式'}"`:''}>${output}</span>`;
 }
 
 const md=new MarkdownIt({html:false,linkify:true,breaks:false}).use(tex,{delimiters:'all',render:formula});
@@ -36,13 +36,14 @@ md.inline.ruler.before('math_inline_dollar','math_code_boundary',(state,silent)=
 // [!WARNING] or [!CAUTION] (GitHub alert syntax), optionally followed by a
 // title. Any other blockquote, including quoted "[!x]" text, stays a quote.
 export const CALLOUT_TITLES=Object.freeze({note:'说明',tip:'提示',important:'重要',warning:'注意',caution:'警告'});
+const ENGLISH_CALLOUT_TITLES=Object.freeze({note:'Note',tip:'Tip',important:'Important',warning:'Warning',caution:'Caution'});
 md.core.ruler.push('article_callouts',state=>{
   const t=state.tokens;
   for(let i=0;i<t.length-2;i++){
     if(t[i].type!=='blockquote_open'||t[i+1].type!=='paragraph_open'||t[i+2].type!=='inline')continue;
     const inline=t[i+2],match=/^\[!(note|tip|important|warning|caution)\][ \t]*([^\n]*)/i.exec(inline.content);
     if(!match)continue;
-    const kind=match[1].toLowerCase(),title=match[2].trim()||CALLOUT_TITLES[kind],rest=inline.content.slice(match[0].length).replace(/^\n/,'');
+    const kind=match[1].toLowerCase(),title=match[2].trim()||(state.env.locale==='en'?ENGLISH_CALLOUT_TITLES:CALLOUT_TITLES)[kind],rest=inline.content.slice(match[0].length).replace(/^\n/,'');
     t[i].attrJoin('class','callout callout-'+kind);
     const heading=new state.Token('html_block','',0);heading.content=`<p class="callout-title">${escape(title)}</p>\n`;
     if(!rest.trim()){t.splice(i+1,3,heading);continue;}

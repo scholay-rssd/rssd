@@ -11,7 +11,7 @@ import {publicArticleSources} from './article-sources.mjs';
 import {createSeoState,sitemapXml} from '../../scripts/seo-state.mjs';
 import {byteHash} from './theme-homepage.mjs';
 import {addSocialMetadata} from './social-metadata.mjs';
-import {familyFooter} from './site-family.mjs';
+import {familyFooter,familyLocaleNames} from './site-family.mjs';
 import {localeNames,localeSection,localeAuthor} from './language-pack.mjs';
 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -38,7 +38,7 @@ function addLanguageUi(html,{site,zh,en,locale}){
  return html.replace('</body>','<script defer src="/site-language.js"></script></body>');
 }
 const englishBrand=(site,names)=>names?{name:names.name,slogan:names.slogan||''}:englishBrands[site.id]||{name:site.name,slogan:site.slogan||''};
-function EnglishShell(template,{site,names,title,summary,route,body,sourceRoute,index=false,directory="/en/"}){
+function EnglishShell(template,{site,names,familyNames,title,summary,route,body,sourceRoute,index=false,directory="/en/"}){
  const brand=englishBrand(site,names);
  const url=site.origin+route,academic=/class="seo-main"|class="[^"]*\bapp-bar\b/.test(template);
  const themeButton=academic?(template.match(/<button\b[^>]*\bid="theme-toggle"[^>]*>[\s\S]*?<\/button>/)?.[0]||''):'';
@@ -60,7 +60,7 @@ function EnglishShell(template,{site,names,title,summary,route,body,sourceRoute,
  // Keep each Theme's authored shell and assets. Only the language view's own
  // header/footer slots are localized; translated prose is never string-replaced.
  html=html.replace(/<header\b([^>]*)>[\s\S]*?<\/header>/,(_,attrs)=>`<header${attrs}>${academic?'<div class="app-bar-inner">':''}${brandLink}<nav${academic?' class="main-nav"':''} aria-label="Main navigation">${academic?'<div class="section-nav">':''}<a href="${esc(directory)}">Articles</a><a href="/">Chinese site</a>${academic?'</div>':''}</nav>${themeButton}${siteLinks}${academic?'</div>':''}</header>`)
-  .replace(/<footer\b([^>]*)>[\s\S]*?<\/footer>/,(_,attrs)=>`<footer${attrs}><span>${esc(brand.name)} · ${esc(brand.slogan)}</span><span class="footer-links"><a href="/en/content-feed.xml">RSS</a><a href="/">中文</a></span>${familyFooter(site.id)}</footer>`)
+  .replace(/<footer\b([^>]*)>[\s\S]*?<\/footer>/,(_,attrs)=>`<footer${attrs}><span>${esc(brand.name)} · ${esc(brand.slogan)}</span><span class="footer-links"><a href="/en/content-feed.xml">RSS</a><a href="/">中文</a></span>${familyFooter(site.id,{locale:'en',names:familyNames})}</footer>`)
   .replace(/<a\b[^>]*class=["']skip["'][^>]*>[\s\S]*?<\/a>/g,'<a class="skip" href="#main">Skip to content</a>');
  const schema={'@context':'https://schema.org','@type':index?'CollectionPage':'Article','@id':url,url,inLanguage:'en',name:title,...(!index?{headline:title,mainEntityOfPage:url}:{}),description:summary,isPartOf:{'@type':'WebSite','@id':site.origin+'/#website',url:site.origin+'/',name:brand.name}};
  const head=`<meta property="og:type" content="${index?'website':'article'}"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(summary)}"><meta property="og:url" content="${esc(url)}"><link rel="alternate" type="application/rss+xml" title="${esc(brand.name)} RSS" href="/en/content-feed.xml"><script type="application/ld+json">${JSON.stringify(schema).replace(/</g,'\\u003c')}</script>${mathStyles(body)}`;
@@ -70,7 +70,7 @@ function EnglishShell(template,{site,names,title,summary,route,body,sourceRoute,
  return addLanguageUi(addSocialMetadata(html,{site:{...site,name:brand.name},route,title,description:summary}),{site,zh:sourceRoute,en:route,locale:'en'});
 }
 
-export async function renderLanguagePages({job,target,previousRoot,site,now,manifest,languagePack=null}){
+export async function renderLanguagePages({job,target,source,previousRoot,site,now,manifest,languagePack=null}){
  const names=localeNames(languagePack,'en');
  const all=job.snapshot.news||[],structuredByKey=new Map(['year','history','openSource'].flatMap(kind=>((kind==='openSource'?job.snapshot.openSource?.items:job.snapshot.data?.[kind])||[]).map(data=>[sourceKey(kind,data),data])));
  const structured=(job.snapshot.editorialRecords||[]).map(row=>{const data=structuredByKey.get(row.key);return data?{...asEditorialRecord({id:row.documentId,kind:row.kind,updated:row.updated},data),sourceRoute:job.snapshot.permalinks?.[row.key]}:null;}).filter(x=>x?.sourceRoute);
@@ -81,6 +81,7 @@ export async function renderLanguagePages({job,target,previousRoot,site,now,mani
   await writeFile(join(target,'publishing-identities.json'),identities);manifest.hashes['publishing-identities.json']=digest(identities);
  }
  if(!site.languages?.includes('en'))return manifest;
+ const familyNames=await familyLocaleNames(source,'en');
  // Custom homepages keep their compiled HTML and hydration data. The shared
  // English article directory has its own static route next to that homepage.
  const custom=Boolean(manifest.homepage);
@@ -99,7 +100,7 @@ export async function renderLanguagePages({job,target,previousRoot,site,now,mani
   const route=job.snapshot.permalinks?.['news:'+data.id]||'/en/news/'+(original?.id||data.id)+'/';
   if(!/^\/en\/(?:[A-Za-z0-9_\-\u0080-\uFFFF]+\/)+$/.test(route))throw Error('Invalid English article permalink');
   const file=sourceRoute?sourceRoute.slice(1)+'index.html':custom?'journal/index.html':'index.html',template=await readFile(join(target,file),'utf8');
-  const rendered=renderArticleParts(data.markdown.replace(/^# [^\n]+\n+/,''),{site});
+  const rendered=renderArticleParts(data.markdown.replace(/^# [^\n]+\n+/,''),{site,locale:'en'});
   const hashSource=data.translationSourceStatus==='verified'?sourceHasher(data.translationSourceHashVersion,sourceContentSha256,{requiresVersion:true}):sourceContentSha256;
   const stale=Boolean(original&&data.translationOf&&hashSource(original)!==data.translationOf.sha256);
   const unknown=data.translationSourceStatus==='unknown',sourceMissing=data.translationSourceStatus==='verified'&&!original;
@@ -108,7 +109,7 @@ export async function renderLanguagePages({job,target,previousRoot,site,now,mani
   // An unverified source revision is a fact about the system; it stays in the data and in this attribute.
   const sectionName=localeSection(names,data.sectionId,data.category);
   const body=`<article class="${/class="seo-main"/.test(template)?'record-page news-article':'reading'}"${sourceRoute?` data-community-source-route="${esc(sourceRoute)}"`:''} data-source-version-state="${versionState}"><a class="back" href="/en/">← All articles</a><div class="entry-meta">${esc(data.date)} · ${esc(localeAuthor(names,data.author,site))}</div>${unknown?'':sourceMissing?'<p class="muted">This English edition’s source is currently unavailable.</p>':stale?'<p class="muted">This English edition reflects an earlier revision of the Chinese source.</p>':''}<div class="prose"><h1>${esc(data.title)}</h1><p class="lead">${esc(data.summary)}</p><div class="article-body">${rendered.body}</div>${rendered.endnotes?`<div class="article-body article-endnotes">${rendered.endnotes}</div>`:''}</div></article>`;
-  const english=EnglishShell(template,{site,names,title:data.title,summary:data.summary,route,body,sourceRoute,directory}).replace(/href="\/en\/">(Articles|← All articles)/g,`href="${directory}">$1`);
+  const english=EnglishShell(template,{site,names,familyNames,title:data.title,summary:data.summary,route,body,sourceRoute,directory}).replace(/href="\/en\/">(Articles|← All articles)/g,`href="${directory}">$1`);
   await write(route.slice(1)+'index.html',english);paths.set(route,seo.page(route,english).lastmod);
   if(sourceRoute){const chinese=addLanguageUi(template,{site,zh:sourceRoute,en:route,locale:'zh-CN'});await write(file,chinese);paths.set(sourceRoute,seo.page(sourceRoute,chinese).lastmod);}
   records.push({id:data.id,...(original?{sourceArticleId:original.id,sourceUrl:site.origin+sourceRoute}:{}),route,url:site.origin+route,locale:'en',title:data.title,summary:data.summary,date:data.date,category:data.category,bodyMarkdown:data.markdown,sources:publicArticleSources(data.sources),translationOf:data.translationOf,contentSha256:sourceContentSha256(data),stale:unknown||sourceMissing||data.translationSourceStatus==='independent'?null:stale,...(data.translationSourceStatus==='verified'?{sourceHashVersion:data.translationSourceHashVersion}:{}),sourceVersionState:versionState});
@@ -122,12 +123,12 @@ export async function renderLanguagePages({job,target,previousRoot,site,now,mani
  }
  const home=await readFile(join(target,custom?'journal/index.html':'index.html'),'utf8'),brand=englishBrand(site,names);
  const cards=records.slice().sort((a,b)=>b.date.localeCompare(a.date)||a.id.localeCompare(b.id)).map(r=>`<article class="entry"><div class="entry-meta">${esc(r.date)}</div><h2><a href="${esc(r.route)}">${esc(r.title)}</a></h2><p>${esc(r.summary)}</p><a class="read" href="${esc(r.route)}">Read article ↗</a></article>`).join('');
- const englishHome=EnglishShell(home,{site,names,title:brand.name,summary:brand.slogan,route:directory,sourceRoute:custom?'/journal/':'/',index:true,directory,body:`<section class="hero compact"><h1>${esc(brand.name)}</h1><p>${esc(brand.slogan)}</p></section><section class="entries">${cards||'<p>No English articles have been published yet.</p>'}</section>`});
+ const englishHome=EnglishShell(home,{site,names,familyNames,title:brand.name,summary:brand.slogan,route:directory,sourceRoute:custom?'/journal/':'/',index:true,directory,body:`<section class="hero compact"><h1>${esc(brand.name)}</h1><p>${esc(brand.slogan)}</p></section><section class="entries">${cards||'<p>No English articles have been published yet.</p>'}</section>`});
  await write(directory.slice(1)+'index.html',englishHome);paths.set(directory,seo.page(directory,englishHome).lastmod);
  if(nativeEnglishHome){
   const groups=new Map();for(const record of records){const category=sectionNames.get(record.id)||'Articles';groups.set(category,[...(groups.get(category)||[]),record]);}
   const archiveBody='<h1>Categories</h1>'+([...groups].map(([category,items])=>`<section class="entries"><h2>${esc(category)}</h2>${items.map(r=>`<article class="entry"><h3><a href="${esc(r.route)}">${esc(r.title)}</a></h3><p>${esc(r.summary)}</p></article>`).join('')}</section>`).join('')||'<p>No English articles have been published yet.</p>');
-  const archive=EnglishShell(home,{site,names,title:'Categories',summary:brand.slogan,route:'/en/archive/',sourceRoute:'/archive/',index:true,directory,body:archiveBody});
+  const archive=EnglishShell(home,{site,names,familyNames,title:'Categories',summary:brand.slogan,route:'/en/archive/',sourceRoute:'/archive/',index:true,directory,body:archiveBody});
   await write('en/archive/index.html',archive);paths.set('/en/archive/',seo.page('/en/archive/',archive).lastmod);
  }
  if(!custom){const chineseHome=addLanguageUi(home,{site,zh:'/',en:'/en/',locale:'zh-CN'});await write('index.html',chineseHome);paths.set('/',seo.page('/',chineseHome).lastmod);}

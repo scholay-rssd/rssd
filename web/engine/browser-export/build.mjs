@@ -45,7 +45,7 @@ export async function attachBrowserExports({target,site,manifest,snapshot,langua
   // Some imported records repeat their title twice. Suppress only consecutive
   // exact title headings in presentation; preserve the canonical source record.
   for(;;){const heading=markdown.match(/^# ([^\n]+)\n+/);if(!heading||heading[1].trim()!==record.title.trim())break;markdown=markdown.slice(heading[0].length);}
-  const rendered=renderArticleParts(markdown,{site});
+  const rendered=renderArticleParts(markdown,{site,locale});
   if(site.id!=='scholay-today')rendered.body=headingAnchors(rendered.body).body;
   const articlePath=route.slice(1)+'index.html';let article=await readFile(join(target,articlePath),'utf8');
   const preservedFacts=article.match(/<dl class="record-facts">[\s\S]*?<\/dl>/)?.[0];

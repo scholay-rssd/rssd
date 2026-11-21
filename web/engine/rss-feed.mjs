@@ -18,15 +18,15 @@ md.core.ruler.push('rss_absolute_urls',state=>{
   visit(state.tokens);
 });
 const formatter=createArticleFormatter(md);
-function renderBody(markdown,articleUrl,site){
+function renderBody(markdown,articleUrl,site,locale){
   // Keep TeX source portable for the receiving community's math renderer.
   let math;
   try{math=protectMathMarkdown(markdown);}
   catch{
     // An unfinished formula in an existing article must not break the whole feed.
-    return formatter.renderArticle(markdown,{articleUrl,site});
+    return formatter.renderArticle(markdown,{articleUrl,site,locale});
   }
-  let body=formatter.renderArticle(math.markdown,{articleUrl,site});
+  let body=formatter.renderArticle(math.markdown,{articleUrl,site,locale});
   for(const {token,text} of math.replacements)body=body.replaceAll(token,()=>md.utils.escapeHtml(text));
   return body;
 }
@@ -36,7 +36,7 @@ export function renderRssFeed(site,records,{feedPath='/content-feed.xml',languag
     const count=categoryCounts.get(record.category)||0;categoryCounts.set(record.category,count+1);return count<20;
   }).map(record=>{
     const url=new URL(record.route,site.origin).href;
-    const body=renderBody(record.markdown||'',url,site)+(includeSources?articleSourcePanel(record.sources,record.markdown,language):'');
+    const body=renderBody(record.markdown||'',url,site,language)+(includeSources?articleSourcePanel(record.sources,record.markdown,language):'');
     const date=record.date&&new Date(record.date+'T00:00:00Z');
     return '<item><title>'+xml(record.title)+'</title><link>'+xml(url)+'</link><guid isPermaLink="true">'+xml(url)+'</guid><description>'+xml(record.summary)+'</description><content:encoded>'+cdata(body)+'</content:encoded>'+(date&&Number.isFinite(+date)?'<pubDate>'+date.toUTCString()+'</pubDate>':'')+(record.category?'<category>'+xml(record.category)+'</category>':'')+'</item>';
   }).join('');
