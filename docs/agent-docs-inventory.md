@@ -73,7 +73,7 @@ rssd 里几乎每个环节都有智能体参与：下单、认领、写作、翻
 
 | 规则 | 写在哪里 | 问题 |
 | --- | --- | --- |
-| 图注末尾加不加句号 | `contracts/writing-skills/rssd-writing-base/references/images.md:9`、`scholay-source-images/SKILL.md:22` 要句号；`scholay-seo-writing/references/voice.md:63` 写"图注不加句号" | **直接冲突。** 认领包没冻结写作默认值时，注入的是工作区技能，就会拿到旧说法 |
+| 图注末尾加不加句号 | `contracts/writing-skills/rssd-writing-base/references/images.md:9`、`scholay-source-images/SKILL.md:22` 要句号；`scholay-seo-writing/references/voice.md:63` 写"图注不加句号" | **直接冲突。** 认领包没冻结写作默认值时，注入的是工作区技能，就会拿到旧说法。2026-11-22 已把 `voice.md` 改成同一格式：图题以句号结束，整条图注末尾不加句号 |
 | 写作协议 | `center-producer.mjs:83` 注入一次；冻结了写作默认值时，基线里又带一份（`writing-defaults-v1.cjs:64`） | 同一篇提示里出现两遍，白占篇幅 |
 | 公开图注不标"AI 生成" | `images.md:7`、`scholay-source-images/SKILL.md:28`、`scholay-rhino-illustration/SKILL.md:23`、`article-writing-policy.mjs` | 内容一致，但有四份；改的时候要四处一起改 |
 | 中文写作用哪个技能 | 模板 `AGENTS.md` 写"中文写作：scholay-seo-writing"；装过写作默认值后，顶部又多了"统一写作入口"（`site-writing`）；模板里另有没列出的 `rssd-writing` | 一个工作区里有两三个"写作入口"，靠 `AGENTS.md` 里"新协议优先"一句话来消解 |
@@ -113,7 +113,7 @@ rssd 里几乎每个环节都有智能体参与：下单、认领、写作、翻
 
 | 项 | 内容 | 主题线 |
 | --- | --- | --- |
-| 修图注冲突 | `scholay-seo-writing/references/voice.md` 的"图注不加句号"改成和 `images.md` 一致，或直接改为引用 | 写作效果 |
+| ~~修图注冲突~~ | 已做（2026-11-22）：`voice.md` 写明和 `images.md` 相同的图注格式 | 写作效果 |
 | 去掉重复的写作协议 | 冻结了写作默认值时，`centerWritingPrompt` 不再单独注入协议，或基线不再内含协议；二选一，并补测试 | 写作效果、桌面与无头 |
 | 理清工作区写作入口 | `AGENTS.md` 只留一个写作入口；装过写作默认值的工作区里，旧 `scholay-seo-writing` 改为"仅在没有线上基线时使用"；没列出的技能要么列进去，要么删掉 | 写作效果 |
 | 补认领和交稿命令 | `HEADLESS.md` 补 `center claim`、`center submit`，以及第五节第 1、2 条的步骤和检查 | 桌面与无头 |
