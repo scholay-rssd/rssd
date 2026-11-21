@@ -8,8 +8,8 @@ export const feedRoute=(base,page=1)=>page===1?base:base+'page/'+page+'/';
 // listing cards can reserve each picture's own shape before it loads.
 // `palette(sectionId)` gives a section's card colours ({paper, ink, accent}); a work without a picture gets a text
 // cover in them, as the algorithmic card layout would draw its first card.
-export function createFeedIndex(content,{ratio=()=>undefined,palette=()=>undefined}={}){
- const sections=content.collections.filter(c=>c.route!=='/archive/').map(c=>{const colours=cardPalette(palette(c.id));return {...c,members:[...collectionIds(content.collections,c.id)],...(colours?{cover:colours}:{})};});
+export function createFeedIndex(content,{ratio=()=>undefined,palette}={}){
+ const sections=content.collections.filter(c=>c.route!=='/archive/').map(c=>{const colours=palette?cardPalette(palette(c.id)):undefined;return {...c,members:[...collectionIds(content.collections,c.id)],...(colours?{cover:colours}:{})};});
  const shape=src=>{const value=ratio(src);return Number.isFinite(value)&&value>0?{ratio:Math.round(value*10000)/10000}:{};};
  const records=content.records.slice().sort((a,b)=>String(b.publication.date||'').localeCompare(String(a.publication.date||''))||a.id.localeCompare(b.id)).map(r=>({
   id:r.id,title:r.title,summary:plainSummary(r.summary),route:r.route,section:r.collectionId,
@@ -18,7 +18,8 @@ export function createFeedIndex(content,{ratio=()=>undefined,palette=()=>undefin
   dateLabel:r.event?.mode==='historical'?`${r.event.year} 年 · ${r.event.monthDay}`:r.event?.mode==='annual'?'每年 '+r.event.recurrence.monthDay:r.event?.start?[r.event.start,r.event.end].filter(Boolean).join(' — '):r.publication.date||'',
  }));
  // Once a site has notes, every card says whether it is a long article or a note.
- return {version:1,siteId:content.siteId,sections,records,...(records.some(r=>r.type==='note')?{mixed:true}:{})};
+ // Text covers only where the theme gives section colours, so a theme that has no style for them is unchanged.
+ return {version:1,siteId:content.siteId,sections,records,...(records.some(r=>r.type==='note')?{mixed:true}:{}),...(palette?{textCovers:true}:{})};
 }
 // A work's cover, in order: the first card of a card set made for its current revision (the set the site shows),
 // else its first picture. A work with neither gets a text cover when it is listed.
@@ -63,7 +64,7 @@ export function feedType(record,index){
 }
 export function feedCard(record,index){
  const section=index.sections.find(s=>s.id===record.section),label=section?.name||'';
- return `<article class="feed-entry" data-section="${esc(record.section||'')}"${record.type==='note'?' data-type="note"':''}>${record.cover?feedCover(record.cover,record.route):textCover(record,section,record.route)}${feedType(record,index)}<div class="entry-meta"><span>${esc(label)}</span><time>${esc(record.dateLabel)}</time></div><h2><a href="${esc(record.route)}">${esc(record.title)}</a></h2><p>${esc(record.summary.slice(0,240))}</p></article>`;
+ return `<article class="feed-entry" data-section="${esc(record.section||'')}"${record.type==='note'?' data-type="note"':''}>${record.cover?feedCover(record.cover,record.route):index.textCovers?textCover(record,section,record.route):''}${feedType(record,index)}<div class="entry-meta"><span>${esc(label)}</span><time>${esc(record.dateLabel)}</time></div><h2><a href="${esc(record.route)}">${esc(record.title)}</a></h2><p>${esc(record.summary.slice(0,240))}</p></article>`;
 }
 /** How a listing is laid out: covers in columns, rows of text, or a row of covers above rows of text. */
 export const FEED_LAYOUTS=Object.freeze(['waterfall','list','mixed']);

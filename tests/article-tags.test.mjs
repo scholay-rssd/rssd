@@ -22,7 +22,9 @@ test('feed cards reserve each cover at its real shape when the ratio is known',(
  assert.equal(byId.bb.cover.ratio,undefined);
  assert.match(feedCard(byId.a,index),/class="feed-cover"[^>]*style="--ar:0\.75"><img[^>]*width="640" height="853"/);
  assert.match(feedCard(byId.bb,index),/<a class="feed-cover"[^>]*aria-hidden="true"><img[^>]*height="400"/);
- // A work without a picture gets a text cover, not a picture.
- assert.match(feedCard(byId.ccc,index),/<a class="feed-cover feed-cover-text"[^>]*><span>每日一猫<\/span><strong>ccc<\/strong><\/a>/);assert.doesNotMatch(feedCard(byId.ccc,index),/<img/);
+ // A work without a picture has no cover unless the theme gives section colours (feed-layouts.test.mjs).
+ assert.doesNotMatch(feedCard(byId.ccc,index),/feed-cover/);
+ const coloured=createFeedIndex(content,{palette:()=>({paper:'#ffffff'})});
+ assert.match(feedCard(coloured.records.find(r=>r.id==='ccc'),coloured),/<a class="feed-cover feed-cover-text"[^>]*><span>每日一猫<\/span><strong>ccc<\/strong><\/a>/);assert.doesNotMatch(feedCard(coloured.records.find(r=>r.id==='ccc'),coloured),/<img/);
  assert.deepEqual(createFeedIndex(content).records.find(r=>r.id==='a').cover,{src:picture,alt:''});
 });
