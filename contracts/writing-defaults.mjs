@@ -8,7 +8,7 @@ import {writableSectionsForSite} from './site-sections.mjs';
 import {sectionWorkPolicy} from './work-types.mjs';
 import contract from './writing-defaults-v1.cjs';
 
-export const WRITING_DEFAULTS_VERSION='2026-11-21.1';
+export const WRITING_DEFAULTS_VERSION='2026-11-22.1';
 export const WRITING_DOMAIN_IDS=['academic','metho','pets','enter','study','xsiching','legis','design','xsime','personal'];
 const elements={
  'academic/calendar':['一项年度惯例事项及依据','惯例与当年日期的区别','适用人群和官方行动入口'],
@@ -67,7 +67,7 @@ export function buildWritingDefaultsCatalog({source}){
   // A section that takes notes also carries the note form: the note skill before the family and domain rules,
   // and one point chosen from the column's elements instead of all of them. Pictures follow the same rules.
   const note=sectionWorkPolicy(s).workTypes.includes('note')?{note:{skillIds:['rssd-writing-base','rssd-writing-note','rssd-writing-'+familyId,'rssd-domain-'+site.spaceId],requiredElements:['本栏对象的一个具体看点（本栏长文的要素：'+elements[key].join('；')+'）','承担主要信息的图片，按阅读顺序排列','读懂图片所需的简短事实和可回查的出处']}}:{};
-  return {id:s.id,name:s.name,mode:s.defaultMode,scope:rule,familyId,requiredElements:elements[key],skillIds:['rssd-writing-base','rssd-writing-'+familyId,'rssd-domain-'+site.spaceId],referencePaths:[path],images:{minimum:1,sourceMode:actualObject?'actual-object':'source-or-illustration',dataFigures:'computed-only',altMin:20,altMax:60},delivery:{version:1,format:'notebook-v2-flat',altLength:true},...note};
+  return {id:s.id,name:s.name,mode:s.defaultMode,scope:rule,familyId,requiredElements:elements[key],skillIds:['rssd-writing-base','rssd-writing-'+familyId,'rssd-domain-'+site.spaceId],referencePaths:[path],images:{minimum:familyId==='animal'?3:1,sourceMode:actualObject?'actual-object':'source-or-illustration',dataFigures:'computed-only',altMin:20,altMax:60},delivery:{version:2,format:'notebook-v2-flat',altLength:true,captions:true},...note};
  })}));
  const body={schemaVersion:1,version:WRITING_DEFAULTS_VERSION,source,writingPolicy:{version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS,sha256:createHash('sha256').update(ARTICLE_WRITING_INSTRUCTIONS).digest('hex')},skills,references,workspaces};
  return contract.catalog({...body,hash:contract.hash(body)});

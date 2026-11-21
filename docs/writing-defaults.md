@@ -129,8 +129,30 @@ Licensed images include `sourceUrl`, `creator`, `license` and `licenseEvidence`;
 computed figures include `computationRecord`. Every ready image needs alt text and
 a caption annotation with its `targetId`. The command checks actual image bytes,
 rule identity, Notebook structure, alt bounds and any explicit body budget. It
+also applies the caption checks below. It
 reports body and private-note counts separately; it does not conduct an AI prose review or
 grant publication permission. A failed check returns a nonzero CLI status.
+
+### Picture checks (delivery version 2)
+
+From `2026-11-22.1` every section carries `delivery.version: 2` with
+`captions: true`. The same `deliveryIssues` runs in the draft checker, the
+Center producer and the Center itself when it accepts a submission, so a manual
+`center submit` is checked the same way:
+
+- At least `images.minimum` different pictures. Animal sections (每日一猫,
+  每日一狗, 异宠) require 3; others 1. A picture used twice counts once.
+- Each caption is one short title sentence, optionally followed by the maker and
+  a linked source: `图：图题。作者，[来源](出处页)` or
+  `Figure: Title. Creator, [Source](page)` (the `Figure: ` prefix is optional).
+  Licence names, notes and reference marks such as `[1]` are rejected. The link
+  must not point to this Center's own media URL.
+- In `actual-object` sections every caption needs the maker and the link, so a
+  drawn diagram or a generated picture does not pass.
+
+A snapshot frozen under delivery version 1 keeps its earlier checks. Clients and
+the Center must run this contract before a catalog with version 2 is published:
+an older contract rejects the catalog as invalid.
 
 An unsigned file draft can obtain bounded machine feedback:
 
