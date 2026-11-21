@@ -33,6 +33,12 @@ async function mainTip(url) {
   return sha;
 }
 
+// "owner/name" for a GitHub URL, so a PR number in the message links to the
+// submodule's repository rather than to rssd's own pull request of that number.
+export function githubRepo(url) {
+  return /github\.com[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url)?.[1] ?? '';
+}
+
 async function subjects(url, from, to, repo) {
   await git(['clone', '--quiet', '--bare', '--filter=tree:0', '--single-branch', '--branch', BRANCH, '--no-tags', url, repo]);
   const known = await git(['cat-file', '-e', `${from}^{commit}`], repo).then(() => true, () => false);
@@ -44,7 +50,7 @@ async function subjects(url, from, to, repo) {
     const [hash, subject, body = ''] = record.split('\x1f');
     const merged = /^Merge pull request (#\d+)/.exec(subject);
     const title = body.trim().split('\n')[0];
-    return merged && title ? `${hash} ${merged[1]} ${title}` : `${hash} ${subject}`;
+    return merged && title ? `${hash} ${githubRepo(url)}${merged[1]} ${title}` : `${hash} ${subject}`;
   });
   return lines.length > MAX_SUBJECTS ? [...lines.slice(0, MAX_SUBJECTS), '…'] : lines;
 }

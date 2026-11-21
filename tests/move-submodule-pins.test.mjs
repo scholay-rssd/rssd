@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import test from 'node:test';
-import {applyPinMoves, commitMessage, planPinMoves} from '../scripts/move-submodule-pins.mjs';
+import {applyPinMoves, commitMessage, githubRepo, planPinMoves} from '../scripts/move-submodule-pins.mjs';
 
 const IDENTITY = ['-c', 'user.name=t', '-c', 'user.email=t@example.test', '-c', 'commit.gpgsign=false'];
 
@@ -64,6 +64,12 @@ test('only pins behind their main move, listed by merged pull request title', as
   } finally {
     rmSync(base, {recursive: true, force: true});
   }
+});
+
+test('PR numbers name the submodule repository on GitHub', () => {
+  assert.equal(githubRepo('https://github.com/scholay-rssd/rssd-obsidian.git'), 'scholay-rssd/rssd-obsidian');
+  assert.equal(githubRepo('git@github.com:scholay-rssd/rssd-center'), 'scholay-rssd/rssd-center');
+  assert.equal(githubRepo('/tmp/upstream/center'), '');
 });
 
 test('the message names every moved submodule', () => {
