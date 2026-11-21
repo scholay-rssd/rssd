@@ -27,6 +27,14 @@ test('callout atom accepts the five alert types and leaves ordinary quotes alone
   assert.doesNotMatch(renderArticleParts('> [!NOTE] <script>x</script>').body,/<script>/);
 });
 
+test('English articles localize generated callout and formula labels without changing authored titles',()=>{
+ const text='> [!TIP]\n> Save first.\n\n> [!WARNING] Custom title\n> Check.\n\n$$\nx+1\n$$\n\n$$\n\\notARealCommand\n$$';
+ const english=renderArticleParts(text,{locale:'en'}).body,chinese=renderArticleParts(text).body;
+ assert.match(english,/class="callout-title">Tip<\/p>/);assert.match(english,/class="callout-title">Custom title<\/p>/);
+ assert.match(english,/aria-label="Mathematical formula"/);assert.match(english,/title="Formula could not be rendered; the original is preserved"/);
+ assert.match(chinese,/class="callout-title">提示<\/p>/);assert.match(chinese,/aria-label="数学公式"/);assert.match(chinese,/title="公式暂时无法排版，已保留原式"/);
+});
+
 test('toc anchors are stable and unique; neighbours stay in one collection',()=>{
   const {body,headings}=headingAnchors('<h2>一、背景</h2><h3>Setup &amp; Run</h3><h2>一、背景</h2>');
   assert.deepEqual(headings.map(h=>h.id),['一背景','setup-run','一背景-2']);

@@ -179,6 +179,14 @@ test('bibliography-backed links and numbered citations render as superscripts in
  assert.doesNotMatch(renderArticle('数组[1]，无文献。'),/<sup/);
 });
 
+test('citation labels and unavailable-image messages follow the article locale',()=>{
+ const text='See [study](https://example.org/a).\n\n![missing](/missing.png)\n\n## References\n\n1. [Study](https://example.org/a)';
+ for(const html of [renderArticle(text,{locale:'en'}),renderArticleParts(text,{locale:'en'}).body]){
+  assert.match(html,/aria-label="Reference 1"/);assert.match(html,/\[Image unavailable\]/);
+ }
+ const chinese=renderArticle(text);assert.match(chinese,/aria-label="参考文献 1"/);assert.match(chinese,/\[图片未打包\]/);
+});
+
 test('figure description captions retain caption typography',()=>{
  assert.match(renderArticle('![图](https://example.org/a.webp)\n\n图示：记录方式。'),/<p class="article-caption">图示/);
 });

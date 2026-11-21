@@ -21,13 +21,15 @@ test('a bilingual site keeps an empty English entrance and feed without substitu
 test('an English-only original gets its own route, RSS and sitemap without a fabricated Chinese version',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'rssd-english-original-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const site={...profiles.find(x=>x.id==='metho'),languages:['zh-CN','en']};
- const news=[{id:'english-original',locale:'en',title:'An English-only original',summary:'Available in English.',markdown:'# An English-only original\n\nIndependent English body.',date:'2026-10-31',category:site.columns[0],author:'Example',assets:[]}];
+ const news=[{id:'english-original',locale:'en',title:'An English-only original',summary:'Available in English.',markdown:'# An English-only original\n\nIndependent English body. [Study](https://example.org/study)\n\n$$\nx + 1\n$$\n\n> [!NOTE]\n> Read the source.\n\n## References\n\n1. [Study](https://example.org/study)',date:'2026-10-31',category:site.columns[0],author:'Example',assets:[]}];
  const snapshot={news,data:{year:[],history:[]},openSource:{items:[]},permalinks:{'news:english-original':'/en/news/english-original/'}};
  await buildSiteRelease({job:{id:'english-original',snapshot,snapshot_hash:digest(JSON.stringify(snapshot))},target:dir,source:resolve('.'),site});
  const en=await readFile(join(dir,'en/news/english-original/index.html'),'utf8');
  assert.match(en,/Independent English body/);assert.doesNotMatch(en,/hreflang="zh-CN"/);assert.doesNotMatch(en,/data-community-source-route/);
+ assert.match(en,/aria-label="Reference 1"/);assert.match(en,/aria-label="Mathematical formula"/);assert.match(en,/class="callout-title">Note<\/p>/);
+ assert.match(en,/<nav class="site-family" aria-label="Other sites">/);assert.match(en,/aria-label="Piggytuck Pets"/);assert.doesNotMatch(en,/aria-label="参考文献|aria-label="其他站点/);
  assert.doesNotMatch(await readFile(join(dir,'content-feed.xml'),'utf8'),/An English-only original/);
- assert.match(await readFile(join(dir,'en/content-feed.xml'),'utf8'),/An English-only original/);
+ const feed=await readFile(join(dir,'en/content-feed.xml'),'utf8');assert.match(feed,/An English-only original/);assert.match(feed,/aria-label="Reference 1"/);
  assert.match(await readFile(join(dir,'sitemap-en.xml'),'utf8'),/\/en\/news\/english-original\//);
 });
 

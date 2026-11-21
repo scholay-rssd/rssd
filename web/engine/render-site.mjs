@@ -28,7 +28,7 @@ export async function buildSiteRelease({job,target,site=SITE,source,previousRoot
  const manifest=await renderers[theme.renderer]({job:sourceJob,target,site,source,previousRoot,now,theme,content,organization});
  manifest.byteHashes={...manifest.byteHashes,...assetHashes};
  const languagePack=await loadLanguagePack(source,site.id);
- const localized=await renderLanguagePages({job,target,site,previousRoot,now,manifest,languagePack});
+ const localized=await renderLanguagePages({job,target,source,site,previousRoot,now,manifest,languagePack});
  const navigated=await finalizeLanguageNavigation({target,site,manifest:localized});
  await attachGuestbook({target,site,manifest:navigated});
  const exported=await attachBrowserExports({target,site,manifest:navigated,snapshot:job.snapshot,languagePack});
