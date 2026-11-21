@@ -21,7 +21,7 @@ test('a bilingual site keeps an empty English entrance and feed without substitu
 test('an English-only original gets its own route, RSS and sitemap without a fabricated Chinese version',async t=>{
  const dir=await mkdtemp(join(tmpdir(),'rssd-english-original-'));t.after(()=>rm(dir,{recursive:true,force:true}));
  const site={...profiles.find(x=>x.id==='metho'),languages:['zh-CN','en']};
- const news=[{id:'english-original',locale:'en',title:'An English-only original',summary:'Available in English.',markdown:'# An English-only original\n\nIndependent English body. [Study](https://example.org/study)\n\n$$\nx + 1\n$$\n\n> [!NOTE]\n> Read the source.\n\n## References\n\n1. [Study](https://example.org/study)',date:'2026-10-31',category:site.columns[0],author:'Example',assets:[]}];
+ const news=[{id:'english-original',locale:'en',title:'An English-only original',summary:'Available in English.',markdown:'# An English-only original\n\nIndependent English body. [Study](https://example.org/study)\n\n$$\nx + 1\n$$\n\n> [!NOTE]\n> Read the source.\n\n## Sources\n\n1. [Study](https://example.org/study)',date:'2026-10-31',category:site.columns[0],author:'Example',assets:[]}];
  const snapshot={news,data:{year:[],history:[]},openSource:{items:[]},permalinks:{'news:english-original':'/en/news/english-original/'}};
  await buildSiteRelease({job:{id:'english-original',snapshot,snapshot_hash:digest(JSON.stringify(snapshot))},target:dir,source:resolve('.'),site});
  const en=await readFile(join(dir,'en/news/english-original/index.html'),'utf8');
