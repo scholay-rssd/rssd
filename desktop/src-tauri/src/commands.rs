@@ -723,13 +723,14 @@ fn response_language(conn: &rusqlite::Connection) -> &'static str {
     match db::get_setting(conn, "language").ok().flatten().as_deref() {
         Some("zh") => "\n\nAlways write your response in Simplified Chinese.",
         Some("ja") => "\n\nAlways write your response in Japanese.",
+        Some("es") => "\n\nAlways write your response in Spanish.",
         _ => "\n\nAlways write your response in English.",
     }
 }
 
 /// The article-translation target language code: the dedicated
 /// `translate_target_lang` setting, falling back to the UI `language`, then
-/// English. Stored as a code (`en` / `zh` / `ja`); `translate::language_name`
+/// English. Stored as a code (`en` / `zh` / `ja` / `es`); `translate::language_name`
 /// maps it to the name used in the prompt.
 fn translate_target_lang(conn: &rusqlite::Connection) -> String {
     db::get_setting(conn, "translate_target_lang")

@@ -1,6 +1,6 @@
 // Source-text translation for the screens written Chinese-first. The Chinese
-// string itself is the key: zh renders it unchanged, en / ja look it up in
-// locales/ui.<lang>.json (ja falls back to en, then to the source). Keyed
+// string itself is the key: zh renders it unchanged, en / ja / es look it up in
+// locales/ui.<lang>.json (ja and es fall back to en, then to the source). Keyed
 // i18next text (t("section.key")) remains the pattern for the reader screens.
 //
 // tr() is a plain function so module helpers, callbacks and render code can
@@ -11,10 +11,11 @@
 import i18n from "i18next";
 import en from "./locales/ui.en.json";
 import ja from "./locales/ui.ja.json";
+import es from "./locales/ui.es.json";
 export { trKey } from "./trKey";
 
 type Table = Record<string, string>;
-const TABLES: Record<string, Table[]> = { en: [en], ja: [ja, en] };
+const TABLES: Record<string, Table[]> = { en: [en], ja: [ja, en], es: [es, en] };
 
 /** Translate Chinese source text. `{{name}}` placeholders are filled from
  *  `vars`; when `vars.count === 1` a `<source>_one` entry is preferred. */
@@ -28,7 +29,7 @@ export function tr(source: string, vars?: Record<string, unknown>): string {
   return vars ? text.replace(/\{\{(\w+)\}\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match)) : text;
 }
 
-const LOCALES: Record<string, string> = { zh: "zh-CN", en: "en-US", ja: "ja-JP" };
+const LOCALES: Record<string, string> = { zh: "zh-CN", en: "en-US", ja: "ja-JP", es: "es-ES" };
 /** BCP 47 locale for dates and numbers in the active interface language. */
 export const uiLocale = (): string => LOCALES[i18n.language] ?? "zh-CN";
 

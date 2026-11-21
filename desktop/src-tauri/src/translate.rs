@@ -25,6 +25,7 @@ pub fn language_name(code: &str) -> &'static str {
     match code {
         "zh" => "Simplified Chinese",
         "ja" => "Japanese",
+        "es" => "Spanish",
         _ => "English",
     }
 }
@@ -352,12 +353,13 @@ async fn translate_segments(
 }
 
 // ── per-engine target language codes ─────────────────────────────────────────
-// papr stores the target as `zh` / `ja` / `en`; each engine names them its own way.
+// papr stores the target as `zh` / `ja` / `es` / `en`; each engine names them its own way.
 
 fn google_code(target: &str) -> &'static str {
     match target {
         "zh" => "zh-CN",
         "ja" => "ja",
+        "es" => "es",
         _ => "en",
     }
 }
@@ -366,6 +368,7 @@ fn deepl_code(target: &str) -> &'static str {
     match target {
         "zh" => "ZH",
         "ja" => "JA",
+        "es" => "ES",
         _ => "EN",
     }
 }
@@ -374,6 +377,7 @@ fn bing_code(target: &str) -> &'static str {
     match target {
         "zh" => "zh-Hans",
         "ja" => "ja",
+        "es" => "es",
         _ => "en",
     }
 }
@@ -710,6 +714,7 @@ mod tests {
     fn language_name_maps_codes_with_english_fallback() {
         assert_eq!(language_name("zh"), "Simplified Chinese");
         assert_eq!(language_name("ja"), "Japanese");
+        assert_eq!(language_name("es"), "Spanish");
         assert_eq!(language_name("en"), "English");
         assert_eq!(language_name("xx"), "English");
     }
@@ -788,6 +793,7 @@ mod tests {
         assert_eq!(deepl_code("zh"), "ZH");
         assert_eq!(bing_code("zh"), "zh-Hans");
         assert_eq!(google_code("ja"), "ja");
+        assert_eq!(deepl_code("es"), "ES");
         assert_eq!(deepl_code("xx"), "EN");
         assert_eq!(bing_code("xx"), "en");
     }
