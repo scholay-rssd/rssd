@@ -34,7 +34,7 @@ test('pictures are never placed in the references or beside another picture',()=
  assert.deepEqual(allowed.map(i=>blocks[i].text.slice(0,4)),['开头段落','牧草是成','新鲜叶菜']);
 });
 
-test('a planned work gets pictures with only the AI label public and the model kept in the record',async t=>{
+test('a planned work gets pictures with no AI label public and the model kept in the record',async t=>{
  const root=await mkdtemp(join(tmpdir(),'rssd-supplement-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const file=join(root,'rabbit.md');await writeFile(file,note);
  const picture=await sharp({create:{width:30,height:20,channels:3,background:'#8a7'}}).png().toBuffer();
@@ -46,7 +46,7 @@ test('a planned work gets pictures with only the AI label public and the model k
  const result=await supplementNote(file,{out:root,provider,plan});
  assert.equal(result.pictures,2);
  const body=await readFile(join(result.workDir,'note.md'),'utf8'),record=JSON.parse(await readFile(join(result.workDir,'record.json'),'utf8'));
- assert.match(body,/开头段落，说明牧草的重要性。\n\n!\[一只家兔坐在叶菜和干草旁边的安静室内场景\]\(\.\.\/article-media\/[a-f0-9]{64}\.webp\)\n\n家兔饮食以牧草为主。 · AI 生成示意图\n/);
+ assert.match(body,/开头段落，说明牧草的重要性。\n\n!\[一只家兔坐在叶菜和干草旁边的安静室内场景\]\(\.\.\/article-media\/[a-f0-9]{64}\.webp\)\n\n家兔饮食以牧草为主。\n/);assert.doesNotMatch(body,/AI ?生成|AI-generated/);
  assert.doesNotMatch(body,/gpt-image|Codex|ChatGPT/);
  assert.deepEqual(record.pictures.map(p=>p.drawnBy.model),['gpt-image','gpt-image']);assert.equal(record.pictures[0].role,'title');
 });
@@ -67,4 +67,11 @@ test('the private record written for Obsidian is accepted by the Center and name
  assert.doesNotThrow(()=>privateAppend(addition));
  assert.equal(addition.modelSignatures[0].modelName,'gpt-image');assert.equal(addition.modelSignatures[0].action,'image');
  assert.match(addition.internalNotes.images,/题图「.+」由 Codex · gpt-image 绘制/);
+});
+test('an English note gets no extra pictures; it reuses the Chinese pictures',async t=>{
+ const root=await mkdtemp(join(tmpdir(),'rssd-supplement-en-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const file=join(root,'rabbit-en.md');await writeFile(file,note.replace(/^---\n/,'---\nrssd-locale: en\n'));
+ const provider={start:async()=>{throw Error('must not draw');}},plan=async()=>{throw Error('must not plan');};
+ const result=await supplementNote(file,{out:root,provider,plan});
+ assert.match(result.skipped,/English/);
 });

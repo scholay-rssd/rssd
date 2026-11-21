@@ -5,7 +5,7 @@ import {existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import sharp from 'sharp';
-import {articleBlocks,plain,validateImagePlan,editsInside,checkLettering,cardWindow,readWork,installSamples,missingStyles,CODE_RULES} from '../scripts/rssd-card-samples.mjs';
+import {articleBlocks,plain,validateImagePlan,editsInside,checkLettering,cardWindow,readWork,installSamples,missingStyles,cardStyles,LOCALES,CODE_RULES} from '../scripts/rssd-card-samples.mjs';
 import {launchChrome,renderCardPage,CHROME_PATH} from '../scripts/rssd-card-render.mjs';
 
 const note=body=>`---
@@ -154,4 +154,13 @@ test('tables become rows, English plans and lettering follow English rules, fini
   await writeFile(file,note('# 家兔吃什么\n\n牧草是基础，也要叶菜。\n'));
   assert.deepEqual(await missingStyles(await readWork(file),['ai-code','ai-image']),['ai-code','ai-image']);
  }finally{await rm(vault,{recursive:true,force:true});}
+});
+
+test('English works get no model-drawn cards unless asked, and no card carries an AI label',()=>{
+ const work=(locale,sectionId='daily-cat')=>({work:{data:{locale,sectionId}}});
+ assert.deepEqual(cardStyles(work('en'),['ai-code','ai-image']),['ai-code']);
+ assert.deepEqual(cardStyles(work('en'),['ai-code','ai-image'],{englishImageCards:true}),['ai-code','ai-image']);
+ assert.deepEqual(cardStyles(work('zh-CN'),['ai-code','ai-image']),['ai-code','ai-image']);
+ assert.deepEqual(cardStyles(work('zh-CN','pet-news'),['ai-code','ai-image'],{codeSections:['daily-cat']}),['ai-image']);
+ for(const locale of Object.values(LOCALES))assert.equal('ai' in locale,false);
 });

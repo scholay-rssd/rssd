@@ -32,13 +32,15 @@ export async function freezeImagePolicy({directory,siteId,workspaceId,referenceS
  return withFileLock(file+'.lock',async()=>{
   let old;try{old=JSON.parse(await readFile(file,'utf8'));}catch(error){if(error.code!=='ENOENT')throw pending('Original image policy snapshot cannot be read');}
   if(old)return validateImagePolicySnapshot(old,{siteId,workspaceId,referenceSha256});
-  if(!configuration||!Array.isArray(configuration.skills)||!configuration.skills.length||!Array.isArray(configuration.references)||!validImageDisclosures(configuration.disclosures))throw pending('Site image skill, references and AI disclosures are not configured');
+  if(!configuration||!Array.isArray(configuration.skills)||!configuration.skills.length||!Array.isArray(configuration.references)||(configuration.disclosures!==undefined&&!validImageDisclosures(configuration.disclosures)))throw pending('Site image skill and references are not configured');
   const skills=[],references=[];for(const item of configuration.skills)skills.push(await entry(item));for(const item of configuration.references)references.push(await entry(item));
   const paths=new Set(references.map(x=>x.path));
   for(const skill of skills)for(const match of skill.content.matchAll(/\]\(([^)]+\.md)\)/g)){
    const target=match[1];if(!/^(?:https?:|#)/i.test(target)&&!paths.has(resolve(dirname(skill.path),target)))throw pending('Site image skill references are not fully configured');
   }
-  const body={version:1,siteId,workspaceId,referenceSha256,skills,references,disclosures:structuredClone(configuration.disclosures)},snapshot={...body,snapshotHash:protocol.hash(body)};
+  // Disclosures are optional: from image plan version 5 nothing public shows them. A site that still configures
+  // them keeps them in the snapshot, so older frozen plans resume with the same text.
+  const body={version:1,siteId,workspaceId,referenceSha256,skills,references,...(configuration.disclosures!==undefined?{disclosures:structuredClone(configuration.disclosures)}:{})},snapshot={...body,snapshotHash:protocol.hash(body)};
   await writeCenterJson(file,snapshot);return validateImagePolicySnapshot(snapshot,{siteId,workspaceId,referenceSha256});
  });
 }

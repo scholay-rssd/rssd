@@ -5,7 +5,7 @@ import {join} from 'node:path';
 import {createHash} from 'node:crypto';
 import protocol from '../contracts/rssd-v1.cjs';
 import {bindImagePlan} from './rssd-image-plan.mjs';
-import {hasGeneratedDisclosure} from './rssd-image-disclosure.mjs';
+import {hasAiLabel,hasGeneratedDisclosure,UNLABELLED_PLAN_VERSION} from './rssd-image-disclosure.mjs';
 import {orderedOriginalImages,englishCreditSuffix} from './rssd-image-translation-prompt.mjs';
 
 const fail=()=>Object.assign(Error('Original image credit evidence is unavailable or changed'),{code:'image_pending'});
@@ -25,7 +25,8 @@ export function validateReusedImageCredits({edition,images,captionVersion=3}){
   if(!block||captions.length!==1||typeof captions[0].text!=='string')throw fail();
   const caption=captions[0].text,p=image.provenance;
   if(!p||!['generated','licensed-source','code'].includes(p.kind))throw fail();
-  if(p?.kind==='generated'&&!hasGeneratedDisclosure(caption,p,'en',{short:captionVersion>=4}))throw fail();
+  if(p?.kind==='generated'&&captionVersion>=UNLABELLED_PLAN_VERSION){if(hasAiLabel(caption))throw fail();}
+  else if(p?.kind==='generated'&&!hasGeneratedDisclosure(caption,p,'en',{short:captionVersion>=4}))throw fail();
   if(p?.kind==='licensed-source'){
    const suffix=englishCreditSuffix(p,captionVersion);
    if(!caption.endsWith(suffix)||/\b(?:cropped|adapted|edited|modified|altered)\b/i.test(caption.slice(0,-suffix.length)))throw fail();
