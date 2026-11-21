@@ -4,9 +4,9 @@ import {join,resolve} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import protocol from '../contracts/rssd-v1.cjs';
 import {withFileLock} from './editorial-lock.mjs';
-import {generatedCaption} from './rssd-image-disclosure.mjs';
+import {generatedCaption,hasAiLabel,UNLABELLED_PLAN_VERSION} from './rssd-image-disclosure.mjs';
 
-export const CENTER_IMAGE_PLAN_OUTPUT=`只返回一个 JSON 对象（不要围栏或说明），格式为 {"notebook":{"version":2,"kind":"article","title":"标题","skills":[],"fields":{},"groups":[],"blocks":[],"sources":[],"blockNotes":{},"internalNotes":{}},"summary":"摘要","metadata":{},"imagePlan":[]}。正文使用完整 notebook v2，正文、来源与内部备注按写作协议分开。安排至少两个必要图片槽位：一个题图和一个正文图。每个图片行用稳定唯一的 blockId、type=image、state=placeholder、text=""、sourceIds=[]；紧接对应图片行配一条 type=annotation、role=caption、targetId=对应 blockId、state=placeholder、text="" 的图注行，图片和图注之间不要插入其他行。imagePlan 每项为 {"blockId":"对应图片行 ID","requirement":"与文章有关的画面要求","alt":"20–60 字的画面说明","caption":"公开图注"}。caption 只写以“图：”开头的简短图题，一句，以句号结束（英文稿以“Figure:”开头，以句点结束）；不写作者、来源、许可、改动或画面描述，程序会在图题后补上作者与来源链接或 AI 标识。画面描述和选图理由写入该图片行的 blockNotes images。只描述用途，不要虚构图片 URL、素材 ID 或文件路径；程序稍后会生成或登记图片。其他正文行必须完整且 state=ready。不要自填 modelSignatures。`;
+export const CENTER_IMAGE_PLAN_OUTPUT=`只返回一个 JSON 对象（不要围栏或说明），格式为 {"notebook":{"version":2,"kind":"article","title":"标题","skills":[],"fields":{},"groups":[],"blocks":[],"sources":[],"blockNotes":{},"internalNotes":{}},"summary":"摘要","metadata":{},"imagePlan":[]}。正文使用完整 notebook v2，正文、来源与内部备注按写作协议分开。安排至少两个必要图片槽位：一个题图和一个正文图。每个图片行用稳定唯一的 blockId、type=image、state=placeholder、text=""、sourceIds=[]；紧接对应图片行配一条 type=annotation、role=caption、targetId=对应 blockId、state=placeholder、text="" 的图注行，图片和图注之间不要插入其他行。imagePlan 每项为 {"blockId":"对应图片行 ID","requirement":"与文章有关的画面要求","alt":"20–60 字的画面说明","caption":"公开图注"}。caption 只写以“图：”开头的简短图题，一句，以句号结束（英文稿以“Figure:”开头，以句点结束）；不写作者、来源、许可、改动或画面描述，程序会在图题后补上作者与来源链接；AI 生成的图只保留图题，不写“AI 生成”等标识，alt 也不写。画面描述和选图理由写入该图片行的 blockNotes images。只描述用途，不要虚构图片 URL、素材 ID 或文件路径；程序稍后会生成或登记图片。其他正文行必须完整且 state=ready。不要自填 modelSignatures。`;
 
 function invalid(message){return Object.assign(Error(message),{code:'image_plan_invalid'});}
 function attributionPending(message){return Object.assign(Error(message),{code:'image_pending'});}
@@ -32,6 +32,7 @@ function publicCaption(caption,provenance,locale,{version=2}={}){
  const english=locale==='en';
  const separator=version>=3&&!english&&/[。！？]$/.test(caption)?' ':' · ';
  if(provenance?.kind==='generated'){
+  if(version>=UNLABELLED_PLAN_VERSION){if(hasAiLabel(caption))throw invalid('Image caption carries an AI label');return caption;}
   const text=generatedCaption(caption,provenance,locale);
   // From version 4 the mark follows the short caption as its next sentence, as a maker's name would.
   if(version>=4&&text.startsWith(caption+' · '))return caption+shortCreditJoin(caption,locale)+text.slice(caption.length+3);
@@ -62,20 +63,21 @@ export async function freezeImagePlan({directory,claimId,generation,workId,local
   const image=images.find(b=>b.id===slot.blockId),caption=n.blocks.find(b=>b.role==='caption'&&b.targetId===slot.blockId);
   if(!image||image.text||!caption||!['ready','placeholder'].includes(caption.state))throw invalid('Image slot or caption is not bound');
   if(typeof slot.requirement!=='string'||!slot.requirement.trim()||slot.requirement.length>3500||typeof slot.alt!=='string'||[...slot.alt.trim()].length<20||[...slot.alt.trim()].length>60||typeof slot.caption!=='string'||!slot.caption.trim()||(slot.referenceSha256!==undefined&&!/^[a-f0-9]{64}$/.test(slot.referenceSha256)))throw invalid('Image slot requirements are incomplete');
+  if(hasAiLabel(slot.alt)||hasAiLabel(slot.caption))throw invalid('Image alt or caption carries an AI label');
   if(caption.state==='ready'&&caption.text!==slot.caption)throw invalid('Existing caption must remain unchanged');
  }
  if(n.blocks.some(b=>b.state==='placeholder'&&b.type!=='image'&&!(b.role==='caption'&&ids.has(b.targetId))))throw invalid('Non-image placeholders remain');
- const plan={version:4,claimId,generation,workId,locale,draft,slots:structuredClone(slots),...(binding?{binding:structuredClone(binding)}:{})};
+ const plan={version:UNLABELLED_PLAN_VERSION,claimId,generation,workId,locale,draft,slots:structuredClone(slots),...(binding?{binding:structuredClone(binding)}:{})};
  const dir=resolve(directory);await mkdir(dir,{recursive:true,mode:0o700});const file=join(dir,locale+'.image-plan.json');
  return withFileLock(file+'.lock',async()=>{
-  const prior=await optional(file);if(prior&&(![1,2,3,4].includes(prior.version)||protocol.hash(prior)!==protocol.hash({...plan,version:prior.version})))throw invalid('Original image plan already exists with different content');
+  const prior=await optional(file);if(prior&&(![1,2,3,4,5].includes(prior.version)||protocol.hash(prior)!==protocol.hash({...plan,version:prior.version})))throw invalid('Original image plan already exists with different content');
   if(!prior)await save(file,plan);return prior||plan;
  });
 }
 
 /** Bind only verified, uploaded images; do not parse or submit the edition. */
 export function bindImagePlan({plan,images,origin}){
- if(![1,2,3,4].includes(plan?.version)||!Array.isArray(plan.slots)||!Array.isArray(images))throw invalid('Image plan is unavailable');
+ if(![1,2,3,4,5].includes(plan?.version)||!Array.isArray(plan.slots)||!Array.isArray(images))throw invalid('Image plan is unavailable');
  const base=new URL(origin).origin;if(base!==origin)throw invalid('Center origin is invalid');
  if(images.length!==plan.slots.length||new Set(images.map(x=>x.blockId)).size!==images.length)throw invalid('Required images are missing');
  const result=structuredClone(plan.draft),n=result.notebook;

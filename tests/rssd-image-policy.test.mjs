@@ -12,7 +12,9 @@ test('new site image tasks freeze actual skill, linked references and pinned bra
  const skill=join(root,'SKILL.md'),refs=join(root,'references'),style=join(refs,'style.md'),directory=join(root,'job');await mkdir(refs);
  const content='# Site image skill\nSee [style](references/style.md).',styleText='Use a hand-drawn style.';await writeFile(skill,content);await writeFile(style,styleText);
  const args={directory,siteId:'metho',workspaceId:'metho',referenceSha256:'a'.repeat(64),configuration:{skills:[{path:skill,sha256:hash(content)}],references:[{path:style,sha256:hash(styleText)}],disclosures:{'zh-CN':'Scholay 原创手绘示意（AI 辅助生成）',en:'Scholay original illustration (AI-generated)'}}};
- await assert.rejects(freezeImagePolicy({...args,directory:join(root,'missing-disclosure'),configuration:{...args.configuration,disclosures:undefined}}),{code:'image_pending'});
+ // Disclosures are optional now that nothing public shows them; an invalid one is still refused.
+ const bare=await freezeImagePolicy({...args,directory:join(root,'missing-disclosure'),configuration:{...args.configuration,disclosures:undefined}});assert.equal('disclosures' in bare,false);
+ await assert.rejects(freezeImagePolicy({...args,directory:join(root,'bad-disclosure'),configuration:{...args.configuration,disclosures:{'zh-CN':'示意图',en:'Illustration'}}}),{code:'image_pending'});
  const snap=await freezeImagePolicy(args);assert.equal(snap.skills[0].content,content);assert.equal(snap.references[0].content,styleText);assert.equal(snap.referenceSha256,args.referenceSha256);assert.equal(snap.disclosures['zh-CN'],'Scholay 原创手绘示意（AI 辅助生成）');
  await writeFile(skill,'later change');assert.deepEqual(await freezeImagePolicy({...args,configuration:undefined}),snap);
  assert.throws(()=>validateImagePolicySnapshot({...snap,skills:[{...snap.skills[0],content:'changed'}]},args),{code:'image_pending'});

@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {CENTER_IMAGE_PLAN_OUTPUT,freezeImagePlan,bindImagePlan} from '../scripts/rssd-image-plan.mjs';
 import {notebookEdition} from '../desktop/scripts/agent/center-notebook.mjs';
 const alt='一张用于测试的八乘八像素合成图片不代表任何真实研究';
-function draft(){const slots=['hero','body-image'].map(blockId=>({blockId,requirement:'Synthetic shapes',alt,caption:'AI 生成示意图'}));return {summary:'Summary',metadata:{},imagePlan:slots,notebook:{version:2,kind:'article',title:'Fixture',skills:[],fields:{},sources:[],blockNotes:{body:{notes:{supplement:'Private existing'}}},internalNotes:{verification:'Private check'},blocks:[{id:'body',type:'paragraph',state:'ready',text:'Public body',sourceIds:[]},...slots.flatMap(s=>[{id:s.blockId,type:'image',state:'placeholder',text:'',sourceIds:[]},{id:s.blockId+'-caption',type:'annotation',role:'caption',targetId:s.blockId,state:'placeholder',text:'',sourceIds:[]}])]}};}
+function draft(){const slots=['hero','body-image'].map(blockId=>({blockId,requirement:'Synthetic shapes',alt,caption:'合成形状示意。'}));return {summary:'Summary',metadata:{},imagePlan:slots,notebook:{version:2,kind:'article',title:'Fixture',skills:[],fields:{},sources:[],blockNotes:{body:{notes:{supplement:'Private existing'}}},internalNotes:{verification:'Private check'},blocks:[{id:'body',type:'paragraph',state:'ready',text:'Public body',sourceIds:[]},...slots.flatMap(s=>[{id:s.blockId,type:'image',state:'placeholder',text:'',sourceIds:[]},{id:s.blockId+'-caption',type:'annotation',role:'caption',targetId:s.blockId,state:'placeholder',text:'',sourceIds:[]}])]}};}
 test('image plan prompt requires each caption to immediately follow its image',()=>assert.match(CENTER_IMAGE_PLAN_OUTPUT,/紧接对应图片行[\s\S]*图片和图注之间不要插入其他行/));
 test('frozen image plan preserves body and binds only all uploaded registered slots before notebook validation',async t=>{
  const directory=await mkdtemp(join(tmpdir(),'rssd-image-plan-'));t.after(()=>rm(directory,{recursive:true,force:true}));
@@ -35,7 +35,8 @@ test('public captions distinguish AI images and independently evidenced original
  const image=(slot,provenance)=>({blockId:slot.blockId,id:'media-'+slot.blockId,url:'https://center.example/api/rssd/v1/media/media-'+slot.blockId+'/raw',alt:slot.alt,caption:slot.caption,uploaded:true,manifest:{sha256:'a'.repeat(64)},registration:{taskId:'task-1'},provenance});
  const generated=image(plan.slots[0],{kind:'generated'}),source=image(plan.slots[1],{kind:'licensed-source',creator:'Example Author',sourceUrl:'https://rights.example/original',license:'CC BY 4.0',licenseUrl:'https://creativecommons.org/licenses/by/4.0/',changes:'unchanged',licenseEvidence:{url:'https://rights.example/original',sha256:'c'.repeat(64),quote:'Synthetic verified declaration',reviewedBy:'fixture reviewer',reviewedAt:'2026-11-03T00:00:00Z'}});
  const bound=bindImagePlan({plan,images:[generated,source],origin:'https://center.example'}),body=notebookEdition(bound,{sectionId:'methods',locale:'zh-CN'}).bodyMarkdown;
- assert.match(body,/AI 生成示意图/);assert(body.includes('说明画面内容。Example Author，[rights.example](https://rights.example/original)'));
+ // From version 5 an AI picture shows only its title: no AI label anywhere public.
+ assert.doesNotMatch(body,/AI ?生成|AI-generated/);assert(body.includes('说明画面内容\n'));assert(body.includes('说明画面内容。Example Author，[rights.example](https://rights.example/original)'));
  // Readers see the maker and the source; the licence and what was changed stay in the private note.
  assert.doesNotMatch(body,/CC BY 4\.0|原图未修改|许可/);
  assert.match(bound.notebook.blockNotes[plan.slots[1].blockId].notes.images,/图库登记任务：task-1。许可：CC BY 4\.0（https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/）；改动：原图未修改。$/);
@@ -55,25 +56,34 @@ test('legacy frozen plan preserves original caption and exact recovery identity'
  const images=legacy.slots.map(slot=>({blockId:slot.blockId,id:'media-'+slot.blockId,url:'https://center.example/api/rssd/v1/media/media-'+slot.blockId+'/raw',alt:slot.alt,caption:slot.caption,uploaded:true,manifest:{sha256:'a'.repeat(64)},registration:{taskId:'task-1'},provenance:{kind:'generated'}}));
  const bound=bindImagePlan({plan:legacy,images,origin:'https://center.example'});assert.equal(bound.notebook.blocks[2].text,'原来的图注');
 });
-test('the AI mark follows a short caption as its next sentence; v3 and v2 reproduce their original bytes',async t=>{
+test('new plans show only the caption; v4 put the AI mark after it as a sentence, v3 and v2 reproduce their original bytes',async t=>{
  const directory=await mkdtemp(join(tmpdir(),'rssd-image-caption-version-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  const result=draft();result.imagePlan[0].caption='解释画面。';result.imagePlan[1].caption='研究步骤。';
- const plan=await freezeImagePlan({directory,claimId:'caption-claim',generation:0,workId:'caption-work',locale:'zh-CN',result});assert.equal(plan.version,4);
+ const plan=await freezeImagePlan({directory,claimId:'caption-claim',generation:0,workId:'caption-work',locale:'zh-CN',result});assert.equal(plan.version,5);
  const images=plan.slots.map(slot=>({blockId:slot.blockId,id:'media-'+slot.blockId,url:'https://center.example/api/rssd/v1/media/media-'+slot.blockId+'/raw',alt:slot.alt,caption:slot.caption,uploaded:true,manifest:{sha256:'a'.repeat(64)},registration:{taskId:'task-1'},provenance:{kind:'generated'}}));
- const fresh=bindImagePlan({plan,images,origin:'https://center.example'}),legacy=bindImagePlan({plan:{...plan,version:2},images,origin:'https://center.example'});
+ const fresh=bindImagePlan({plan,images,origin:'https://center.example'}),v4=bindImagePlan({plan:{...plan,version:4},images,origin:'https://center.example'}),legacy=bindImagePlan({plan:{...plan,version:2},images,origin:'https://center.example'});
  const spaced=bindImagePlan({plan:{...plan,version:3},images,origin:'https://center.example'});
- assert.equal(fresh.notebook.blocks[2].text,'解释画面。AI 生成示意图');assert.equal(spaced.notebook.blocks[2].text,'解释画面。 AI 生成示意图');assert.equal(legacy.notebook.blocks[2].text,'解释画面。 · AI 生成示意图');
+ assert.equal(fresh.notebook.blocks[2].text,'解释画面。');assert.equal(v4.notebook.blocks[2].text,'解释画面。AI 生成示意图');assert.equal(spaced.notebook.blocks[2].text,'解释画面。 AI 生成示意图');assert.equal(legacy.notebook.blocks[2].text,'解释画面。 · AI 生成示意图');
 });
 
 
-test('new generated captions use frozen site brand disclosure and reject negation',async t=>{
+test('a v4 plan keeps its frozen site disclosure and rejects negation; a v5 plan ignores disclosures and refuses AI labels',async t=>{
  const directory=await mkdtemp(join(tmpdir(),'rssd-image-brand-'));t.after(()=>rm(directory,{recursive:true,force:true}));
  const result=draft();for(const slot of result.imagePlan)slot.caption='解释画面';
  const plan=await freezeImagePlan({directory,claimId:'claim-brand',generation:0,workId:'work-brand',locale:'zh-CN',result});
  const disclosures={'zh-CN':'Scholay 原创手绘示意（AI 辅助生成）',en:'Scholay original illustration (AI-generated)'};
  const images=plan.slots.map(slot=>({blockId:slot.blockId,id:'media-'+slot.blockId,url:'https://center.example/api/rssd/v1/media/media-'+slot.blockId+'/raw',alt:slot.alt,caption:slot.caption,uploaded:true,manifest:{sha256:'a'.repeat(64)},registration:{taskId:'task-1'},provenance:{kind:'generated',disclosures}}));
- const bound=bindImagePlan({plan,images,origin:'https://center.example'});assert.match(bound.notebook.blocks[2].text,/Scholay 原创手绘示意（AI 辅助生成）/);
- const bad=structuredClone(plan);bad.slots[0].caption='并非 AI 生成的图';
+ assert.equal(bindImagePlan({plan,images,origin:'https://center.example'}).notebook.blocks[2].text,'解释画面');
+ const v4={...plan,version:4};
+ const bound=bindImagePlan({plan:v4,images,origin:'https://center.example'});assert.match(bound.notebook.blocks[2].text,/Scholay 原创手绘示意（AI 辅助生成）/);
+ const bad=structuredClone(v4);bad.slots[0].caption='并非 AI 生成的图';
  const altered=structuredClone(images);altered[0].caption=bad.slots[0].caption;
  assert.throws(()=>bindImagePlan({plan:bad,images:altered,origin:'https://center.example'}),{code:'image_pending'});
+});
+test('a new plan refuses an AI label in a caption or alt text, in either language',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'rssd-image-unlabelled-'));t.after(()=>rm(directory,{recursive:true,force:true}));
+ for(const [field,value] of [['caption','解释画面。AI 生成示意图'],['caption','Figure: the steps. AI-generated illustration.'],['alt','AI 辅助生成的流程图，三个方框从左到右依次连接起来']]){
+  const result=draft();result.imagePlan[0][field]=value;
+  await assert.rejects(freezeImagePlan({directory,claimId:'claim-'+field+value.length,generation:0,workId:'work-unlabelled',locale:'zh-CN',result}),/AI label/);
+ }
 });

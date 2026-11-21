@@ -7,7 +7,8 @@
 // for word, nothing overflows, is hidden or too small, and takes each card as a PNG. Failed checks go back to Codex.
 // 模型生图: Codex plans a few key-point cards with short lettering; the image model draws each card, lettering included;
 // macOS text recognition reads the lettering back and a card is redrawn when it does not match. A small label adds
-// "AI 生成", the site and the page to every model-drawn card.
+// the site and the page to every model-drawn card; no AI label (the owner marks AI content per work and platform).
+// English works get only 智能排版 for now: no extra pictures are drawn for them unless --english-image-cards.
 //
 // Runs can stop at any point (a crash, a Codex usage limit) and be started again: finished sets are skipped, a
 // checked cards.html and every drawing already made are reused, and no Codex request is ever sent twice.
@@ -34,9 +35,9 @@ const norm=value=>String(value).normalize('NFKC').replace(/[‘’]/g,"'").repla
 export const PALETTE={paper:'#fbf6ee',ink:'#33291f',muted:'#7a6a58',accent:'#8a633b'};
 export const CODE_RULES={width:CARD.width,height:CARD.height,maxCards:40,minFont:22,minPictureWidth:600,minPictureHeight:480,maxQuote:60,maxLabel:12,maxLabelsPerCard:40};
 export const LOCALES={
- 'zh-CN':{brand:'小猪萌宠',ai:'AI 生成',rules:{maxQuote:60,maxLabel:12,maxLabelsPerCard:40},
+ 'zh-CN':{brand:'小猪萌宠',rules:{maxQuote:60,maxLabel:12,maxLabelsPerCard:40},
   lettering:/^[\p{Script=Han}A-Za-z0-9０-９%％℃～~，、：；。！？·—\-.]+$/u,headline:{cover:14,other:12},line:18,editsPer:10},
- en:{brand:'pet.piggytuck.com',ai:'AI-generated',rules:{maxQuote:160,maxLabel:24,maxLabelsPerCard:70},
+ en:{brand:'pet.piggytuck.com',rules:{maxQuote:160,maxLabel:24,maxLabelsPerCard:70},
   lettering:/^[A-Za-z0-9 ,.:;!?'’\-–%°℃~&]+$/u,headline:{cover:36,other:28},line:38,editsPer:15}};
 const localeOf=note=>LOCALES[note.work.data.locale]||LOCALES['zh-CN'];
 const english=note=>note.work.data.locale==='en';
@@ -360,7 +361,7 @@ export async function makeImageCards(note,{directory,chrome,blocks,provider,ocrB
   if(!best)throw Error('模型生图 card '+(i+1)+' could not be drawn');
   if(best.issues.length)flags.push(`Card ${i+1}: ${best.issues.join(' ')}`);
   const html=join(directory,`card-${String(i+1).padStart(2,'0')}.html`);
-  await writeFile(html,composeHtml({file:basename(best.file),width:best.width,height:best.height},best.window,`${r.ai} · ${r.brand} · ${i+1}/${total}`));
+  await writeFile(html,composeHtml({file:basename(best.file),width:best.width,height:best.height},best.window,`${r.brand} · ${i+1}/${total}`));
   const page=await chrome.page();
   try{await page.open(html);pages.push(await page.shot());}finally{await page.close();}
   drawn.push({card:i+1,lettering,file:basename(best.file),threadId:best.provenance?.threadId||null,model:best.provenance?.model||null,service:best.provenance?.service||null,read:best.read,issues:best.issues});
@@ -393,6 +394,11 @@ export async function installSamples(note,sets,meta,{compress=true}={}){
  return target;
 }
 
+/** The styles a note gets: 智能排版 only in the chosen sections, and no model-drawn set for an English work. */
+export function cardStyles(note,styles,{codeSections=null,englishImageCards=false}={}){
+ return styles.filter(style=>!(style==='ai-code'&&codeSections&&!codeSections.includes(note.work.data.sectionId))&&!(style==='ai-image'&&english(note)&&!englishImageCards));
+}
+
 /** The styles a note still needs: none when its installed sets match the note as it is now. */
 export async function missingStyles(note,styles){
  try{const source=JSON.parse(await readFile(join(note.vault,'Card Samples',note.name,'source.json'),'utf8'));
@@ -400,10 +406,10 @@ export async function missingStyles(note,styles){
  return styles;
 }
 
-export async function makeSamples(file,{out,chrome,provider,ocrBinary,styles=['ai-code','ai-image'],codeSections=null,install=true,force=false,limiter=noLimiter,log=console.log}){
+export async function makeSamples(file,{out,chrome,provider,ocrBinary,styles=['ai-code','ai-image'],codeSections=null,englishImageCards=false,install=true,force=false,limiter=noLimiter,log=console.log}){
  const note=await readWork(file),directory=join(out,note.name.replace(/\//g,'_'));
  // A whole-article card page (智能排版) only where the section gives its articles one.
- if(codeSections)styles=styles.filter(style=>style!=='ai-code'||codeSections.includes(note.work.data.sectionId));
+ styles=cardStyles(note,styles,{codeSections,englishImageCards});
  const say=message=>log(`[${new Date().toISOString().slice(11,19)}] ${note.title.slice(0,14)}: ${message}`);
  let needed=force?styles:await missingStyles(note,styles);
  if(!needed.length)return {title:note.title,name:note.name,skipped:true};
@@ -450,7 +456,7 @@ export async function vaultWorks(vault){
  return files;
 }
 
-async function batch(files,{out,styles,codeSections=null,force,concurrency,provider,ocrBinary,limiter,install=true,log}){
+async function batch(files,{out,styles,codeSections=null,englishImageCards=false,force,concurrency,provider,ocrBinary,limiter,install=true,log}){
  const queue=[...files],results=[],running=new Set(),started=new Date().toISOString();let stopped=false;
  const status=async()=>{
   const done=results.filter(r=>r.installed).length,skipped=results.filter(r=>r.skipped).length;
@@ -463,7 +469,7 @@ async function batch(files,{out,styles,codeSections=null,force,concurrency,provi
   while(queue.length&&!stopped){
    const file=queue.shift();running.add(basename(file));await status();
    let chrome=null;
-   try{chrome=await launchChrome();const report=await makeSamples(file,{out,chrome,provider,ocrBinary,styles,codeSections,force,limiter,install,log});results.push(report);if(report.stop)stopped=true;}
+   try{chrome=await launchChrome();const report=await makeSamples(file,{out,chrome,provider,ocrBinary,styles,codeSections,englishImageCards,force,limiter,install,log});results.push(report);if(report.stop)stopped=true;}
    catch(error){results.push({file,error:error.message});log('FAILED '+basename(file)+': '+error.message);if(error.stop)stopped=true;}
    finally{if(chrome)await chrome.close();running.delete(basename(file));await writeFile(join(out,'reports.json'),JSON.stringify(results,null,1));await status();}
   }
@@ -477,16 +483,16 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const flag=name=>{const i=args.indexOf(name);if(i<0)return false;args.splice(i,1);return true;};
  const out=take('--out'),vault=take('--vault'),styles=(take('--styles')||'ai-code,ai-image').split(','),concurrency=Number(take('--concurrency')||4);
  const codeSections=take('--code-sections')?.split(',')||null;
- const noInstall=flag('--no-install'),force=flag('--force');
+ const noInstall=flag('--no-install'),force=flag('--force'),englishImageCards=flag('--english-image-cards');
  const notes=vault?await vaultWorks(resolve(vault)):args;
- if(!out||!notes.length){console.error('Usage: node scripts/rssd-card-samples.mjs --out <dir> [--vault <vault> | <note.md>…] [--styles ai-code,ai-image] [--concurrency 4] [--force] [--no-install]');process.exit(2);}
+ if(!out||!notes.length){console.error('Usage: node scripts/rssd-card-samples.mjs --out <dir> [--vault <vault> | <note.md>…] [--styles ai-code,ai-image] [--concurrency 4] [--force] [--no-install] [--english-image-cards]');process.exit(2);}
  await mkdir(join(out,'.bin'),{recursive:true});
  const ocrBinary=join(out,'.bin','rssd-ocr');
  if(styles.includes('ai-image')&&!await exists(ocrBinary))await new Promise((done,fail)=>execFile('swiftc',['-O',join(HERE,'rssd-ocr.swift'),'-o',ocrBinary],error=>error?fail(error):done()));
  const provider=createCodexImageProvider({stateDirectory:join(out,'.provider-state'),enabled:true,timeoutMs:900000});
  const limiter=makeLimiter({log:console.log});
  console.log(`[${new Date().toISOString().slice(11,19)}] ${notes.length} notes, ${concurrency} at a time`);
- const {results,stopped}=await batch(notes,{out,styles,codeSections,force,concurrency,provider,ocrBinary,limiter,install:!noInstall,log:console.log});
+ const {results,stopped}=await batch(notes,{out,styles,codeSections,englishImageCards,force,concurrency,provider,ocrBinary,limiter,install:!noInstall,log:console.log});
  const count=key=>results.filter(key).length;
  console.log(JSON.stringify({notes:notes.length,installed:count(r=>r.installed),skipped:count(r=>r.skipped),
   failed:results.filter(r=>r.error||r.installError||styles.some(s=>r[s]?.error)).map(r=>({title:r.title||basename(r.file||''),error:r.error||r.installError||styles.map(s=>r[s]?.error).filter(Boolean).join(' | ')})),

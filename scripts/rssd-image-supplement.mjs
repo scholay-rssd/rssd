@@ -4,7 +4,8 @@
 //
 //   node scripts/rssd-image-supplement.mjs --out <dir> <note.md> [...]
 //
-// The public caption gets only the site's AI disclosure. The drawing agent and model go to record.json,
+// The public caption carries no AI label (the owner marks AI content per work and per platform). The drawing
+// agent and model go to record.json,
 // which is the internal record (and later the work's private notes), never into the article.
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {basename,dirname,join,resolve} from 'node:path';
@@ -12,7 +13,7 @@ import {spawn} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import sharp from 'sharp';
 import {createCodexImageProvider} from './rssd-codex-image-provider.mjs';
-import {generatedCaption} from './rssd-image-disclosure.mjs';
+
 
 const MIN_PICTURES=2;
 // One look for every picture on the site, so a work never mixes a painting with a photo-like picture.
@@ -51,7 +52,7 @@ export function planPrompt({meta,blocks,count,allowed}){
   (blocks.some(b=>b.kind==='image')?'- The article already has a picture; place new ones in other sections.\n':'- The first picture is the title picture (role "title"): place it after the opening paragraph. Any other is role "body", after the paragraph it illustrates best, in a different section.\n')+
   '- requirement: an English brief for the illustrator describing content only (subject, setting, composition, viewpoint; accurate anatomy and husbandry). Do not describe the art style or medium; one house style is applied to every picture.\n'+
   '- alt: '+(zh?'Chinese, 20–60 characters,':'English, 20–60 characters,')+' saying what the picture shows.\n'+
-  '- caption: '+(zh?'one short Chinese sentence ending with 。':'one short English sentence')+', stating what the reader should notice; no source or AI label (added later).\n'+
+  '- caption: '+(zh?'one short Chinese sentence ending with 。':'one short English sentence')+', stating what the reader should notice; no source and no AI label.\n'+
   '- Show only what the article supports; do not invent products, brands or people.\n\n'+
   'Article title: '+meta.title+'\n\n'+blocks.map(b=>'['+b.index+'] '+(b.kind==='image'?'(existing picture)':b.text.slice(0,600))).join('\n\n');
 }
@@ -81,8 +82,10 @@ export function askCodexPlan({prompt,directory,command=['npx','-y','@openai/code
  });
 }
 
-export async function supplementNote(file,{out,provider,plan:planner=askCodexPlan,disclosures,style}){
+export async function supplementNote(file,{out,provider,plan:planner=askCodexPlan,style}){
  const content=await readFile(file,'utf8'),{front,blocks,meta}=parseNote(content);
+ // English editions reuse the Chinese edition's pictures for now; no extra pictures are drawn for them.
+ if(meta.locale==='en')return {file,skipped:'English edition reuses the Chinese pictures'};
  const existing=blocks.filter(b=>b.kind==='image').length,count=Math.max(0,MIN_PICTURES-existing);
  const workDir=join(out,meta.id||basename(file,'.md'));await mkdir(workDir,{recursive:true});
  if(!count)return {file,skipped:'already has '+existing+' pictures'};
@@ -100,7 +103,7 @@ export async function supplementNote(file,{out,provider,plan:planner=askCodexPla
   const webp=await sharp(result.bytes).resize({width:1600,withoutEnlargement:true}).webp({quality:84}).toBuffer();
   const sha=createHash('sha256').update(webp).digest('hex'),name=sha+'.webp';
   await writeFile(join(workDir,name),webp);await writeFile(join(workDir,result.registration.sha256+'.original.png'),result.bytes);
-  const caption=generatedCaption(slot.caption,disclosures?{disclosures}:{},meta.locale);
+  const caption=slot.caption;
   pictures.push({...slot,requestId,file:name,sha256:sha,originalSha256:result.registration.sha256,publicCaption:caption,
    drawnBy:{agent:result.provenance.agent,model:result.provenance.model,service:result.provenance.service,threadId:result.provenance.threadId,drawnAt:result.provenance.drawnAt}});
  }

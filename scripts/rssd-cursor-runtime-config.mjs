@@ -24,7 +24,7 @@ export function validateCursorImageRuntimeConfiguration(value){
  if(value.policies!==undefined){
   if(!value.policies||typeof value.policies!=='object'||Array.isArray(value.policies))throw pending('Invalid site image policies');
   for(const [siteId,policy] of Object.entries(value.policies)){
-   if(!/^[a-zA-Z0-9-]{1,100}$/.test(siteId)||!policy||!Array.isArray(policy.skills)||!policy.skills.length||!Array.isArray(policy.references)||!validImageDisclosures(policy.disclosures))throw pending('Invalid site image policy');
+   if(!/^[a-zA-Z0-9-]{1,100}$/.test(siteId)||!policy||!Array.isArray(policy.skills)||!policy.skills.length||!Array.isArray(policy.references)||(policy.disclosures!==undefined&&!validImageDisclosures(policy.disclosures)))throw pending('Invalid site image policy');
    for(const item of [...policy.skills,...policy.references]){absolute(item?.path,'image policy file');if(!/^[a-f0-9]{64}$/.test(item?.sha256||''))throw pending('Image policy file hash missing');}
   }
  }
