@@ -12,9 +12,16 @@ import {contentKey} from '../contracts/rssd-publication.cjs';
 import p from '../contracts/rssd-v1.cjs';
 import mediaProtocol from '../contracts/rssd-media.cjs';
 const artifact=resolve(process.env.RSSD_RECEIVER_ARTIFACT_DIR||'.');
-const {createReceiver}=await import(pathToFileURL(join(artifact,'receiver/server.mjs')));
+const {createReceiver,resolveBuildSiteConcurrency}=await import(pathToFileURL(join(artifact,'receiver/server.mjs')));
 const {buildAndActivate,publicModes}=await import(pathToFileURL(join(artifact,'receiver/build.mjs')));
 const {verifyLive}=await import(pathToFileURL(join(artifact,'admin/release-verification.mjs')));
+
+test('site build concurrency defaults to exclusive n=1 and refuses undeployed n>1',async()=>{
+  assert.equal(resolveBuildSiteConcurrency(undefined),1);
+  assert.equal(resolveBuildSiteConcurrency('3'),3);
+  assert.throws(()=>resolveBuildSiteConcurrency('0'));
+  await assert.rejects(createReceiver({config:{home:'/tmp/rssd-never',source:artifact,buildSiteConcurrency:2,sites:[]}}),/not deployed/);
+});
 
 test('HTTP receiver builds bilingual pages and applies recoverable withdraw/delete/restore without stale revival',async t=>{
   const dir=await mkdtemp(join(tmpdir(),'rssd-http-')),base=join(dir,'public'),current=join(base,'current');
@@ -179,4 +186,37 @@ test('academic intake rejects incomplete new news without reserving its request 
  const valid={...packet,content:{...packet.content,summary:'完整摘要'}};
  assert.equal((await receiver.app.inject({method:'POST',url:base+'/submissions',headers,payload:valid})).json().state,'queued');
  assert.equal((await receiver.app.inject({method:'POST',url:base+'/submissions',headers,payload:valid})).json().state,'queued');
+});
+
+test('createReceiver refuses host concurrency >1; n=1 serialises sites under one build.lock',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'rssd-http-site-serial-'));
+  const metho={...profiles.find(x=>x.id==='metho'),origin:'http://127.0.0.1:9',languages:['zh-CN','en']};
+  const pets={...profiles.find(x=>x.id==='pets'),origin:'http://127.0.0.1:9',languages:['zh-CN','en']};
+  const tokenMetho='fixture-site-parallel-metho-token-123456',tokenPets='fixture-site-parallel-pets-token-1234567';
+  await assert.rejects(createReceiver({config:{home:join(dir,'bad'),source:artifact,buildSiteConcurrency:2,sites:[
+    {site:metho,publicRoot:join(dir,'public-metho-bad'),tokenHash:p.hash(tokenMetho)}
+  ]}}),/not deployed/);
+  let active=0,peak=0;const spans=[];
+  const receiver=await createReceiver({config:{home:join(dir,'state'),source:artifact,buildSiteConcurrency:1,sites:[
+    {site:metho,publicRoot:join(dir,'public-metho'),tokenHash:p.hash(tokenMetho)},
+    {site:pets,publicRoot:join(dir,'public-pets'),tokenHash:p.hash(tokenPets)}
+  ]},build:async({job,site})=>{
+    active+=1;peak=Math.max(peak,active);const start=Date.now();
+    await new Promise(r=>setTimeout(r,40));
+    const end=Date.now();active-=1;spans.push({siteId:site.id,start,end});
+    return {release:'release-'+site.id+'-'+job.id};
+  }});
+  t.after(async()=>{await receiver.app.close();await rm(dir,{recursive:true,force:true});});
+  assert.equal(receiver.buildSiteConcurrency,1);
+  const packet=site=>({
+    version:1,requestId:site.id+'-article',siteId:site.id,workspaceId:site.spaceId,sectionId:sectionsForSite(site)[0].id,
+    workId:site.id+'-work',locale:'en',revision:1,contentHash:'a'.repeat(64),route:'/en/news/'+site.id+'-work/',
+    content:{locale:'en',title:site.id+' article',bodyMarkdown:'Body for '+site.id+'.',metadata:{date:'2026-11-21'}}
+  });
+  for(const [site,token] of [[metho,tokenMetho],[pets,tokenPets]]){
+    assert.equal((await receiver.app.inject({method:'POST',url:'/api/rssd-receiver/v1/sites/'+site.id+'/submissions',headers:{authorization:'Bearer '+token},payload:packet(site)})).json().state,'queued');
+  }
+  await receiver.tick();
+  assert.equal(spans.length,2);assert.equal(peak,1);
+  assert.ok(spans[0].end<=spans[1].start||spans[1].end<=spans[0].start);
 });
