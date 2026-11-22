@@ -17,6 +17,7 @@ import defaults from '../../../contracts/writing-defaults-v1.cjs';
 import {NOTEBOOK_V2_FLAT_OUTPUT,normalizeNotebookResult} from '../../../contracts/notebook-output.mjs';
 import {centerRecordContext,outputForRecordKind} from './center-record.mjs';
 import {writingPersonaSnapshot} from '../../../contracts/persona-voice.mjs';
+import {createCenterFileDelivery} from './center-file-delivery.mjs';
 
 export function redactAcpText(text){
   return String(text||'')
@@ -98,7 +99,7 @@ export function centerWritingPrompt({claim,locale,source,writingPolicy,writingSk
   outputForRecordKind(imagePlan?CENTER_IMAGE_PLAN_OUTPUT:writingSkills.defaults?.baseline.delivery?.format==='notebook-v2-flat'?NOTEBOOK_V2_FLAT_OUTPUT:CENTER_NOTEBOOK_OUTPUT,centerRecordContext({claim,source,writingSkills}).recordKind,{workspaceId:claim.workspaceId}),
  ].join('\n\n');
 }
-export async function produceCenterEdition({claim,locale,workId,source,directory,agentId,origin,expectedModel,signal,onEvent=()=>{},voice,writingSkillScope,imagePlanRequired=false,verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash,imageTranslationInstructions,verifiedBibliographyInstructions,handshakeOnly=false,writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}},{registry=new AgentRegistry(),timeoutMs=30*60000,pilotEnvironment=pilotCodexEnvironment,skillSnapshot=centerSkillSnapshot,imageStage}={}){
+export async function produceCenterEdition({claim,locale,workId,source,directory,agentId,origin,expectedModel,signal,onEvent=()=>{},voice,writingSkillScope,imagePlanRequired=false,verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash,imageTranslationInstructions,verifiedBibliographyInstructions,handshakeOnly=false,writingPolicy={version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS}},{registry=new AgentRegistry(),timeoutMs=30*60000,pilotEnvironment=pilotCodexEnvironment,skillSnapshot=centerSkillSnapshot,imageStage,fileDelivery=false,resultAdapter}={}){
   if(expectedModel&&(expectedModel!=='gpt-6.1-terra'||agentId!=='codex'))throw Error('自动试点需要 Codex 和 gpt-6.1-terra');
   if([verifiedSourcePrompt,verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash].some(x=>x!==undefined)&&(typeof verifiedSourcePrompt!=='string'||!verifiedSourcePrompt||![verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash].every(x=>/^[a-f0-9]{64}$/.test(x||''))))throw Error('来源快照或正文材料无效');
   const writingSkills=await skillSnapshot({claim,directory,writingPolicy,writingSkillScope,origin});
@@ -130,6 +131,8 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
   }
   const launch=await registry.launch(agentId);let env=agentEnvironment(launch.env);
   const startedAt=new Date().toISOString(),runId=randomUUID();let modelId=null,modelName=null;
+  if(fileDelivery&&imagePlan)throw Error('File delivery cannot replace an image-plan task');
+  const delivery=fileDelivery?createCenterFileDelivery({file:join(directory,locale+'.delivery-'+runId+'.json'),effective:writingSkills.defaults}):null;
   delete env.RSSD_CENTER_TOKEN;delete env.SCHOLAY_TODAY_TOKEN;delete env.SCHOLAY_TODAY_TOKEN_FILE;
   if(expectedModel)env=await pilotEnvironment(env,{cwd:directory});
   const child=spawn(launch.command,launch.args,{cwd:directory,env,windowsHide:true,stdio:['pipe','pipe','pipe']});
@@ -152,7 +155,7 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
   child.stdin.on('error',error=>fail(processExitError(error)));
   child.stderr.setEncoding('utf8');child.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-8000);});
   const lines=createInterface({input:child.stdout,crlfDelay:Infinity});
-  lines.on('line',line=>{
+  lines.on('line',async line=>{
     stdoutBytes+=Buffer.byteLength(line)+1;
     let message;try{message=JSON.parse(line);}catch{return;}
     if(message.method==='session/update'){
@@ -163,8 +166,13 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
     }
     if(message.method==='session/request_permission'){
       const readOnly=['read','search','fetch'].includes(message.params?.toolCall?.kind);
-      const option=readOnly&&message.params.options?.find(option=>option.kind==='allow_once');
+      const option=(readOnly||delivery?.permits(message.params?.toolCall))&&message.params.options?.find(option=>option.kind==='allow_once');
       send({jsonrpc:'2.0',id:message.id,result:{outcome:option?{outcome:'selected',optionId:option.optionId}:{outcome:'cancelled'}}});return;
+    }
+    if(delivery&&['fs/read_text_file','fs/write_text_file'].includes(message.method)&&message.id!==undefined){
+      try{send({jsonrpc:'2.0',id:message.id,result:await delivery.call(message.method,message.params,sessionId)});}
+      catch(error){send({jsonrpc:'2.0',id:message.id,error:{code:-32602,message:error.message}});}
+      return;
     }
     if(message.method&&message.id!==undefined){send({jsonrpc:'2.0',id:message.id,error:{code:-32601,message:'This producer only accepts article output and read-only research'}});return;}
     const item=pending.get(message.id);if(!item)return;pending.delete(message.id);clearTimeout(item.timer);
@@ -179,7 +187,7 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
   try{
     if(signal?.aborted)throw Error('生产已暂停');
     phase='initialize';
-    const initialized=await request('initialize',{protocolVersion:1,clientInfo:{name:'rssd',version:'1.0.0'},clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false}});
+    const initialized=await request('initialize',{protocolVersion:1,clientInfo:{name:'rssd',version:'1.0.0'},clientCapabilities:{fs:{readTextFile:!!delivery,writeTextFile:!!delivery},terminal:false}});
     if(handshakeOnly)return {handshake:true,protocolVersion:initialized?.protocolVersion??null,agentInfo:initialized?.agentInfo||null,diagnostics:diagnostics()};
     phase='session/new';
     const session=await request('session/new',{cwd:directory,mcpServers:[]});sessionId=session.sessionId;
@@ -205,20 +213,26 @@ export async function produceCenterEdition({claim,locale,workId,source,directory
       persona=state?.snapshot||null;
     }
     phase='session/prompt';
-    const prompt=centerWritingPrompt({claim,locale,source,writingPolicy,writingSkills,imagePlan,verifiedSourcePrompt,imageTranslationInstructions,verifiedBibliographyInstructions,persona});
+    const prompt=centerWritingPrompt({claim,locale,source,writingPolicy,writingSkills,imagePlan,verifiedSourcePrompt,imageTranslationInstructions,verifiedBibliographyInstructions,persona})+(delivery?delivery.prompt():'');
     await writeFile(join(directory,locale+'.prompt.txt'),prompt,{mode:0o600});
     const result=await request('session/prompt',{sessionId,prompt:[{type:'text',text:prompt}]});
     phase='complete';
     if(result.stopReason==='cancelled')throw Error('智能体已停止');
+    if(delivery){
+      await writeFile(join(directory,locale+'.agent-transcript.txt'),output,{mode:0o600});
+      const saved=await delivery.completed();output=saved.text;
+      await writeCenterJson(join(directory,locale+'.file-delivery.json'),{version:1,runId,sessionId,file:delivery.file,clientWrites:saved.writes,outputSha256:protocol.hash(output),agentId,modelId,modelName});
+    }
     const signature={runId,agentId,agentName:launch.agent?.name||agentId,startedAt,completedAt:new Date().toISOString(),action:claim.kind||'write',status:'completed',modelId,modelName,writingSkillSnapshotHash:writingSkills.snapshotHash,writingSkills:writingSkills.skills.map(({id,version,contentHash})=>({id,version,contentHash})),...(writingSkills.defaults?{writingDefaults:{version:writingSkills.defaults.baseline.version,baselineHash:writingSkills.defaults.baselineHash,catalogHash:writingSkills.defaults.baseline.catalogHash,sourceCommit:writingSkills.defaults.baseline.source.commit,adjustmentHash:defaults.hash(writingSkills.defaults.adjustment),adjustmentOrigin:writingSkills.defaults.adjustment.origin,...(writingSkills.defaults.adjustment.images?{imageAdjustment:writingSkills.defaults.adjustment.images}:{}),...(writingSkills.defaults.adjustment.bodyLength?{bodyLengthAdjustment:writingSkills.defaults.adjustment.bodyLength}:{})}}:{})};
     await writeFile(join(directory,locale+'.agent-output.txt'),output,{mode:0o600});
     if(!imagePlan){
-      if(writingSkills.defaults){const issues=defaults.deliveryIssues(parseCenterResult(output),writingSkills.defaults);if(issues.length)throw Object.assign(Error(issues.join('；')),{code:'writing_delivery_incomplete'});}
       if(origin&&claim?.workspaceId){
         const {persistGenerationEvidence}=await import('../../../scripts/rssd-center-generation-evidence.mjs');
         await persistGenerationEvidence({directory,locale,sectionId:claim.sectionId,origin,workspaceId:claim.workspaceId,output,signature,source,agentId,demandId:claim.id,generation:claim.generation,workerId:claim.workerId||claim.payload?.storeOnlyWorkerId});
       }
-      return parseCenterEdition(output,{source,locale,sectionId:claim.sectionId,signature,origin,workspaceId:claim.workspaceId,...recordContext,strictRegisteredImages:claim.kind==='translate'});
+      if(writingSkills.defaults){const issues=defaults.deliveryIssues(parseCenterResult(output),writingSkills.defaults);if(issues.length)throw Object.assign(Error(issues.join('；')),{code:'writing_delivery_incomplete'});}
+      const parsed=parseCenterResult(output),adapted=resultAdapter?await resultAdapter({result:parsed,claim,locale,source,directory,origin,signature}):parsed;
+      return notebookEdition(adapted,{source,locale,sectionId:claim.sectionId,signature,origin,workspaceId:claim.workspaceId,...recordContext,strictRegisteredImages:claim.kind==='translate'});
     }
     // Preserve the original model output before any image/provider operation.
     const draft=parseCenterResult(output),binding={signature,sectionId:claim.sectionId,sourceHash:protocol.hash(source||null),writingSkillSnapshotHash:writingSkills.snapshotHash,...(verifiedSourceSnapshotHash?{verifiedSourceSnapshotHash,verifiedSourceSelectionHash,verifiedSourceBindingHash}:{})};

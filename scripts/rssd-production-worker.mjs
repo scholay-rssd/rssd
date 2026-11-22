@@ -165,9 +165,26 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
     };
     const attestOutbox=async original=>{for(const entry of await outbox.list())if(['pending','needs_attention'].includes(entry.state))await attest(entry.packet,original);};
     const flushScoped=async original=>{for(const entry of await outbox.list())if(entry.state==='pending'){await attest(entry.packet,original);await ready('before_submission');await outbox.flushOne(entry.requestId);}};
+    const requirePointedClaim=value=>{
+      if(demandId&&!scoped&&!storeOnly&&value&&(value.id!==demandId||!workspaceIds.includes(value.workspaceId)||sectionIds.length&&!sectionIds.includes(value.sectionId)))
+        throw Error('Another demand is active; preserve it and wait. Do not resume, release, cancel or submit it.');
+    };
+    const flushPointed=async()=>{
+      if(!demandId)return outbox.flush();
+      for(const entry of await outbox.list())if(entry.state==='pending'&&entry.packet.demandId===demandId&&workspaceIds.includes(entry.packet.workspaceId)&&(!sectionIds.length||sectionIds.includes(entry.packet.sectionId)))await outbox.flushOne(entry.requestId);
+    };
+    if(demandId&&!scoped&&!storeOnly){
+      let current;
+      try{current=await client.activeClaim();}catch(error){
+        if(error.status>=400&&error.status<500&&![408,429].includes(error.status))throw error;
+        const cached=await read(activeFile);if(!cached||cached.origin!==client.origin||!cached.claim)throw error;
+        current=cached.claim;
+      }
+      requirePointedClaim(current);
+    }
     if(requiredModel)for(const entry of await outbox.list())if(['pending','needs_attention'].includes(entry.state))requirePilotPacket(entry.packet);
     if(scoped){await ready('before_recovery');for(const entry of await outbox.list())if(['pending','needs_attention'].includes(entry.state))requireScopedPacket(entry.packet,scoped);}
-    else if(!storeOnly) await outbox.flush();
+    else if(!storeOnly) await flushPointed();
     else{
       for(const entry of await outbox.list()){
         if(entry.storeOnly!==true||demandId&&entry.packet.demandId!==demandId)continue;
@@ -208,6 +225,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
       const cached=await read(activeFile);if(!cached||cached.origin!==client.origin||!cached.claim)throw error;
       claim=cached.claim;offline=true;cachedWritingHash=cached.writingSnapshotHash;
     }
+    requirePointedClaim(claim);
     if(claim)await saveActive(claim);
     if(scoped&&claim){requireScopedClaim(claim,scoped);for(const entry of await outbox.list())if(['pending','needs_attention'].includes(entry.state)&&entry.packet.claimToken!==claim.claimToken)throw Error('待提交稿件不属于当前认领');}
     if(claim?.state==='blocked'){
@@ -265,6 +283,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
     if(!claim){await client.heartbeat({state:'idle',agentId});return {state:'idle'};}
     // Save a newly acquired identity before any later validation or network
     // operation, so an ineligible claim can still be released or recovered.
+    requirePointedClaim(claim);
     await saveActive(claim);
     if(claim.payload?.storeOnly===true){
       if(!storeOnly)throw Object.assign(Error('Store-only demand requires --store-only / storeOnly:true'),{code:'store_only_required',status:403});
@@ -397,7 +416,7 @@ export async function runProductionTurn({client,home,producer,profiles=siteProfi
         if(requiredModel)requirePilotPacket(packet);
         if(translateSource)requireTranslatePacket(packet,claim);
         if(scoped){await attest(packet,claim);await attestOutbox(claim);await ready('before_submission');}
-        await outbox.enqueue(packet,{storeOnly:storeOnly===true||claim.payload?.storeOnly===true});if(scoped){await attestOutbox(claim);await attest(packet,claim);await ready('before_submission');}else if(!storeOnly) await outbox.flush();
+        await outbox.enqueue(packet,{storeOnly:storeOnly===true||claim.payload?.storeOnly===true});if(scoped){await attestOutbox(claim);await attest(packet,claim);await ready('before_submission');}else if(!storeOnly) await flushPointed();
         else await outbox.flushOne(packet.requestId);
         const result=await outbox.flushOne(packet.requestId,{retry:resume});
         if(storeOnly&&result.state==='accepted')assertStoreOnlyReceipt(result.receipt,packet,{workerId:client.workerId||claim.payload?.storeOnlyWorkerId});
