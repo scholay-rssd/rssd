@@ -8,14 +8,14 @@ import {writableSectionsForSite} from './site-sections.mjs';
 import {sectionWorkPolicy} from './work-types.mjs';
 import contract from './writing-defaults-v1.cjs';
 
-export const WRITING_DEFAULTS_VERSION='2026-11-22.1';
+export const WRITING_DEFAULTS_VERSION='2026-11-24.1';
 export const WRITING_DOMAIN_IDS=['academic','metho','pets','enter','study','xsiching','legis','design','xsime','personal'];
 const elements={
  'academic/calendar':['一项年度惯例事项及依据','惯例与当年日期的区别','适用人群和官方行动入口'],
  'academic/history':['一项真实历史事件及日期依据','人物、过程和原始材料','学术意义'],
  'academic/briefings':['至少两件独立的已读话题','逐项事实与意义','编辑组织及共同问题'],
  'academic/observations':['一个学术话题','事实、方法或过程','依据材料展开的解释'],
- 'metho/methods':['研究问题与适用条件','数据和估计目标','具体步骤、实例及解释'],
+ 'metho/methods':['研究问题与适用条件','在 Scholay 中的实际操作及真实截图','结果读法与核对'],
  'metho/statistics':['统计概念及目标','有依据或明确示意的算例','结果读法及适用条件'],
  'metho/experiments':['实验问题和设计','变量、对照与测量','实施步骤和结果解释'],
  'metho/frontiers':['具体论文或技术资料','新方法或实际改进','与已有方法的关系和可核对结果'],
@@ -63,7 +63,7 @@ export function buildWritingDefaultsCatalog({source}){
  const workspaces=profiles.map(site=>({siteId:site.id,workspaceId:site.spaceId,name:site.name,sections:writableSectionsForSite(site).map(s=>{
   const key=site.spaceId+'/'+s.id,rule=COLUMN_RULES[site.id]?.[s.id],familyId=families[key];
   if(!rule||!elements[key]||!familyId||!WRITING_DOMAIN_IDS.includes(site.spaceId))throw Error('Missing canonical writing defaults: '+key);
-  const actualObject=['animal','visual'].includes(familyId)||['design/works','personal/works'].includes(key);
+  const actualObject=['animal','visual','scholay-walkthrough'].includes(familyId)||['design/works','personal/works'].includes(key);
   // A section that takes notes also carries the note form: the note skill before the family and domain rules,
   // and one point chosen from the column's elements instead of all of them. Pictures follow the same rules.
   const note=sectionWorkPolicy(s).workTypes.includes('note')?{note:{skillIds:['rssd-writing-base','rssd-writing-note','rssd-writing-'+familyId,'rssd-domain-'+site.spaceId],requiredElements:['本栏对象的一个具体看点（本栏长文的要素：'+elements[key].join('；')+'）','承担主要信息的图片，按阅读顺序排列','读懂图片所需的简短事实和可回查的出处']}}:{};
