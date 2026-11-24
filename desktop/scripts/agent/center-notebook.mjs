@@ -15,12 +15,12 @@ blocks 保持完整正文和顺序，可用 paragraph、markdown、heading（含
 sources 每条包含 id、title、url、summary、acquiredVia（rss/web/record）、reviewed=false；正文行 sourceIds 引用实际来源 ID。blockNotes[行ID].notes 和 internalNotes 使用写作协议规定的五类字段。不要填写 modelSignatures、meta 或运行记录，由服务记录真实智能体与会话信息。
 metadata.platformContent 按本单平台要求填写；没有中心媒体 ID 时不要伪造 media，已有图片保持真实链接。`;
 
-export function notebookEdition(result,{source,signature,sectionId,locale,origin,workspaceId,strictRegisteredImages=false,recordKind=null,recordId}={}){
+export function notebookEdition(result,{source,signature,sectionId,locale,origin,workspaceId,strictRegisteredImages=false,extraMediaIds=[],recordKind=null,recordId}={}){
  const input=result?.notebook;
  if(!input||input.version!==2)throw Error('智能体结果缺少 notebook v2 正文与私有备注结构；输出已保留');
  const n=cleanNotebookCitations(input),previous=source?.payload?.metadata?.notebook;
  delete n.meta;delete n.modelSignatures;
- const imageReference=origin?centerImageReference({origin,source,strictRegisteredImages}):publicUrl;
+ const imageReference=origin?centerImageReference({origin,source,strictRegisteredImages,extraMediaIds:strictRegisteredImages?[]:extraMediaIds}):publicUrl;
  const errors=formatErrors(n,{imageReference});
  if(!errors.length)errors.push(...headingFormatErrors(n));
  if(errors.length)throw Error(errors.map(e=>e.path+'：'+e.message).join('；'));
