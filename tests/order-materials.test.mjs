@@ -211,3 +211,13 @@ test('a scene answers the assistant page locally and reads only public configura
     assert.equal(await at('POST','/user/claw/session/send'),null,'unknown calls are left to the 501 fallback');
   }finally{rmSync(home,{recursive:true,force:true});}
 });
+
+test('a brief may choose another writing family for its one article',()=>{
+ assert.equal(parseBriefMounts('---\nwriting: scholay-walkthrough\nmount: stage:simpson-ucb\n---\n正文').family,'scholay-walkthrough');
+ assert.equal(parseBriefMounts('---\nmount: stage:simpson-ucb\n---\n正文').family,undefined);
+ assert.equal(parseBriefMounts('正文').family,undefined);
+ assert.throws(()=>parseBriefMounts('---\nwriting: Scholay 实操\n---\n'),/写作族名/);
+ assert.throws(()=>parseBriefMounts('---\nwriting: scholay-walkthrough\nwriting: method\n---\n'),/一行 writing/);
+ // The family line is not material: an order that only chooses a family stages nothing.
+ assert.equal(orderMounts('---\nwriting: scholay-walkthrough\n---\n正文').mounts.length,0);
+});

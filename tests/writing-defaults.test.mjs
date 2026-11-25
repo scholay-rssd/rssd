@@ -87,3 +87,37 @@ test('every section that takes notes has the note form, and no other section doe
   assert.equal(Boolean(entry.note),sectionWorkPolicy(s).workTypes.includes('note'),site.spaceId+'/'+s.id);
  }
 });
+test('a section may offer another writing family, and compose uses it only when a demand chooses it',()=>{
+ const c=fixtureCatalog(),d=resolveWritingDefaults(c,'metho','statistics');
+ assert.equal(d.familyId,'method');assert.deepEqual(d.alternates.map(a=>a.familyId),['scholay-walkthrough']);
+ const alt=d.alternates[0];
+ assert.deepEqual(alt.skills.map(x=>x.id),['rssd-writing-base','rssd-writing-scholay-walkthrough','rssd-domain-metho']);
+ assert.deepEqual(alt.requiredElements.slice(0,3),d.requiredElements);assert.match(alt.requiredElements.at(-1),/Scholay/);
+ assert.match(alt.instructions,/文体：scholay-walkthrough/);assert.match(alt.instructions,/统计之美/);assert.doesNotMatch(d.instructions,/rssd-writing-scholay-walkthrough @/);
+ // Without a choice, and when the default is named, the context and its hash are what they were before.
+ const plain=contract.compose(d),named=contract.compose(d,{family:'method'}),chosen=contract.compose(d,{family:'scholay-walkthrough',origin:'task'});
+ assert.equal(named.hash,plain.hash);assert.equal(plain.family,undefined);assert.equal(plain.adjustment.family,undefined);
+ assert.equal(chosen.family,'scholay-walkthrough');assert.equal(chosen.adjustment.family,'scholay-walkthrough');assert.notEqual(chosen.hash,plain.hash);
+ assert.match(chosen.instructions,/\[rssd-writing-scholay-walkthrough @/);assert.doesNotMatch(chosen.instructions,/\[rssd-writing-method @/);
+ assert.deepEqual(chosen.images,alt.images);assert.equal(contract.context({...chosen,retrieval:{}}).hash,chosen.hash);
+ // Task adjustments still apply on top of the chosen family.
+ const tuned=contract.compose(d,{family:'scholay-walkthrough',origin:'task',instructions:'面向初学者。',images:{minimum:3}});
+ assert.equal(tuned.images.minimum,3);assert.match(tuned.instructions,/面向初学者/);
+ // A family the section does not offer, a malformed name and a note are refused.
+ assert.throws(()=>contract.compose(d,{family:'animal'}),/没有提供写作族/);
+ assert.throws(()=>contract.compose(d,{family:'Bad Name'}),/写作族无效/);
+ assert.throws(()=>contract.compose(resolveWritingDefaults(c,'pets','daily-cat'),{family:'scholay-walkthrough'}),/没有提供写作族/);
+ // A changed alternate no longer matches the snapshot's hash, and an alternate repeating the default is invalid.
+ const changed=structuredClone(d);changed.alternates[0].instructions+=' changed';assert.throws(()=>contract.snapshot(changed));
+ const {hash:_,...body}=structuredClone(d);body.alternates[0].familyId='method';assert.throws(()=>contract.snapshot({...body,hash:contract.hash(body)}),/备用写作族/);
+});
+test('only the configured research-method columns offer the Scholay family, and its captions are checked as sourced pictures',()=>{
+ const c=fixtureCatalog(),offered=[];
+ for(const w of c.workspaces)for(const s of w.sections)if(s.alternates)offered.push(w.workspaceId+'/'+s.id+':'+s.alternates.map(a=>a.familyId).join(','));
+ assert.deepEqual(offered.sort(),['metho/experiments:scholay-walkthrough','metho/frontiers:scholay-walkthrough','metho/statistics:scholay-walkthrough']);
+ assert.equal(resolveWritingDefaults(c,'metho','methods').alternates,undefined);
+ // An interface demonstration caption names no maker or source page; it must pass wherever the Scholay family applies.
+ const draft={blocks:[{id:'p1',type:'paragraph',state:'ready',text:'正文'},{id:'i1',type:'image',state:'ready',text:'https://example.org/a.png',alt:'Scholay 科研助手界面中的提问与第一轮回答截图，显示上传的数据表'},{id:'c1',type:'annotation',role:'caption',targetId:'i1',state:'ready',text:'图：Scholay 科研助手界面演示：提问与第一轮回答。'}]};
+ assert.deepEqual(contract.deliveryIssues(draft,contract.compose(resolveWritingDefaults(c,'metho','methods'))),[]);
+ assert.deepEqual(contract.deliveryIssues(draft,contract.compose(resolveWritingDefaults(c,'metho','experiments'),{family:'scholay-walkthrough',origin:'task'})),[]);
+});

@@ -147,6 +147,7 @@
 | 取材来源 | `resources/` 下的模块；`index.mjs` 的名单和浏览分支；`mount-spec.mjs` 的命令行解析；`writing-context-store.mjs` 的解析分支 |
 | 应用连接 | `desktop/src/connections/catalog.json` 的条目；`adapters.rs` 的 `Adapter::from_id` 和请求逻辑 |
 | 栏目类型（写作族） | `writing-column-families.json` 的映射；`contracts/writing-skills/rssd-writing-<类型>/SKILL.md`；`writing-defaults.mjs` 的栏目要素 |
+| 栏目可选的其他写作族 | `writing-column-alternates.json`；`writing-defaults.mjs` 的 `familyElements`（该写作族加在栏目要素之后的一项）；需求在 brief 头部写 `writing: <写作族>` |
 | 站点领域 | `contracts/writing-skills/rssd-domain-<站点>/SKILL.md`；`writing-defaults.mjs` 的 `WRITING_DOMAIN_IDS` |
 | 作者工作区技能 | 工作区模板 `.agents/skills/<名字>/SKILL.md`，文件头的 `name` 与文件夹同名 |
 | 可写栏目 | 主题仓库 `export/templates/<站点>/<栏目>.json` |
