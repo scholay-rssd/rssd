@@ -58,9 +58,34 @@ export function validateNotebook(input,prior,{agent=false,scope}={}){
  }
  return n;
 }
+const REFERENCE_HEADINGS=new Set(['参考文献','参考资料','来源','资料来源','references','sources']);
+// An authored bibliography marks its entries purpose=reference. Unmarked prose
+// after the last marked entry (for example a closing platform note) is body
+// text, not a citation: place it right before the reference heading so the
+// final list never numbers it. Sections without marked entries keep their order.
+function orderReferenceSections(blocks,labels){
+ const ordered=[],references=new Set();
+ for(let i=0;i<blocks.length;){
+  const heading=blocks[i];
+  if(heading.type!=='heading'||!REFERENCE_HEADINGS.has(String(labels[heading.id]??heading.text??'').trim().toLowerCase())){ordered.push(heading);i++;continue;}
+  let end=i+1;while(end<blocks.length&&!(blocks[end].type==='heading'&&blocks[end].level<=heading.level))end++;
+  const section=blocks.slice(i+1,end),last=section.findLastIndex(b=>b.purpose==='reference');
+  const prose=last<0?[]:section.slice(last+1).filter(b=>['paragraph','markdown'].includes(b.type)&&!b.purpose);
+  const entries=section.filter(b=>!prose.includes(b));
+  for(const b of entries)references.add(b);
+  ordered.push(...prose,heading,...entries);i=end;
+ }
+ return {ordered,references};
+}
+const comparable=value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'');
+function sourceDoi(source){
+ let value=String(source.doi||source.url||'');try{value=decodeURIComponent(value);}catch{}
+ return value.match(/\b10\.\d{4,9}\/[^\s"<>?#]+/i)?.[0].replace(/[.,;:)\]]+$/,'').toLowerCase()||'';
+}
 export function notebookMarkdown(input,{site=ACTIVE_SITE,locale='zh-CN'}={}){
  const n=cleanNotebookCitations(upgradeNotebook(input)),labels=headingLabels(n.blocks),ready=n.blocks.filter(b=>b.state==='ready'),endnotes=ready.filter(b=>b.type==='annotation'&&b.role==='endnote');
- const blocks=ready.filter(b=>!endnotes.includes(b)).map(b=>{
+ const {ordered,references}=orderReferenceSections(ready.filter(b=>!endnotes.includes(b)),labels);
+ const blocks=ordered.map(b=>{
   if(b.type==='heading'){const label=labels[b.id];const protocol=new Set(recordHeadings(n.kind));const extra=n.kind!=='article'&&b.level===2&&!protocol.has(b.text)&&!protocol.has(label);return '#'.repeat(extra?3:b.level)+' '+(['fixed','source'].includes(b.heading?.mode)&&!b.locked?label.replace(/[\\`*_{}\[\]<>]/g,'\\$&').replace(/\r?\n/g,' '):label);}
   if(b.type==='image')return '!['+(b.alt||'').replace(/[\[\]\n]/g,'')+']('+b.text+')';
   // Captions stay beside their image. Endnotes are collected below the body.
@@ -68,14 +93,25 @@ export function notebookMarkdown(input,{site=ACTIVE_SITE,locale='zh-CN'}={}){
  });
  let result='# '+n.title.trim()+'\n\n'+blocks.join('\n\n').trim()+'\n';
  const used=new Set(n.blocks.filter(b=>b.state==='ready').flatMap(b=>b.sourceIds));
- // A link in prose is not a bibliography entry. Deduplicate only against
- // links already under a reference heading or in an endnote (endnotes are
- // rendered into the closing reference lists), then append all used sources.
+ // A link in prose is not a bibliography entry. Deduplicate only against the
+ // bibliography: entries under a reference heading or in an endnote (endnotes
+ // are rendered into the closing reference lists), then append the remaining
+ // used sources.
  const parser=new MarkdownIt({html:false,linkify:true}),listed=new Set();
  const collect=(text,inReferences)=>{const tokens=parser.parse(text,{});let references=inReferences,level=0;
-  for(let i=0;i<tokens.length;i++){const token=tokens[i];if(!inReferences&&token.type==='heading_open'){const next=Number(token.tag.slice(1));if(references&&next<=level)references=false;const heading=(tokens[i+1]?.content||'').trim().toLowerCase();if(['参考文献','参考资料','来源','资料来源','references','sources'].includes(heading)){references=true;level=next;}}if(references&&token.type==='inline')for(const child of token.children||[])if(child.type==='link_open'){const href=child.attrGet('href');if(href)listed.add(cleanCitationUrl(href).replace(/\/$/,''));}}};
- collect(result,false);for(const b of endnotes)collect(b.text,true);
- const refs=n.sources.filter(s=>used.has(s.id)&&!listed.has(cleanCitationUrl(s.url).replace(/\/$/,'')));
+  for(let i=0;i<tokens.length;i++){const token=tokens[i];if(!inReferences&&token.type==='heading_open'){const next=Number(token.tag.slice(1));if(references&&next<=level)references=false;const heading=(tokens[i+1]?.content||'').trim().toLowerCase();if(REFERENCE_HEADINGS.has(heading)){references=true;level=next;}}if(references&&token.type==='inline'){listedText.push(token.content);for(const child of token.children||[])if(child.type==='link_open'){const href=child.attrGet('href');if(href)listed.add(cleanCitationUrl(href).replace(/\/$/,''));}}}};
+ const listedText=[];collect(result,false);for(const b of endnotes)collect(b.text,true);
+ // Sources cited by an authored reference entry, or whose DOI or full title
+ // already appears in the bibliography, are merged into that entry rather
+ // than appended again as a title-only link.
+ const cited=new Set([...references,...endnotes.filter(b=>b.purpose==='reference')].flatMap(b=>b.sourceIds||[]));
+ const bibliography=listedText.join('\n'),bibliographyKey=comparable(bibliography),bibliographyLower=bibliography.toLowerCase();
+ const listedSource=s=>{
+  if(cited.has(s.id)||listed.has(cleanCitationUrl(s.url).replace(/\/$/,'')))return true;
+  const doi=sourceDoi(s),title=comparable(s.title);
+  return Boolean(doi&&bibliographyLower.includes(doi)||title.length>=8&&bibliographyKey.includes(title));
+ };
+ const refs=n.sources.filter(s=>used.has(s.id)&&!listedSource(s));
  if(refs.length)result+='\n### 来源\n\n'+refs.map(s=>'- ['+s.title.replace(/[\[\]\n]/g,'')+']('+s.url+')').join('\n')+'\n';
  // Formatting is deterministic and never edits the selected, possibly locked,
  // brand snapshot. Only explicitly inserted notes are exported, never mounts.
