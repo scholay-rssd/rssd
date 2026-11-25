@@ -143,6 +143,12 @@ export async function stageScene(dir,{launch,browserPath,timeoutMs=60000}={}){
   const images=[];
   const shoot=async(anchor,target)=>{await tidy();const bytes=await (target||page).screenshot();images.push({anchor,bytes,sha256:hash(bytes),capturedAt:new Date().toISOString(),url:href});};
   // Screens: the opening view, then each turn brought near the top of the chat column.
+  // The page opens scrolled to the latest reply, so the opening view needs every
+  // scrolling area taken back to the top first.
+  await page.evaluate(()=>document.querySelectorAll('*').forEach(e=>{if(e.scrollHeight>e.clientHeight+4&&/auto|scroll/.test(getComputedStyle(e).overflowY))e.scrollTop=0;}));
+  await page.waitForTimeout(600);
+  const top=await turns.first().evaluate(el=>{const r=el.getBoundingClientRect();return r.top<innerHeight&&r.bottom>0;});
+  if(!top)throw Error('界面演示没能回到对话开头：'+name);
   await shoot('开头');
   for(let i=0;i<count;i++){
    await turns.nth(i).evaluate(el=>{let p=el.parentElement;while(p&&!(p.scrollHeight>p.clientHeight+4&&/auto|scroll/.test(getComputedStyle(p).overflowY)))p=p.parentElement;if(p)p.scrollTop+=el.getBoundingClientRect().top-p.getBoundingClientRect().top-96;});
