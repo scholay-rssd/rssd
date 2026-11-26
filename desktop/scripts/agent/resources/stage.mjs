@@ -154,12 +154,19 @@ export async function stageScene(dir,{launch,browserPath,timeoutMs=60000}={}){
    await turns.nth(i).evaluate(el=>{let p=el.parentElement;while(p&&!(p.scrollHeight>p.clientHeight+4&&/auto|scroll/.test(getComputedStyle(p).overflowY)))p=p.parentElement;if(p)p.scrollTop+=el.getBoundingClientRect().top-p.getBoundingClientRect().top-96;});
    await page.waitForTimeout(500);await shoot('第 '+(i+1)+' 轮对话');
   }
-  // Figures inside replies, cropped in a tall window so the composer cannot cover them.
+  // Figures inside replies, cropped in a tall window. The composer stays fixed at the
+  // bottom of the chat column, so each figure is brought to the top of its scrolling
+  // area first; a figure that is merely "visible" behind the composer would be covered.
   const tall=await page.evaluate(()=>Math.max(...[...document.querySelectorAll('article')].map(a=>a.scrollHeight)))+600;
   await page.setViewportSize({width:RENDER_VIEWPORT.width,height:Math.min(Math.max(RENDER_VIEWPORT.height,tall),6000)});await page.waitForTimeout(600);
   for(let i=0;i<count;i++){
    const figures=turns.nth(i).locator('img');
-   for(let k=0;k<await figures.count();k++){await figures.nth(k).scrollIntoViewIfNeeded();await shoot('第 '+(i+1)+' 轮回答中的图'+(k+1),figures.nth(k));}
+   for(let k=0;k<await figures.count();k++){
+    const figure=figures.nth(k);
+    await figure.evaluate(el=>{let p=el.parentElement;while(p&&!(p.scrollHeight>p.clientHeight+4&&/auto|scroll/.test(getComputedStyle(p).overflowY)))p=p.parentElement;if(p)p.scrollTop+=el.getBoundingClientRect().top-p.getBoundingClientRect().top-96;});
+    await page.waitForTimeout(300);await figure.scrollIntoViewIfNeeded();
+    await shoot('第 '+(i+1)+' 轮回答中的图'+(k+1),figure);
+   }
   }
   return {url:href,title:session.title+' · Scholay 科研助手界面演示',text:sceneText(session),truncated:false,rendered:true,staged:true,scene:name,signedIn:false,viewport:RENDER_VIEWPORT,deviceScaleFactor:2,dismissed:[],hidden:['[data-rhino-trigger]','[data-rhino-invitation]'],images,capturedAt:new Date().toISOString(),contentHash,unanswered:[...unanswered],aborted:[...aborted]};
  }finally{await context.close().catch(()=>{});await browser?.close();}
