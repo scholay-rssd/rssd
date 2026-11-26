@@ -6,6 +6,7 @@ import ts from "typescript";
 import { afterEach, describe, expect, it } from "vitest";
 import en from "../locales/ui.en.json";
 import ja from "../locales/ui.ja.json";
+import es from "../locales/ui.es.json";
 import { tr, trNative, uiLocale } from "../uiText";
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
@@ -56,9 +57,9 @@ function sourceKeys(): Map<string, string> {
 
 describe("source-text interface translations", () => {
   afterEach(() => { (i18n as { language?: string }).language = undefined; });
-  const tables: [string, Record<string, string>][] = [["en", en], ["ja", ja]];
+  const tables: [string, Record<string, string>][] = [["en", en], ["ja", ja], ["es", es]];
 
-  it("translates every tr() and trKey() source string into English and Japanese", () => {
+  it("translates every tr() and trKey() source string into English, Japanese and Spanish", () => {
     const missing: string[] = [];
     for (const [key, path] of sourceKeys()) {
       for (const [lang, table] of tables) if (!table[key]) missing.push(`${lang}: ${JSON.stringify(key)} (${path.slice(SRC.length)})`);

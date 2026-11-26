@@ -7,7 +7,7 @@ import i18n from "../i18n";
 
 /** Maps the active app language to a BCP-47 locale for date formatting. */
 function dateLocale(): string {
-  return { zh: "zh-CN", en: "en-US", ja: "ja-JP" }[i18n.language] ?? "en-US";
+  return { zh: "zh-CN", en: "en-US", ja: "ja-JP", es: "es-ES" }[i18n.language] ?? "en-US";
 }
 
 const PALETTE = [

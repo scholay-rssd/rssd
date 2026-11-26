@@ -20,6 +20,10 @@ fn new_articles_body(lang: &str, count: usize) -> String {
     match lang {
         "zh" => format!("{count} 篇新文章"),
         "ja" => format!("新着記事 {count} 件"),
+        "es" => {
+            let s = if count == 1 { "" } else { "s" };
+            format!("{count} artículo{s} nuevo{s}")
+        }
         _ => format!("{count} new article{}", if count == 1 { "" } else { "s" }),
     }
 }

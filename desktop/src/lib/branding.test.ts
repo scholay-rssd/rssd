@@ -70,7 +70,7 @@ describe("today display branding with compatible local identity", () => {
   it("renames native tray, notifications, and localized product copy", () => {
     expect(read("src-tauri/src/tray.rs")).toContain('.tooltip("RSSD")');
     expect(read("src-tauri/src/notify.rs")).toContain('.title("RSSD")');
-    for (const lang of ["en", "zh", "ja"]) {
+    for (const lang of ["en", "zh", "ja", "es"]) {
       expect(read(`src/locales/${lang}.json`)).not.toContain("Papr");
       expect(read(`src/locales/${lang}.json`)).toContain(APP_NAME);
     }

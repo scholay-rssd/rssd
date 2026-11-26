@@ -51,6 +51,17 @@ fn ago(lang: &str, iso: &str) -> String {
                 format!("{days} 日前")
             }
         }
+        "es" => {
+            if mins < 1 {
+                "ahora mismo".into()
+            } else if mins < 60 {
+                format!("hace {mins} min")
+            } else if hours < 24 {
+                format!("hace {hours} h")
+            } else {
+                format!("hace {days} d")
+            }
+        }
         _ => {
             if mins < 1 {
                 "just now".into()
@@ -81,6 +92,8 @@ fn labels(lang: &str, unread: i64, last: Option<&str>) -> Labels {
         ("zh", false) => "暂无未读",
         ("ja", true) => "未読記事あり",
         ("ja", false) => "未読なし",
+        ("es", true) => "Hay artículos sin leer",
+        ("es", false) => "No hay artículos sin leer",
         (_, true) => "Unread articles available",
         (_, false) => "No unread articles",
     }.to_string();
@@ -89,6 +102,8 @@ fn labels(lang: &str, unread: i64, last: Option<&str>) -> Labels {
         ("zh", None) => "尚未刷新".into(),
         ("ja", Some(t)) => format!("最終更新：{}", ago("ja", t)),
         ("ja", None) => "未更新".into(),
+        ("es", Some(t)) => format!("Actualizado {}", ago("es", t)),
+        ("es", None) => "Aún no se ha actualizado".into(),
         (_, Some(t)) => format!("Updated {}", ago("en", t)),
         (_, None) => "Never refreshed".into(),
     };
@@ -106,6 +121,13 @@ fn labels(lang: &str, unread: i64, last: Option<&str>) -> Labels {
             "すべて既読にする",
             "設定…",
             "RSSD を終了",
+        ),
+        "es" => (
+            "Abrir RSSD",
+            "Actualizar todo ahora",
+            "Marcar todo como leído",
+            "Ajustes…",
+            "Salir de RSSD",
         ),
         _ => (
             "Open RSSD",

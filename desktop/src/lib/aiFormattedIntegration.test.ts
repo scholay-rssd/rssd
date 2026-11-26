@@ -136,15 +136,15 @@ describe("AI reader integration boundaries", () => {
     expect(component.indexOf("</> : capturedOnly ?")).toBeLessThan(component.indexOf('t("aiFormatted.emptyHint")'));
     expect(component).toContain('"text/markdown;charset=utf-8"');
   });
-  it("has matching English, Chinese and Japanese copy with the exact tab name", () => {
-    const copies = ["en", "zh", "ja"].map((locale) => JSON.parse(read(`locales/${locale}.json`)).aiFormatted);
+  it("has matching English, Chinese, Japanese and Spanish copy with the exact tab name", () => {
+    const copies = ["en", "zh", "ja", "es"].map((locale) => JSON.parse(read(`locales/${locale}.json`)).aiFormatted);
     for (const copy of copies) {
       expect(copy.tab).toBe("Markdown");
       expect(Object.keys(copy).sort()).toEqual(Object.keys(copies[0]).sort());
       expect(Object.values(copy).every((value) => typeof value === "string" && value.length > 0)).toBe(true);
     }
     expect(JSON.parse(read("locales/zh.json")).reader.readingMode).toBe("RSS 原文");
-    for (const locale of ["en", "zh", "ja"]) {
+    for (const locale of ["en", "zh", "ja", "es"]) {
       expect(JSON.parse(read(`locales/${locale}.json`)).reader).not.toHaveProperty("summaryOnlyHint");
     }
   });
