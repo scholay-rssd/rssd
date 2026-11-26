@@ -25,8 +25,17 @@ export function parseMountSpec(spec){
   return {kind:'github',repo,ref:params.ref||ref,dirs:splitDirs(params.dirs||params.directories),role:params.role};
  }
  if(kind==='url')return {kind:'web',url:rest,role:'evidence'};
+ // stage:<scene> — an interface demonstration staged from the device's scenes folder.
+ if(kind==='stage'){const scene=rest.trim();if(!/^[a-z0-9][a-z0-9-]{1,63}$/.test(scene))throw Error('stage 须写场景名（小写字母、数字、连字符）：'+rest);return {kind:'stage',scene};}
  if(kind==='search'||kind==='web'){
-  if(rest.startsWith('http'))return {kind:'web',url:rest};
+  if(rest.startsWith('http')){
+   // Options follow the address after commas: render=true, shots=标题一|标题二, signedIn=true, role=evidence.
+   const parts=rest.split(','),options={};
+   while(parts.length>1&&/^(render|shots|role|signedIn)=/.test(parts[parts.length-1])){const part=parts.pop(),i=part.indexOf('=');options[part.slice(0,i)]=part.slice(i+1);}
+   const url=parts.join(',');
+   if(!options.render&&!options.shots&&!options.role&&!options.signedIn)return {kind:'web',url};
+   return {kind:'web',url,...(options.render==='true'||options.shots||options.signedIn==='true'?{render:true}:{}),...(options.signedIn==='true'?{signedIn:true}:{}),...(options.shots?{shots:options.shots.split('|').map(s=>s.trim()).filter(Boolean)}:{}),...(options.role?{role:options.role}:{})};
+  }
   const params=Object.fromEntries(rest.split(',').filter(f=>f.includes('=')).map(part=>{const i=part.indexOf('=');return [part.slice(0,i),part.slice(i+1)];}));
   return {kind:'web',query:params.query||rest.split(',')[0],site:params.site,role:'lead'};
  }
@@ -85,6 +94,16 @@ export function parseBriefMounts(text){
   const key=line.slice(0,i).trim();
   const value=line.slice(i+1).trim();
   if(key==='allow-network'||key==='allowNetwork'){allowNetwork=['true','1','yes'].includes(value.toLowerCase());continue;}
+  // `ask:`, `attach:` and `model:` belong to the web line just above them: a
+  // question for a signed-in site assistant, files to upload, the model to use.
+  if(key==='ask'||key==='attach'||key==='model'){
+   const target=mounts[mounts.length-1];
+   if(target?.kind!=='web'||!target.url)throw Error(key+' 须写在一行带网址的 web 材料之后');
+   if(key==='ask'){if(target.ask!==undefined)throw Error('每个 web 材料只能有一个 ask');target.ask=value;target.render=true;}
+   else if(key==='model'){if(target.model!==undefined)throw Error('每个 web 材料只能有一个 model');target.model=value;}
+   else target.attach=[...(target.attach||[]),value];
+   continue;
+  }
   if(key!=='mount'&&key!=='mounts')continue;
   if(value.startsWith('[')||value.startsWith('{')){
    const parsed=JSON.parse(value);

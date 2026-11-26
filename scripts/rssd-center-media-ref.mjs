@@ -50,8 +50,10 @@ export function registeredSourceMediaIds(source){
   return ids;
 }
 
-export function centerImageReference({origin,source,strictRegisteredImages=false}={}){
-  const registered=source?registeredSourceMediaIds(source):null;
+// extraMediaIds: images this task staged itself (order-material screenshots),
+// allowed in an update next to the source edition's own images.
+export function centerImageReference({origin,source,strictRegisteredImages=false,extraMediaIds=[]}={}){
+  const registered=source?new Set([...registeredSourceMediaIds(source),...extraMediaIds]):null;
   return value=>{
     const parsed=parseCenterMediaRef(value,{origin});
     if(parsed){

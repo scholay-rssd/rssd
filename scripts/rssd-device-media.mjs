@@ -9,6 +9,7 @@ import {looksLikeCenterMediaPath,parseCenterMediaRef,registeredSourceMediaIds} f
 const key=(origin,workspaceId,id)=>p.hash([origin,workspaceId,id]);
 async function json(file){try{return JSON.parse(await readFile(file,'utf8'));}catch(error){if(error.code==='ENOENT')return null;throw error;}}
 async function save(file,value){await mkdir(dirname(file),{recursive:true,mode:0o700});const temp=file+'.'+randomUUID();await writeFile(temp,JSON.stringify(value),{mode:0o600});await rename(temp,file);}
+async function orderMaterialMediaIds(directory){const receipt=directory?await json(join(directory,'order-materials.json')):null;return (receipt?.pages||[]).flatMap(page=>(page.images||[]).map(image=>image.id));}
 export async function stageMedia({directory,origin,workspaceId,bytes,name='image'}){
  const manifest=m.imageManifest(bytes),id=m.mediaId(workspaceId,manifest.sha256),stem=key(origin,workspaceId,id);await mkdir(directory,{recursive:true,mode:0o700});
  const file=join(directory,stem+'.image'),temporary=file+'.'+randomUUID(),handle=await open(temporary,'wx',0o600);
@@ -25,7 +26,9 @@ export async function prepareEditionMedia({edition,home,directory,client,workspa
   signal?.throwIfAborted();
   const internal=parseCenterMediaRef(image.src,{origin:client.origin});
   if(internal){
-    const allowed=source?registeredSourceMediaIds(source):null;
+    // An update keeps the source edition's images and may add this task's own
+    // order-material screenshots (frozen in order-materials.json).
+    const allowed=source?new Set([...registeredSourceMediaIds(source),...await orderMaterialMediaIds(directory)]):null;
     if(allowed&&!allowed.has(internal.id))throw Object.assign(Error('Image is not registered on the bound source edition'),{code:'media_ref_invalid'});
     const local=await json(join(home,'media',key(client.origin,workspaceId,internal.id)+'.json'));
     if(local&&(local.id!==internal.id||local.workspaceId!==workspaceId||local.origin!==client.origin))throw Object.assign(Error('Cached image belongs to a different center or workspace'),{code:'media_conflict'});

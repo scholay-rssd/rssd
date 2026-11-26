@@ -94,7 +94,8 @@ export async function recoverPersistedCenterEdition({directory,locale,source,ori
   const {parseCenterEdition,parseCenterResult}=await import('../desktop/scripts/agent/center-producer.mjs');
   const {centerRecordContext}=await import('../desktop/scripts/agent/center-record.mjs');
   const recordContext=centerRecordContext({claim:{id:demandId,workspaceId:evidence.workspaceId,sectionId:sectionId||evidence.sectionId},source});
-  const context={source,locale,sectionId:sectionId||evidence.sectionId,signature:evidence.signature,origin:evidence.origin,workspaceId:evidence.workspaceId,strictRegisteredImages,...recordContext};
+  let extraMediaIds=[];try{extraMediaIds=JSON.parse(await readFile(join(directory,'order-materials.json'),'utf8')).pages.flatMap(page=>page.images.map(image=>image.id));}catch(error){if(error.code!=='ENOENT')throw error;}
+  const context={source,locale,sectionId:sectionId||evidence.sectionId,signature:evidence.signature,origin:evidence.origin,workspaceId:evidence.workspaceId,strictRegisteredImages,extraMediaIds,...recordContext};
   let edition,repair;
   try{
     try{edition=parseCenterEdition(raw,context);}
