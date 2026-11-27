@@ -10,7 +10,7 @@ test('the canonical catalog covers every active column without enabling four ret
  assert.throws(()=>resolveWritingDefaults(c,'academic','resources'),/没有启用/);
  assert.throws(()=>resolveWritingDefaults(c,'academic'),/没有启用/);
  assert.equal(resolveWritingDefaults(c,'academic','briefings').familyId,'briefing');
- assert.equal(resolveWritingDefaults(c,'metho','methods').familyId,'method');
+ assert.equal(resolveWritingDefaults(c,'metho','methods').familyId,'scholay-walkthrough');
  assert.equal(resolveWritingDefaults(c,'design','icons').images.sourceMode,'actual-object');
  assert.equal(resolveWritingDefaults(c,'enter','courses').familyId,resolveWritingDefaults(c,'xsiching','courses').familyId);
 });
