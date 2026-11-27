@@ -1,6 +1,7 @@
 import {readFile,writeFile,mkdir,rename,readlink,access,readdir,lstat,chmod} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
 import {randomUUID} from 'node:crypto';
+import {fork} from 'node:child_process';
 import p from '../contracts/rssd-v1.cjs';
 import {contentKey,operation,visible,packetMedia} from '../contracts/rssd-publication.cjs';
 import {buildSiteRelease} from '../web/engine/render-site.mjs';
@@ -77,7 +78,7 @@ export function snapshotForPackets(packets,site,baseline={},previousPackets=[]) 
 /** Builds one release holding every request of the job and activates it. A job from the receiver store lists
  * its requests in `batch`; a job without one (a binding refresh) is the single request `id`. Returns the first
  * request's receipt; the others share its release (see `receiptFor`). */
-export async function buildAndActivate({job,site,source,base,baseline,media,bindingStore,makePublic=publicModes,verify=manifest=>verifyLive(manifest,site.origin,false)}) {
+export async function buildAndActivate({job,site,source,base,baseline,media,bindingStore,render=renderInProcess,makePublic=publicModes,verify=manifest=>verifyLive(manifest,site.origin,false)}) {
   const current=join(base,'current'),items=job.batch||[{id:job.id,packet:job.packet,operationSequence:job.operationSequence}];
   const verifyRelease=async manifest=>{
     await verify(manifest);
@@ -117,7 +118,7 @@ export async function buildAndActivate({job,site,source,base,baseline,media,bind
   const snapshot=snapshotForPackets(job.packets,site,baseline,job.previousPackets);
   for(const packet of job.packets.filter(x=>x.locale==='en'&&visible(x))){const id=baseline?.rssdIdentity?.[contentKey(packet)]?.id||'rssd-'+contentKey(packet).slice(0,32),view=snapshot.news.find(x=>x.id===id&&x.locale==='en');if(!view)throw Error('English view missing');delete view.translationOf;const binding=bindingStore?bindingStore.lookup(packet):{state:'unknown'};view.translationSourceStatus=binding.state;if(binding.state==='verified'){view.translationSourceHashVersion=binding.binding.sourceHashVersion;view.translationOf={articleId:binding.binding.sourceArticleId,revision:binding.binding.sourceRevision,sha256:binding.binding.sourceRenderHash};}}
   const snapshotHash=p.hash(snapshot);
-  const manifest=await buildSiteRelease({job:{id:buildId,snapshot,snapshot_hash:snapshotHash},target:stage,source,previousRoot:current,site});
+  const manifest=await render({job:{id:buildId,snapshot,snapshot_hash:snapshotHash},target:stage,source,previousRoot:current,site});
   Object.assign(manifest.hashes,mediaHashes);manifest.byteHashes={...manifest.byteHashes,...mediaByteHashes};
   for(const packet of job.packets){
     const path='rssd-content/'+contentKey(packet)+'.json',bytes=JSON.stringify(packet);await mkdir(dirname(join(stage,path)),{recursive:true});await writeFile(join(stage,path),bytes);manifest.hashes[path]=p.hash(bytes);
@@ -133,6 +134,28 @@ export async function buildAndActivate({job,site,source,base,baseline,media,bind
   await activateRelease({base,release:target,verify:()=>verifyRelease(manifest)});
   return receiptFor(items[0],release,site);
 }
+/** Renders a release in a child process (see render-process.mjs). A whole-site render takes the CPU for many
+ * seconds and most of the service's memory; in a child the receiver's own requests are still answered during it,
+ * and the memory is returned when it ends. */
+export function renderInProcess(args,{timeoutMs=RENDER_TIMEOUT_MS}={}){
+  return new Promise((resolve,reject)=>{
+    const child=fork(new URL('./render-process.mjs',import.meta.url),{serialization:'advanced',stdio:['ignore','inherit','inherit','ipc']});
+    let reply=null,settled=false;
+    const done=(error,value)=>{if(settled)return;settled=true;clearTimeout(timer);if(error){child.kill('SIGKILL');reject(error);}else resolve(value);};
+    const timer=setTimeout(()=>done(Error('Site render took longer than '+Math.round(timeoutMs/60000)+' minutes')),timeoutMs);
+    child.on('message',message=>{reply=message;});
+    child.on('error',error=>done(error));
+    child.on('close',(code,signal)=>{
+      if(reply?.manifest)return done(null,reply.manifest);
+      if(reply?.error)return done(Object.assign(Error(reply.error),reply.code?{code:reply.code}:{}));
+      done(Error('Site renderer exited without a result ('+(signal||'code '+code)+')'));
+    });
+    child.send(args,error=>{if(error)done(error);});
+  });
+}
+export const RENDER_TIMEOUT_MS=30*60*1000;
+/** Renders in this process; for tests and tools that do not need a separate one. */
+export const renderHere=args=>buildSiteRelease(args);
 // The service keeps a private umask for its state; the web server reads releases as another user.
 export async function publicModes(path){
   const info=await lstat(path);
