@@ -46,6 +46,37 @@ Explicit instructions for the current task retain their normal priority and are
 recorded with `origin:task`. Source/provenance and publication authority remain
 unchanged.
 
+## Write in another family
+
+A column may offer writing families besides its default one, listed in
+`contracts/writing-column-alternates.json`. Each offered family travels in the
+column's snapshot under `alternates` (skills, required elements, pictures and the
+composed instructions), so the frozen baseline and its hash are the same whichever
+one an article uses. Today 统计之美, 实验星球 and 方法前沿 offer
+`scholay-walkthrough`; 方法百科 uses it by default.
+
+A Center demand chooses one for its single article with a header line in the brief:
+
+```text
+---
+writing: scholay-walkthrough
+mount: stage:simpson-ucb
+---
+```
+
+The writing device composes the frozen claim baseline with `family` as a task
+adjustment; the column's elements still apply, and the family adds its own skill,
+element and picture rules. The draft records `familyAdjustment` in its private
+writing evidence, and the worker and Center check delivery against that family. A
+family the column does not offer, a note, and a claim without frozen rules are
+refused before the writer starts. In file authoring use `{"family":"…"}` in the
+overrides. Center must run a contract that knows `alternates` before such a catalog
+is published; an older Center freezes the column without them and the demand stops.
+
+Scholay walkthrough captions name a capture time or 「Scholay 科研助手界面演示」
+rather than a maker and source page, so the family is checked as sourced pictures,
+not actual-object.
+
 ## Write a note
 
 A section whose `workTypes` include `note` also carries a note form in its

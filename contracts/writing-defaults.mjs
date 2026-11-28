@@ -8,7 +8,7 @@ import {writableSectionsForSite} from './site-sections.mjs';
 import {sectionWorkPolicy} from './work-types.mjs';
 import contract from './writing-defaults-v1.cjs';
 
-export const WRITING_DEFAULTS_VERSION='2026-11-24.1';
+export const WRITING_DEFAULTS_VERSION='2026-11-25.1';
 export const WRITING_DOMAIN_IDS=['academic','metho','pets','enter','study','xsiching','legis','design','xsime','personal'];
 const elements={
  'academic/calendar':['一项年度惯例事项及依据','惯例与当年日期的区别','适用人群和官方行动入口'],
@@ -53,7 +53,11 @@ const elements={
  'personal/academic-notes':['已有阅读、研究或实践材料','一个学术问题','材料支持的解释与思考'],
 };
 const families=JSON.parse(readFileSync(new URL('./writing-column-families.json',import.meta.url)));
-export const WRITING_RULE_SKILL_IDS=['rssd-writing-base','rssd-writing-note',...new Set(Object.values(families).map(id=>'rssd-writing-'+id)),...WRITING_DOMAIN_IDS.map(id=>'rssd-domain-'+id)];
+// Other families a column offers besides its default one; a demand chooses one for a single article.
+const alternateFamilies=JSON.parse(readFileSync(new URL('./writing-column-alternates.json',import.meta.url)));
+// What a column's article adds when it is written in another family, after the column's own elements.
+const familyElements={'scholay-walkthrough':'在 Scholay 中的实际操作或界面演示，以及对应截图、结果读法与核对'};
+export const WRITING_RULE_SKILL_IDS=['rssd-writing-base','rssd-writing-note',...new Set([...Object.values(families),...Object.values(alternateFamilies).flat()].map(id=>'rssd-writing-'+id)),...WRITING_DOMAIN_IDS.map(id=>'rssd-domain-'+id)];
 export const WRITING_RULE_PATHS=[...WRITING_RULE_SKILL_IDS.map(id=>'contracts/writing-skills/'+id+'/SKILL.md'),'contracts/writing-skills/rssd-writing-base/references/images.md'];
 function skill(id){const content=readFileSync(new URL('./writing-skills/'+id+'/SKILL.md',import.meta.url),'utf8');return {id,name:id,version:WRITING_DEFAULTS_VERSION,contentHash:contract.textHash(content),content};}
 export function buildWritingDefaultsCatalog({source}){
@@ -63,11 +67,17 @@ export function buildWritingDefaultsCatalog({source}){
  const workspaces=profiles.map(site=>({siteId:site.id,workspaceId:site.spaceId,name:site.name,sections:writableSectionsForSite(site).map(s=>{
   const key=site.spaceId+'/'+s.id,rule=COLUMN_RULES[site.id]?.[s.id],familyId=families[key];
   if(!rule||!elements[key]||!familyId||!WRITING_DOMAIN_IDS.includes(site.spaceId))throw Error('Missing canonical writing defaults: '+key);
-  const actualObject=['animal','visual','scholay-walkthrough'].includes(familyId)||['design/works','personal/works'].includes(key);
+  // Scholay walkthroughs show the real interface, but their captions name a capture time or an interface
+  // demonstration rather than a maker and source page, so they are checked as sourced pictures.
+  const actualObject=['animal','visual'].includes(familyId)||['design/works','personal/works'].includes(key);
+  const pictures=(family,real)=>({minimum:family==='animal'?3:1,sourceMode:real?'actual-object':'source-or-illustration',dataFigures:'computed-only',altMin:20,altMax:60});
+  const offered=alternateFamilies[key]||[];
+  if(offered.some(id=>id===familyId||!familyElements[id]))throw Error('Invalid alternate writing family for '+key);
+  const alternates=offered.length?{alternates:offered.map(id=>({familyId:id,skillIds:['rssd-writing-base','rssd-writing-'+id,'rssd-domain-'+site.spaceId],requiredElements:[...elements[key],familyElements[id]],images:pictures(id,['animal','visual'].includes(id))}))}:{};
   // A section that takes notes also carries the note form: the note skill before the family and domain rules,
   // and one point chosen from the column's elements instead of all of them. Pictures follow the same rules.
   const note=sectionWorkPolicy(s).workTypes.includes('note')?{note:{skillIds:['rssd-writing-base','rssd-writing-note','rssd-writing-'+familyId,'rssd-domain-'+site.spaceId],requiredElements:['本栏对象的一个具体看点（本栏长文的要素：'+elements[key].join('；')+'）','承担主要信息的图片，按阅读顺序排列','读懂图片所需的简短事实和可回查的出处']}}:{};
-  return {id:s.id,name:s.name,mode:s.defaultMode,scope:rule,familyId,requiredElements:elements[key],skillIds:['rssd-writing-base','rssd-writing-'+familyId,'rssd-domain-'+site.spaceId],referencePaths:[path],images:{minimum:familyId==='animal'?3:1,sourceMode:actualObject?'actual-object':'source-or-illustration',dataFigures:'computed-only',altMin:20,altMax:60},delivery:{version:2,format:'notebook-v2-flat',altLength:true,captions:true},...note};
+  return {id:s.id,name:s.name,mode:s.defaultMode,scope:rule,familyId,requiredElements:elements[key],skillIds:['rssd-writing-base','rssd-writing-'+familyId,'rssd-domain-'+site.spaceId],referencePaths:[path],images:pictures(familyId,actualObject),delivery:{version:2,format:'notebook-v2-flat',altLength:true,captions:true},...note,...alternates};
  })}));
  const body={schemaVersion:1,version:WRITING_DEFAULTS_VERSION,source,writingPolicy:{version:ARTICLE_WRITING_POLICY,instructions:ARTICLE_WRITING_INSTRUCTIONS,sha256:createHash('sha256').update(ARTICLE_WRITING_INSTRUCTIONS).digest('hex')},skills,references,workspaces};
  return contract.catalog({...body,hash:contract.hash(body)});

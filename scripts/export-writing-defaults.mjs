@@ -6,7 +6,7 @@ import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {buildWritingDefaultsCatalog,WRITING_RULE_PATHS} from '../contracts/writing-defaults.mjs';
-export const WRITING_DEFAULT_INPUTS=['contracts/writing-defaults-v1.cjs','contracts/writing-defaults.mjs','contracts/notebook-output.mjs','contracts/writing-column-families.json','contracts/article-writing-policy.mjs','contracts/editorial-column-policy.mjs','contracts/site-sections.mjs','sites/profiles.json',...WRITING_RULE_PATHS];
+export const WRITING_DEFAULT_INPUTS=['contracts/writing-defaults-v1.cjs','contracts/writing-defaults.mjs','contracts/notebook-output.mjs','contracts/writing-column-families.json','contracts/writing-column-alternates.json','contracts/article-writing-policy.mjs','contracts/editorial-column-policy.mjs','contracts/site-sections.mjs','sites/profiles.json',...WRITING_RULE_PATHS];
 const root=fileURLToPath(new URL('../',import.meta.url));
 export function exportWritingDefaults(directory){
  const git=(args,cwd=root)=>execFileSync('git',args,{cwd,encoding:'utf8'}).trim();

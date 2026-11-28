@@ -20,6 +20,20 @@ test('a Center claim supplies exactly the same skills as file authoring and surv
  const changed=structuredClone(claim);changed.payload.writingDefaults=resolveWritingDefaults(catalog,'metho','statistics');
  await assert.rejects(centerSkillSnapshot({...args,claim:changed}),/认领不匹配/);
 });
+test('a demand that chooses another writing family composes it as a task adjustment of the frozen claim',async t=>{
+ const directory=await temp(t),baseline=resolveWritingDefaults(catalog,'metho','statistics');
+ const claim={id:'fixture-scholay',generation:1,workspaceId:'metho',sectionId:'statistics',kind:'write',payload:{writingDefaults:baseline,brief:'---\nwriting: scholay-walkthrough\nmount: stage:simpson-ucb\n---\n图解辛普森悖论。'}};
+ const args={claim,directory,origin:'https://center.example',writingPolicy:baseline.writingPolicy};
+ const saved=await centerSkillSnapshot(args);
+ assert.equal(saved.defaults.baselineHash,baseline.hash);assert.deepEqual(saved.defaults.adjustment,{origin:'task',family:'scholay-walkthrough',instructions:''});
+ assert.match(saved.defaults.instructions,/\[rssd-writing-scholay-walkthrough @/);assert.deepEqual(saved.skills,baseline.skills);
+ assert.deepEqual(await centerSkillSnapshot(args),saved);
+ // A column that does not offer the family refuses the demand before anything is written.
+ const other=await temp(t),cat=resolveWritingDefaults(catalog,'pets','daily-cat');
+ await assert.rejects(centerSkillSnapshot({...args,directory:other,claim:{...claim,workspaceId:'pets',sectionId:'daily-cat',payload:{...claim.payload,writingDefaults:cat}}}),/没有提供写作族/);
+ // A claim without frozen rules cannot take a family.
+ await assert.rejects(centerSkillSnapshot({...args,directory:await temp(t),claim:{...claim,payload:{brief:claim.payload.brief}}}),/没有冻结线上写作基线/);
+});
 test('workspace migration preserves old guidance, then explicitly loads the online baseline before preferences',async t=>{
  const root=await temp(t);await mkdir(join(root,'.agents/skills/site-writing'),{recursive:true});await writeFile(join(root,'.agents/skills/site-writing/SKILL.md'),'old local custom guide');await writeFile(join(root,'AGENTS.md'),'existing instructions');
  const client={origin:'https://center.example',writingDefaultCatalog:async()=>catalog,writingDefaults:async(w,s)=>resolveWritingDefaults(catalog,w,s)};

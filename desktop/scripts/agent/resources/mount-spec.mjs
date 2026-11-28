@@ -85,7 +85,7 @@ export function parseBriefMounts(text){
  const match=source.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
  if(!match)return {text:source,mounts:[],allowNetwork:false};
  const mounts=[];
- let allowNetwork=false;
+ let allowNetwork=false,family;
  for(const raw of match[1].split(/\r?\n/)){
   const line=raw.trim();
   if(!line||line.startsWith('#'))continue;
@@ -94,6 +94,9 @@ export function parseBriefMounts(text){
   const key=line.slice(0,i).trim();
   const value=line.slice(i+1).trim();
   if(key==='allow-network'||key==='allowNetwork'){allowNetwork=['true','1','yes'].includes(value.toLowerCase());continue;}
+  // `writing:` names the writing family this one article uses instead of the column's default; the column
+  // must offer it (contracts/writing-column-alternates.json), which the writing defaults check.
+  if(key==='writing'){if(family!==undefined)throw Error('每个选题只能写一行 writing');if(!/^[a-z0-9][a-z0-9-]{0,79}$/.test(value))throw Error('writing 须写写作族名，例如 writing: scholay-walkthrough');family=value;continue;}
   // `ask:`, `attach:` and `model:` belong to the web line just above them: a
   // question for a signed-in site assistant, files to upload, the model to use.
   if(key==='ask'||key==='attach'||key==='model'){
@@ -111,5 +114,5 @@ export function parseBriefMounts(text){
    for(const item of list)mounts.push(typeof item==='string'?parseMountSpec(item):item);
   }else if(value)mounts.push(parseMountSpec(value));
  }
- return {text:source.slice(match[0].length),mounts,allowNetwork};
+ return {text:source.slice(match[0].length),mounts,allowNetwork,...(family?{family}:{})};
 }

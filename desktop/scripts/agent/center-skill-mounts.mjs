@@ -9,6 +9,7 @@ import {writeCenterJson} from '../../../scripts/rssd-center-client.mjs';
 import protocol from '../../../contracts/rssd-v1.cjs';
 import defaults from '../../../contracts/writing-defaults-v1.cjs';
 import {authoringWritingDefaults,managedWritingWorkspace,createWritingDefaultsReader} from '../../../scripts/rssd-writing-defaults.mjs';
+import {parseBriefMounts} from './resources/mount-spec.mjs';
 
 const sha=text=>createHash('sha256').update(text).digest('hex');
 const own=(base,path)=>path.startsWith(base+sep);
@@ -117,6 +118,10 @@ export function validateCenterSkillSnapshot(snapshot,{claim,scope,writingPolicy}
  if(snapshot.version===2){if(!Array.isArray(snapshot.references)||snapshot.references.length!==expected.length)throw Error('原任务的写作技能参考资料快照不匹配');for(let i=0;i<expected.length;i++){const r=snapshot.references[i];if(r?.path!==expected[i].path||typeof r.content!=='string'||!r.content||Buffer.byteLength(r.content)>60000||r.contentHash!==sha(r.content))throw Error('原任务的写作技能参考资料快照损坏');}}
  const {snapshotHash,...value}=snapshot;if(snapshotHash!==protocol.hash(value))throw Error('原任务的写作技能校验失败');return snapshot;
 }
+// The writing family a demand chooses for its one article (`writing:` in the brief's header), or null for
+// the column's default. It becomes a task adjustment of the frozen baseline, so the claim's rules stay those
+// Center froze; the column must offer the family, which compose checks.
+export function demandWritingFamily(claim){return parseBriefMounts(claim?.payload?.brief).family||null;}
 export async function centerSkillSnapshot({claim,directory,writingPolicy,writingSkillScope,origin,env=process.env}){
  const scope=centerWritingScope(claim,writingSkillScope),file=join(directory,'writing-skills.json');
  let old;try{old=await readJson(file);}catch(error){if(error.code!=='ENOENT')throw Error('原任务的写作技能快照无法读取');}
@@ -127,10 +132,12 @@ export async function centerSkillSnapshot({claim,directory,writingPolicy,writing
  let root;
  if(claim.payload?.writingDefaults){
   const client=createWritingDefaultsReader({origin});
-  const context=await authoringWritingDefaults({client,workspaceId:scope.workspaceId,sectionId:scope.sectionId,siteId:scope.siteId,directory,binding:{kind:'center-claim',demandId:claim.id,generation:claim.generation},providedBaseline:claim.payload.writingDefaults});
+  const family=demandWritingFamily(claim);
+  const context=await authoringWritingDefaults({client,workspaceId:scope.workspaceId,sectionId:scope.sectionId,siteId:scope.siteId,directory,binding:{kind:'center-claim',demandId:claim.id,generation:claim.generation},providedBaseline:claim.payload.writingDefaults,...(family?{local:{origin:'task',family}}:{})});
   const value={version:3,demandId:claim.id,generation:claim.generation,scope,policyVersion:writingPolicy.version,policyHash:sha(writingPolicy.instructions),defaults:context,skills:context.baseline.skills,references:context.baseline.references};
   const snapshot={...value,snapshotHash:protocol.hash(value)};await writeCenterJson(file,snapshot);return validateCenterSkillSnapshot(snapshot,{claim,scope,writingPolicy});
  }
+ if(demandWritingFamily(claim))throw Error('本单指定了写作族，但认领没有冻结线上写作基线，不能挂载该写作族');
  const home=dirname(dirname(directory));root=await workspaceFor({home,scope,env});
  const managed=await managedWritingWorkspace(root);
  if(managed&&claim.kind==='write'&&claim.generation===1){
