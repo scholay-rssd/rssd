@@ -10,7 +10,7 @@ import {ReceiverMedia} from './media.mjs';
 import {GuestbookMirror} from './guestbook.mjs';
 import {CommunityMirror} from './community.mjs';
 import {buildAndActivate,receiptFor} from './build.mjs';
-import {withFileLock} from '../scripts/editorial-lock.mjs';
+import {withHostBuildSlot,resolveBuildSiteConcurrency,BUILD_SITE_CONCURRENCY_DEFAULT} from './host-build-slot.mjs';
 import {validateSite} from '../scripts/site-config.mjs';
 import {sectionsForSite} from '../contracts/site-sections.mjs';
 import p from '../contracts/rssd-v1.cjs';
@@ -18,6 +18,7 @@ import {WORK_TYPES_CAPABILITY,CARD_UPDATES_CAPABILITY} from '../contracts/rssd-p
 
 // The most requests one site build takes. If such a build fails, each of them is built again on its own.
 export const BUILD_BATCH_LIMIT=20;
+export {resolveBuildSiteConcurrency,BUILD_SITE_CONCURRENCY_DEFAULT,withHostBuildSlot} from './host-build-slot.mjs';
 
 async function loadBindingKeys(file,publicRoot){
   if(file===undefined)return Object.create(null);
@@ -36,6 +37,9 @@ async function loadBindingKeys(file,publicRoot){
 }
 export async function createReceiver({config,build=buildAndActivate}) {
   const home=resolve(config.home),source=resolve(config.source),sites=new Map();
+  // n>1 is rejected until cross-process coordination is atomic w.r.t. legacy build.lock.
+  const buildSiteConcurrency=resolveBuildSiteConcurrency(config.buildSiteConcurrency);
+  if(buildSiteConcurrency!==1)throw Error('Host build concurrency >1 is not deployed: no atomic cross-process coordination with legacy build.lock');
   for(const entry of config.sites){
     const site=validateSite(entry.site),tokenHash=p.text(entry.tokenHash,'tokenHash',64);
     if(!/^[a-f0-9]{64}$/.test(tokenHash)||sites.has(site.id))throw Error('Invalid receiver site credential or duplicate identity');
@@ -78,36 +82,39 @@ export async function createReceiver({config,build=buildAndActivate}) {
     // A failed batch is built again one request at a time, so only the request at fault fails.
     for(const item of job.batch){try{entry.store.finish(item.id,await run(entry.store.buildingJob(item.id)));}catch(error){entry.store.fail(item.id,error.message);}}
   }
+  async function processSite(entry){
+    const turn=value=>entry.store.db.prepare("INSERT INTO state(key,value) VALUES('bindingRefreshTurn',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(value);
+    const row=entry.bindings&&entry.accepting?entry.store.db.prepare("SELECT b.request_id,b.binding_hash,b.state,r.payload,r.work_key,r.operation_sequence,r.state AS request_state FROM binding_refreshes b JOIN requests r ON r.id=b.request_id WHERE b.state IN ('queued','building') AND r.state='success' ORDER BY r.created LIMIT 1").get():null;
+    const preferred=entry.store.db.prepare("SELECT value FROM state WHERE key='bindingRefreshTurn'").get()?.value==='1';
+    const unfinished=Boolean(entry.store.db.prepare("SELECT 1 FROM requests WHERE state='building' LIMIT 1").get());
+    if(unfinished||!row||!preferred){const job=entry.store.claim({limit:BUILD_BATCH_LIMIT});if(job){await buildRequests(entry,job);turn('1');return;}}
+    if(!row)return;
+    const current=entry.store.db.prepare('SELECT payload FROM published WHERE work_key=?').get(row.work_key);
+    if(!current||p.hash(JSON.parse(current.payload))!==p.hash(JSON.parse(row.payload))){entry.store.db.prepare("UPDATE binding_refreshes SET state='superseded' WHERE request_id=?").run(row.request_id);turn('0');return;}
+    const packet=JSON.parse(row.payload),published=entry.store.db.prepare('SELECT payload,previous_payload FROM published').all();
+    const packets=published.map(x=>JSON.parse(x.payload)),previousPackets=published.flatMap(x=>x.previous_payload?[JSON.parse(x.previous_payload)]:[]);
+    const refresh={id:row.request_id,packet,packets,previousPackets,operationSequence:row.operation_sequence,bindingRefresh:row.binding_hash,resume:row.state==='building'};
+    entry.store.db.prepare("UPDATE binding_refreshes SET state='building' WHERE request_id=?").run(row.request_id);
+    try{const receipt=await build({job:refresh,site:entry.site,base:entry.base,source,baseline:entry.baseline,media:entry.media,bindingStore:entry.bindings});entry.store.db.prepare("UPDATE binding_refreshes SET state='success',release=?,error=NULL WHERE request_id=?").run(receipt.release,row.request_id);}
+    catch(error){entry.store.db.prepare("UPDATE binding_refreshes SET state='failed',error=? WHERE request_id=?").run(String(error.message).slice(0,1000),row.request_id);}
+    turn('0');
+  }
   let running=false;
   async function tick(){
     if(running)return;running=true;
     try{
       await Promise.all([...sites.values()].filter(entry=>entry.guestbook).map(entry=>entry.guestbook.tick().catch(error=>console.error('Guestbook replica:',entry.site.id,error.message))));
       await Promise.all([...sites.values()].filter(entry=>entry.community).map(entry=>entry.community.tick().catch(error=>console.error('Community replica:',entry.site.id,error.message))));
-      await withFileLock(join(home,'build.lock'),async()=>{
-      // One build for the whole host at a time. A failed site does not prevent
-      // the next site's turn; no ten long-lived render workers are required.
-      for(const entry of sites.values()){
-        const turn=value=>entry.store.db.prepare("INSERT INTO state(key,value) VALUES('bindingRefreshTurn',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(value);
-        const row=entry.bindings&&entry.accepting?entry.store.db.prepare("SELECT b.request_id,b.binding_hash,b.state,r.payload,r.work_key,r.operation_sequence,r.state AS request_state FROM binding_refreshes b JOIN requests r ON r.id=b.request_id WHERE b.state IN ('queued','building') AND r.state='success' ORDER BY r.created LIMIT 1").get():null;
-        const preferred=entry.store.db.prepare("SELECT value FROM state WHERE key='bindingRefreshTurn'").get()?.value==='1';
-        const unfinished=Boolean(entry.store.db.prepare("SELECT 1 FROM requests WHERE state='building' LIMIT 1").get());
-        if(unfinished||!row||!preferred){const job=entry.store.claim({limit:BUILD_BATCH_LIMIT});if(job){await buildRequests(entry,job);turn('1');continue;}}
-        if(!row)continue;
-        const current=entry.store.db.prepare('SELECT payload FROM published WHERE work_key=?').get(row.work_key);
-        if(!current||p.hash(JSON.parse(current.payload))!==p.hash(JSON.parse(row.payload))){entry.store.db.prepare("UPDATE binding_refreshes SET state='superseded' WHERE request_id=?").run(row.request_id);turn('0');continue;}
-        const packet=JSON.parse(row.payload),published=entry.store.db.prepare('SELECT payload,previous_payload FROM published').all();
-        const packets=published.map(x=>JSON.parse(x.payload)),previousPackets=published.flatMap(x=>x.previous_payload?[JSON.parse(x.previous_payload)]:[]);
-        const refresh={id:row.request_id,packet,packets,previousPackets,operationSequence:row.operation_sequence,bindingRefresh:row.binding_hash,resume:row.state==='building'};
-        entry.store.db.prepare("UPDATE binding_refreshes SET state='building' WHERE request_id=?").run(row.request_id);
-        try{const receipt=await build({job:refresh,site:entry.site,base:entry.base,source,baseline:entry.baseline,media:entry.media,bindingStore:entry.bindings});entry.store.db.prepare("UPDATE binding_refreshes SET state='success',release=?,error=NULL WHERE request_id=?").run(receipt.release,row.request_id);}
-        catch(error){entry.store.db.prepare("UPDATE binding_refreshes SET state='failed',error=? WHERE request_id=?").run(String(error.message).slice(0,1000),row.request_id);}
-        turn('0');
-      }
-    },{timeout:100});}finally{running=false;}
+      // One host-wide build.lock across all rssd-receiver@ processes (see host-build-slot.mjs).
+      try{
+        await withHostBuildSlot(home,buildSiteConcurrency,async()=>{
+          for(const entry of sites.values())await processSite(entry);
+        },{timeout:100});
+      }catch(error){console.error('Receiver:',error.message);}
+    }finally{running=false;}
   }
   app.addHook('onClose',async()=>{for(const entry of sites.values())entry.store.close();});
-  return {app,tick,sites};
+  return {app,tick,sites,buildSiteConcurrency};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(!process.env.RSSD_RECEIVER_CONFIG)throw Error('RSSD_RECEIVER_CONFIG is required');
