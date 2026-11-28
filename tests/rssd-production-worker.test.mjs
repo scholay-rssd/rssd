@@ -19,6 +19,32 @@ async function fixture(t){
 }
 const pilotSignature={agentId:'codex',status:'completed',modelId:'gpt-6.1-terra[max]'};
 function pilot(f){f.task.workspaceId='metho';f.task.payload.requiredLocales=['zh-CN'];return {...f,agentId:'codex',workspaceIds:['metho'],sectionIds:['methods'],requiredModel:'gpt-6.1-terra'};}
+test('a pointed desktop turn leaves another blocked claim and its queued packet untouched',async t=>{
+ const f=await fixture(t),box=new CenterOutbox({directory:join(f.home,'outbox'),client:f.client});
+ await box.enqueue({requestId:'foreign-request',workId:'foreign-work',workspaceId:'research',sectionId:'methods',demandId:'foreign-demand',claimToken:'foreign-claim',editions:[{locale:'zh-CN',title:'Other session',bodyMarkdown:'Private pending content'}]});
+ f.task.id='foreign-demand';f.task.state='blocked';let changes=0;
+ f.client.changeDemand=async()=>{changes++;};
+ await assert.rejects(runProductionTurn({...f,demandId:'demand-one',agentId:'example',workspaceIds:['research'],sectionIds:['methods'],resume:true,producer:async()=>{throw Error('must not write');}}),/Another demand is active/);
+ assert.equal(changes,0);assert.equal(f.packets.length,0);assert.equal(f.task.state,'blocked');
+ assert.equal((await box.list())[0].state,'pending');
+ await assert.rejects(readFile(join(f.home,'active-claim.json')), {code:'ENOENT'});
+});
+test('a pointed desktop turn flushes only its own demand and preserves another pending outbox entry',async t=>{
+ const f=await fixture(t),box=new CenterOutbox({directory:join(f.home,'outbox'),client:f.client});
+ await box.enqueue({requestId:'foreign-pending',workId:'foreign-work',workspaceId:'research',sectionId:'methods',demandId:'foreign-demand',claimToken:'foreign-claim',editions:[{locale:'en',title:'Other session',bodyMarkdown:'Other pending content'}]});
+ const result=await runProductionTurn({...f,demandId:f.task.id,agentId:'example',workspaceIds:['research'],sectionIds:['methods'],producer:async({locale})=>({title:locale,bodyMarkdown:'Only selected work'})});
+ assert.equal(result.state,'accepted');assert.equal(f.packets.length,2);
+ assert.ok(f.packets.every(packet=>packet.demandId==='demand-one'));
+ assert.equal((await box.list()).find(entry=>entry.requestId==='foreign-pending').state,'pending');
+});
+test('a pointed turn rechecks identity before resuming after another session acquires the worker',async t=>{
+ const f=await fixture(t);let reads=0,changes=0;
+ f.client.activeClaim=async()=>++reads===1?f.task:{...f.task,id:'other-session',state:'blocked'};
+ f.client.changeDemand=async()=>{changes++;};
+ await assert.rejects(runProductionTurn({...f,demandId:f.task.id,agentId:'example',workspaceIds:['research'],sectionIds:['methods'],resume:true,producer:async()=>{throw Error('must not write');}}),/Another demand is active/);
+ assert.equal(reads,2);assert.equal(changes,0);assert.equal(f.packets.length,0);
+ await assert.rejects(readFile(join(f.home,'active-claim.json')), {code:'ENOENT'});
+});
 test('the pilot refuses unrelated pending packets before any outbox flush',async t=>{
   const f=await fixture(t),box=new CenterOutbox({directory:join(f.home,'outbox'),client:f.client});
   await box.enqueue({requestId:'old-one',workId:'old-work',workspaceId:'research',sectionId:'methods',editions:[{locale:'en',title:'Existing',bodyMarkdown:'Already saved'}]});
